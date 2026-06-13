@@ -695,30 +695,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     const getWsUrl = (): string => {
-      // 1. If explicitly set in env, use it
-      if (process.env.NEXT_PUBLIC_WS_URL) {
-        return process.env.NEXT_PUBLIC_WS_URL
-      }
-
-      // 2. If API URL is defined and is absolute, derive from it
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL
-      if (apiUrl && apiUrl.startsWith("http")) {
-        try {
-          const parsed = new URL(apiUrl)
-          const wsProto = parsed.protocol === "https:" ? "wss:" : "ws:"
-          return `${wsProto}//${parsed.host}/api/v1/ws`
-        } catch {
-        }
-      }
-
-      // 3. Otherwise, use same-origin relative URL (proxied by Next.js dev server rewrite in dev)
       if (typeof window !== "undefined") {
-        const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:"
-        const host = window.location.host // includes port, e.g. localhost:3000
-        return `${wsProto}//${host}/api/v1/ws`
+        const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = window.location.host; // includes port, e.g. localhost:3000
+        const wsPath = `${process.env.NEXT_PUBLIC_API_PATH || "/api/v1"}/ws`;
+        return `${wsProto}//${host}${wsPath}`;
       }
-
-      return "ws://localhost:8080/api/v1/ws"
+      return "ws://localhost:8080/api/v1/ws";
     }
 
     const wsUrl = getWsUrl()

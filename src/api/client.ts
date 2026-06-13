@@ -19,25 +19,32 @@ import {
 import { ENDPOINTS } from "./endpoints";
 
 const getBaseUrl = (): string => {
-  // Always use the env var — this is the single source of truth.
-  // NEXT_PUBLIC_* vars are inlined at build time for the browser bundle.
-  const envUrl = process.env.NEXT_PUBLIC_API_URL
-  if (envUrl) return envUrl
-
-  // Hard fallback only if the env var is genuinely missing (dev without .env)
-  return "http://localhost:8080/api/v1"
-}
+  if (typeof window !== "undefined") {
+    // Client-side: use relative path so requests go through Next.js proxy
+    // This resolves CORS, CSRF, and cookie-sending issues in dev and prod
+    return process.env.NEXT_PUBLIC_API_PATH || "/api/v1";
+  }
+  // Server-side (SSR): use absolute URL because relative URLs fail on the server
+  const envUrl = process.env.API_URL;
+  if (envUrl) return envUrl;
+  return "http://localhost:8080/api/v1";
+};
 
 export const BASE_URL = getBaseUrl();
 if (typeof window !== "undefined") {
-  console.log("[API] BASE_URL:", BASE_URL, "process.env.NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL);
+  console.log(
+    "[API] BASE_URL:",
+    getBaseUrl(),
+    "process.env.NEXT_PUBLIC_API_PATH:",
+    process.env.NEXT_PUBLIC_API_PATH,
+  );
 }
 
 export function getMediaUrl(path: string | null | undefined): string | undefined {
   if (!path) return undefined;
   if (path.startsWith("http")) return path;
   if (path.startsWith("blob:")) return path; // Do not modify local blobs
-  return `${BASE_URL}/uploads/media?path=${encodeURIComponent(path)}`;
+  return `${getBaseUrl()}/uploads/media?path=${encodeURIComponent(path)}`;
 }
 
 export function formatMediaUrls(obj: any) {
@@ -63,7 +70,7 @@ const TIMEOUT = 15_000;
 const CSRF_METHODS = ["post", "put", "patch", "delete"];
 
 const apiClient: AxiosInstance = axios.create({
-  baseURL: BASE_URL,
+  baseURL: getBaseUrl(),
   timeout: TIMEOUT,
   headers: {
     "Content-Type": "application/json",
@@ -76,6 +83,9 @@ const apiClient: AxiosInstance = axios.create({
 // ── Request interceptor ──────────────────────────────────────────────────────
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // Dynamically set baseURL on every request to prevent static compilation caching
+    config.baseURL = getBaseUrl();
+
     // Attach access token if available
     const token = getAccessToken();
     if (token) {
@@ -149,7 +159,7 @@ apiClient.interceptors.response.use(
             accessToken: string;
             expiresIn: number;
           };
-        }>(`${BASE_URL}${ENDPOINTS.AUTH.REFRESH}`, {}, { withCredentials: true });
+        }>(`${getBaseUrl()}${ENDPOINTS.AUTH.REFRESH}`, {}, { withCredentials: true });
 
         const { accessToken: newToken, expiresIn } = refreshResponse.data.data;
 
@@ -230,7 +240,7 @@ export async function proactiveTokenRefresh(): Promise<boolean> {
         accessToken: string;
         expiresIn: number;
       };
-    }>(`${BASE_URL}${ENDPOINTS.AUTH.REFRESH}`, {}, { withCredentials: true });
+    }>(`${getBaseUrl()}${ENDPOINTS.AUTH.REFRESH}`, {}, { withCredentials: true });
 
     const { accessToken: newToken, expiresIn } = response.data.data;
     setAccessToken(newToken, expiresIn);

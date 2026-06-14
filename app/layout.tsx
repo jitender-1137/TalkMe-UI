@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import { QueryProvider, ImageViewerProvider, VideoPlayerProvider, CreatePostProvider } from '@/components/providers'
 import { PresenceProvider } from '@/components/presence'
 import { Toaster } from 'sonner'
@@ -69,7 +68,6 @@ export default function RootLayout({
             </ImageViewerProvider>
           </PresenceProvider>
         </QueryProvider>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )

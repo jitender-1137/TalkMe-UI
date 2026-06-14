@@ -5,6 +5,7 @@ import { QueryProvider, ImageViewerProvider, VideoPlayerProvider, CreatePostProv
 import { PresenceProvider } from '@/components/presence'
 import { Toaster } from 'sonner'
 import { ZoomPreventer } from '@/components/zoom-preventer'
+import { PwaRegister } from '@/components/pwa-register'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -23,8 +24,14 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'TalkMe - Connect & Chat',
-  description: 'A modern messaging app to connect with friends and discover new people',
+  description: 'A premium modern messaging app to connect with friends and discover new people',
   generator: 'v0.app',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'TalkMe',
+  },
   icons: {
     icon: [
       {
@@ -34,10 +41,6 @@ export const metadata: Metadata = {
       {
         url: '/icon-dark-32x32.png',
         media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
       },
     ],
     apple: '/apple-icon.png',
@@ -53,6 +56,7 @@ export default function RootLayout({
     <html lang="en" className="bg-background" suppressHydrationWarning>
       <body className="font-sans antialiased overflow-hidden overscroll-none touch-manipulation">
         <ZoomPreventer />
+        <PwaRegister />
         <QueryProvider>
           <PresenceProvider>
             <ImageViewerProvider>

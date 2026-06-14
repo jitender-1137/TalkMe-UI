@@ -50,8 +50,8 @@ export function DesktopSidebar() {
     <aside className="hidden md:flex flex-col w-[72px] bg-sidebar border-r border-white/5 h-screen fixed left-0 top-0 z-40">
       {/* Logo */}
       <div className="flex items-center justify-center h-16 border-b border-white/5">
-        <div className="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/25">
-          <span className="text-primary-foreground font-bold text-lg">T</span>
+        <div className="w-10 h-10 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg shadow-primary/25">
+          <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover" />
         </div>
       </div>
 

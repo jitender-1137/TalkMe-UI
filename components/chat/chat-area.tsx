@@ -543,10 +543,8 @@ export function ChatArea({
         <div className="max-w-md w-full space-y-6 p-8 rounded-3xl border border-white/5 bg-white/[0.02] backdrop-blur-xl shadow-2xl transition-all duration-300 hover:border-primary/20 hover:shadow-primary/5 group">
           {/* Animated/Glowing Icon Frame */}
           <div className="relative mx-auto w-24 h-24 rounded-2xl bg-gradient-to-tr from-primary to-violet-500 p-[1px] shadow-lg shadow-primary/25 transition-transform duration-500 group-hover:scale-105">
-            <div className="w-full h-full rounded-2xl bg-card flex items-center justify-center">
-              <span className="text-4xl font-extrabold bg-gradient-to-r from-primary to-violet-400 bg-clip-text text-transparent animate-pulse">
-                T
-              </span>
+            <div className="w-full h-full rounded-2xl overflow-hidden bg-card flex items-center justify-center">
+              <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover animate-pulse" />
             </div>
             {/* Glowing rings */}
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-primary to-violet-500 opacity-20 blur-md -z-10 group-hover:opacity-40 transition-opacity duration-300" />

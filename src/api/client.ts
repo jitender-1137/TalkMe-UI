@@ -18,11 +18,56 @@ import {
 } from "./token-store";
 import { ENDPOINTS } from "./endpoints";
 
+export const checkIsSameJar = (): boolean => {
+  if (typeof window === "undefined") return true;
+
+  // 1. Next.js dev server on port 3000 is considered "different"
+  if (window.location.port === "3000") {
+    return false;
+  }
+
+  // 2. If hostname is localhost or 127.0.0.1, and port is NOT 3000 (e.g. 8080), it's the Spring Boot jar
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return window.location.port !== "3000";
+  }
+
+  // 3. If the current hostname is a known frontend-only hosting provider (e.g. Vercel, Netlify, AWS Amplify)
+  if (
+    window.location.hostname.endsWith(".vercel.app") ||
+    window.location.hostname.endsWith(".amplifyapp.com") ||
+    window.location.hostname.endsWith(".netlify.app")
+  ) {
+    return false;
+  }
+
+  // 4. Compare current hostname with the hostname of the baked-in API_URL
+  const bakedApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (bakedApiUrl) {
+    try {
+      const url = new URL(bakedApiUrl);
+      // If the current hostname matches the hostname of NEXT_PUBLIC_API_URL, they are same domain (same jar/proxy)
+      if (window.location.hostname === url.hostname) {
+        return true;
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  // Default fallback: if we are not on port 3000, and not on a known separate frontend hosting,
+  // assume we are running on the same domain/JAR.
+  return true;
+};
+
 const getBaseUrl = (): string => {
   if (typeof window !== "undefined") {
-    // Client-side: use relative path so requests go through Next.js proxy
-    // This resolves CORS, CSRF, and cookie-sending issues in dev and prod
-    return process.env.NEXT_PUBLIC_API_PATH || "/api/v1";
+    if (checkIsSameJar()) {
+      // Same jar: use relative path
+      return process.env.NEXT_PUBLIC_API_PATH || "/api/v1";
+    } else {
+      // Different: use absolute NEXT_PUBLIC_API_URL from .env
+      return process.env.NEXT_PUBLIC_API_URL || "/api/v1";
+    }
   }
   // Server-side (SSR): use absolute URL because relative URLs fail on the server
   const envUrl = process.env.API_URL;
@@ -37,6 +82,8 @@ if (typeof window !== "undefined") {
     getBaseUrl(),
     "process.env.NEXT_PUBLIC_API_PATH:",
     process.env.NEXT_PUBLIC_API_PATH,
+    "isSameJar:",
+    checkIsSameJar()
   );
 }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, MessageCircle, Phone, Video, Ban, AlertTriangle, MapPin, Calendar, Loader2, ShieldCheck, Heart } from 'lucide-react'
+import { X, MessageCircle, Phone, Video, Ban, AlertTriangle, MapPin, Calendar, Loader2, ShieldCheck, Heart, Briefcase, GraduationCap, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AvatarStatusBadge } from '@/components/presence'
@@ -208,6 +208,24 @@ export function UserProfileModal({ contact, userId, isOpen, onClose, onMessage, 
                         <div className="flex items-center gap-3 text-sm text-muted-foreground">
                           <Calendar className="h-4.5 w-4.5 shrink-0" />
                           <span>{user.age} years old</span>
+                        </div>
+                      )}
+                      {user.gender && (
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <User className="h-4.5 w-4.5 shrink-0" />
+                          <span className="capitalize">{user.gender}</span>
+                        </div>
+                      )}
+                      {user.occupation && (
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <Briefcase className="h-4.5 w-4.5 shrink-0" />
+                          <span>{user.occupation}</span>
+                        </div>
+                      )}
+                      {user.education && (
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <GraduationCap className="h-4.5 w-4.5 shrink-0" />
+                          <span>{user.education}</span>
                         </div>
                       )}
                     </div>

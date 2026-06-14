@@ -1,59 +1,77 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { motion } from "framer-motion"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useAuth } from "./auth-context"
-import { User, Calendar, Users, Heart, Shield, Zap } from "lucide-react"
+import { useState } from "react";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "./auth-context";
+import { User, Calendar, Users, Shield, Zap, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function GuestMatchForm() {
-  const { loginAsGuest, openLoginModal, openSignupModal } = useAuth()
-  const [name, setName] = useState("")
-  const [age, setAge] = useState("")
-  const [gender, setGender] = useState("")
-  const [error, setError] = useState("")
+  const { loginAsGuest, openLoginModal, openSignupModal, isAuthenticated, isGuestMatch } = useAuth();
+  const [name, setName] = useState("");
+  const [age, setAge] = useState("");
+  const [gender, setGender] = useState("");
+  const [error, setError] = useState("");
+
+  // Field errors
+  const [nameError, setNameError] = useState("");
+  const [ageError, setAgeError] = useState("");
+  const [genderError, setGenderError] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
+    e.preventDefault();
+    setError("");
+    setNameError("");
+    setAgeError("");
+    setGenderError("");
+
+    let hasError = false;
 
     if (!name.trim()) {
-      setError("Please enter your name")
-      return
+      setNameError("Please enter your name");
+      hasError = true;
     }
 
-    const ageNum = parseInt(age)
-    if (!age || isNaN(ageNum) || ageNum < 18 || ageNum > 99) {
-      setError("Please enter a valid age (18-99)")
-      return
+    const ageNum = parseInt(age);
+    if (!age) {
+      setAgeError("Please enter your age");
+      hasError = true;
+    } else if (isNaN(ageNum) || ageNum < 18 || ageNum > 99) {
+      setAgeError("You must be between 18 and 99 years old");
+      hasError = true;
     }
 
     if (!gender) {
-      setError("Please select your gender")
-      return
+      setGenderError("Please select your gender");
+      hasError = true;
     }
 
-    loginAsGuest(name.trim(), ageNum, gender)
-  }
+    if (hasError) return;
+
+    loginAsGuest(name.trim(), ageNum, gender);
+  };
 
   const genderOptions = [
     { value: "male", label: "Male" },
     { value: "female", label: "Female" },
-  ]
+  ];
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-y-auto pb-32 md:pb-4">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Match</h1>
-            <p className="text-sm text-muted-foreground">Find your next match</p>
+      {(isAuthenticated || isGuestMatch) && (
+        <header className="sticky top-0 z-40 bg-background border-b border-border px-4 md:py-4 py-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-bold text-foreground">Match</h1>
+              <p className="text-sm text-muted-foreground">Find your next match</p>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Content */}
       <div className="flex-1 flex items-center justify-center p-4 md:p-6">
@@ -65,8 +83,8 @@ export function GuestMatchForm() {
           >
             {/* Form Header */}
             <div className="px-6 pt-6 pb-4 text-center border-b border-border/50 bg-primary/5">
-              <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mx-auto mb-4">
-                <Heart className="h-8 w-8 text-primary" />
+              <div className="flex items-center justify-center h-16 w-16 rounded-2xl overflow-hidden shadow-md mx-auto mb-4">
+                <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover" />
               </div>
               <h2 className="text-xl font-bold text-foreground">Quick Match</h2>
               <p className="text-sm text-muted-foreground mt-1">
@@ -82,59 +100,107 @@ export function GuestMatchForm() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="guest-name">Display Name</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="guest-name"
-                    type="text"
-                    placeholder="Enter a nickname"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="pl-10"
-                    maxLength={20}
-                  />
-                </div>
+              <div className="relative mt-4">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                <Input
+                  id="guest-name"
+                  type="text"
+                  placeholder="Enter a nickname"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value)
+                    if (nameError) setNameError("")
+                  }}
+                  aria-invalid={!!nameError}
+                  className="pl-10 h-10"
+                  maxLength={20}
+                />
+                <Label
+                  htmlFor="guest-name"
+                  className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                >
+                  Display Name
+                </Label>
+                {nameError && (
+                  <p className="text-xs text-destructive mt-1">{nameError}</p>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="guest-age">Age</Label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="guest-age"
-                    type="number"
-                    placeholder="Your age"
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    className="pl-10"
-                    min={18}
-                    max={99}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Must be 18 or older</p>
+              <div className="relative mt-4">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+                <select
+                  id="guest-age"
+                  value={age}
+                  onChange={(e) => {
+                    setAge(e.target.value)
+                    if (ageError) setAgeError("")
+                  }}
+                  aria-invalid={!!ageError}
+                  className={cn(
+                    "pl-10 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-base shadow-xs transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm cursor-pointer appearance-none",
+                    "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+                    "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+                    age === "" ? "text-muted-foreground" : "text-foreground",
+                  )}
+                >
+                  <option value="" disabled className="bg-card text-muted-foreground">
+                    Select Age
+                  </option>
+                  {Array.from({ length: 82 }, (_, i) => i + 18).map((num) => (
+                    <option key={num} value={num} className="bg-card text-foreground">
+                      {num}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+                <Label
+                  htmlFor="guest-age"
+                  className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                >
+                  Age
+                </Label>
+                {ageError ? (
+                  <p className="text-xs text-destructive mt-1">{ageError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">Must be 18 or older</p>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <Label>Gender</Label>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="relative mt-4">
+                <div className={cn(
+                  "grid grid-cols-2 gap-2 h-10 border border-border rounded-md px-2 items-center",
+                  genderError && "border-destructive"
+                )}>
                   {genderOptions.map((option) => (
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => setGender(option.value)}
-                      className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                      onClick={() => {
+                        setGender(option.value)
+                        if (genderError) setGenderError("")
+                      }}
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 px-2 border text-xs font-medium rounded-md transition-colors h-7 cursor-pointer",
                         gender === option.value
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-background hover:bg-muted text-foreground"
-                      }`}
+                          ? "border-primary bg-primary/10 text-primary font-medium"
+                          : genderError
+                          ? "border-destructive bg-transparent hover:bg-destructive/5 text-destructive"
+                          : "border-border bg-transparent hover:bg-muted text-foreground"
+                      )}
                     >
-                      <Users className="h-4 w-4" />
+                      <Users className="h-3.5 w-3.5" />
                       {option.label}
                     </button>
                   ))}
                 </div>
+                <Label
+                  className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                >
+                  Gender
+                </Label>
+                {genderError && (
+                  <p className="text-xs text-destructive mt-1">{genderError}</p>
+                )}
               </div>
 
               <Button type="submit" className="w-full h-11 mt-2">
@@ -208,5 +274,5 @@ export function GuestMatchForm() {
         </div>
       </div>
     </div>
-  )
+  );
 }

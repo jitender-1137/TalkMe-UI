@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Search, UserPlus, Users, MapPin, Check, UserMinus } from "lucide-react";
+import { Search, UserPlus, Users, MapPin, Check, UserMinus, User } from "lucide-react";
 import { cn, getAvatarUrl } from "@/lib/utils";
 import { useSuggestedFriends, useAddContact, useRemoveContact } from "@/src/api/hooks";
 import type { SuggestedPerson } from "@/src/api/types";
@@ -218,15 +218,22 @@ function SuggestionRow({
               >
                 {person.name}
               </button>
-              <span className="text-xs text-muted-foreground">{person.username}</span>
+              <span className="text-xs text-muted-foreground">@{person.username}</span>
             </div>
 
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               {/* Location */}
-              {(person.location || person.distance) && (
+              {person.location && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3 shrink-0" />
-                  {person.distance || person.location}
+                  {person.location}
+                </span>
+              )}
+              {/* Gender */}
+              {person.gender && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground capitalize">
+                  <User className="h-3 w-3 shrink-0" />
+                  {person.gender}
                 </span>
               )}
               {/* Mutual friends */}

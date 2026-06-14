@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Settings, User, Camera, Save, Edit2, Lock, KeyRound, X, Palette, LogOut, Image as ImageIcon, Trash2 } from "lucide-react"
+import { Settings, User, Camera, Save, Edit2, Lock, KeyRound, X, Palette, LogOut, Image as ImageIcon, Trash2, ChevronDown } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { CameraModal } from "@/components/chat/camera-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { AvatarStatusBadge, PresenceSettings, PresenceDebugPanel } from "@/components/presence"
 import { usePresenceStore } from "@/lib/presence"
@@ -307,35 +308,53 @@ export function SettingsPage() {
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">Current Password</label>
+                <div className="relative mt-4">
                   <Input
+                    id="settings-current-password"
                     type="password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     placeholder="Enter current password"
-                    className="mt-1"
+                    className="h-10"
                   />
+                  <Label
+                    htmlFor="settings-current-password"
+                    className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                  >
+                    Current Password
+                  </Label>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">New Password</label>
+                <div className="relative mt-4">
                   <Input
+                    id="settings-new-password"
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Enter new password (min 6 characters)"
-                    className="mt-1"
+                    className="h-10"
                   />
+                  <Label
+                    htmlFor="settings-new-password"
+                    className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                  >
+                    New Password
+                  </Label>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">Confirm Password</label>
+                <div className="relative mt-4">
                   <Input
+                    id="settings-confirm-password"
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirm new password"
-                    className="mt-1"
+                    className="h-10"
                   />
+                  <Label
+                    htmlFor="settings-confirm-password"
+                    className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                  >
+                    Confirm Password
+                  </Label>
                 </div>
                 <div className="flex gap-3 pt-2">
                   <Button onClick={handlePasswordChange} className="flex-1">
@@ -370,15 +389,21 @@ export function SettingsPage() {
                 <p className="text-sm text-muted-foreground">
                   Enter your email address and we&apos;ll send you a link to reset your password.
                 </p>
-                <div>
-                  <label className="text-sm font-medium">Email Address</label>
+                <div className="relative mt-4">
                   <Input
+                    id="settings-forgot-email"
                     type="email"
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
                     placeholder="Enter your email"
-                    className="mt-1"
+                    className="h-10"
                   />
+                  <Label
+                    htmlFor="settings-forgot-email"
+                    className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                  >
+                    Email Address
+                  </Label>
                 </div>
                 <div className="flex gap-3 pt-2">
                   <Button onClick={handleForgotPassword} className="flex-1">
@@ -475,12 +500,21 @@ export function SettingsPage() {
                   </div>
 
                   {isEditing ? (
-                    <Input
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                      className="text-lg font-semibold text-center max-w-xs"
-                      placeholder="Your Name"
-                    />
+                    <div className="relative mt-4 w-full max-w-xs mx-auto">
+                      <Input
+                        id="settings-name"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        className="text-lg font-semibold text-center h-10"
+                        placeholder="Your Name"
+                      />
+                      <Label
+                        htmlFor="settings-name"
+                        className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                      >
+                        Display Name
+                      </Label>
+                    </div>
                   ) : (
                     <h3 className="text-2xl font-semibold">{profile.name}</h3>
                   )}
@@ -491,66 +525,116 @@ export function SettingsPage() {
                 <div className="p-4 rounded-lg border border-border bg-card space-y-4">
                   <h4 className="font-semibold text-foreground">Profile Details</h4>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-semibold text-muted-foreground">Username</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="relative mt-4">
                       <Input
+                        id="settings-username"
                         value={userProfile?.username || ""}
                         disabled
-                        className="mt-1 bg-muted/30 cursor-not-allowed"
+                        className="bg-muted/30 cursor-not-allowed h-10"
                       />
+                      <Label
+                        htmlFor="settings-username"
+                        className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                      >
+                        Username
+                      </Label>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-muted-foreground">Age</label>
                       {isEditing ? (
-                        <Input
-                          type="number"
-                          value={editForm.age}
-                          onChange={(e) =>
-                            setEditForm({ ...editForm, age: parseInt(e.target.value) || 0 })
-                          }
-                          className="mt-1"
-                          min={18}
-                          max={99}
-                        />
+                        <div className="relative mt-4">
+                          <select
+                            id="settings-age"
+                            value={editForm.age}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, age: parseInt(e.target.value) || 0 })
+                            }
+                            className={cn(
+                              "pl-3 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-base shadow-xs transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm cursor-pointer appearance-none",
+                              "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+                              editForm.age === 0 ? "text-muted-foreground" : "text-foreground",
+                            )}
+                          >
+                            <option value={0} disabled className="bg-card text-muted-foreground">
+                              Select Age
+                            </option>
+                            {Array.from({ length: 82 }, (_, i) => i + 18).map((num) => (
+                              <option key={num} value={num} className="bg-card text-foreground">
+                                {num}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+                          <Label
+                            htmlFor="settings-age"
+                            className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                          >
+                            Age
+                          </Label>
+                        </div>
                       ) : (
-                        <p className="mt-1 text-sm font-medium">{profile.age || "N/A"}</p>
+                        <div>
+                          <span className="text-xs font-semibold text-muted-foreground">Age</span>
+                          <p className="mt-1 text-sm font-medium">{profile.age || "N/A"}</p>
+                        </div>
                       )}
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-muted-foreground">Country</label>
                       {isEditing ? (
-                        <Input
-                          value={editForm.country}
-                          disabled
-                          className="mt-1 bg-muted/30 cursor-not-allowed"
-                        />
+                        <div className="relative mt-4">
+                          <Input
+                            id="settings-country"
+                            value={editForm.country}
+                            disabled
+                            className="bg-muted/30 cursor-not-allowed h-10"
+                          />
+                          <Label
+                            htmlFor="settings-country"
+                            className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                          >
+                            Country
+                          </Label>
+                        </div>
                       ) : (
-                        <p className="mt-1 text-sm font-medium">{profile.country || "N/A"}</p>
+                        <div>
+                          <span className="text-xs font-semibold text-muted-foreground">Country</span>
+                          <p className="mt-1 text-sm font-medium">{profile.country || "N/A"}</p>
+                        </div>
                       )}
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-muted-foreground">City</label>
                       {isEditing ? (
-                        <Input
-                          value={editForm.city}
-                          onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
-                          className="mt-1"
-                          placeholder="City"
-                        />
+                        <div className="relative mt-4">
+                          <Input
+                            id="settings-city"
+                            value={editForm.city}
+                            onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                            className="h-10"
+                            placeholder="City"
+                          />
+                          <Label
+                            htmlFor="settings-city"
+                            className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                          >
+                            City
+                          </Label>
+                        </div>
                       ) : (
-                        <p className="mt-1 text-sm font-medium">{profile.city || "N/A"}</p>
+                        <div>
+                          <span className="text-xs font-semibold text-muted-foreground">City</span>
+                          <p className="mt-1 text-sm font-medium">{profile.city || "N/A"}</p>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
 
                 {/* Bio */}
-                <div className="p-4 rounded-lg border border-border bg-card space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground">Bio</label>
+                <div className="p-4 rounded-lg border border-border bg-card">
                   {isEditing ? (
-                    <div>
+                    <div className="relative mt-4">
                       <textarea
+                        id="settings-bio"
                         value={editForm.bio}
                         onChange={(e) => {
                           if (e.target.value.length <= 500) {
@@ -558,10 +642,16 @@ export function SettingsPage() {
                           }
                         }}
                         maxLength={500}
-                        className="w-full p-2 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="w-full p-2.5 rounded-md border border-input bg-background text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                         rows={4}
                         placeholder="Tell us about yourself..."
                       />
+                      <Label
+                        htmlFor="settings-bio"
+                        className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                      >
+                        Bio
+                      </Label>
                       <div className={cn(
                         "text-right text-xs mt-1 transition-colors",
                         (editForm.bio || "").length >= 500 
@@ -572,13 +662,16 @@ export function SettingsPage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground leading-relaxed">{profile.bio || "No bio added yet."}</p>
+                    <div>
+                      <span className="text-xs font-semibold text-muted-foreground">Bio</span>
+                      <p className="text-sm text-muted-foreground leading-relaxed mt-1">{profile.bio || "No bio added yet."}</p>
+                    </div>
                   )}
                 </div>
 
                 {/* Interests */}
                 <div className="p-4 rounded-lg border border-border bg-card space-y-3">
-                  <label className="text-xs font-semibold text-muted-foreground">Interests</label>
+                  <span className="text-xs font-semibold text-muted-foreground">Interests</span>
                   <div className="flex flex-wrap gap-2">
                     {(isEditing ? editForm.interests : profile.interests).map((interest) => (
                       <Badge
@@ -599,7 +692,7 @@ export function SettingsPage() {
                     ))}
                   </div>
                   {isEditing && availableInterests.length > 0 && (
-                    <div className="flex gap-2">
+                    <div className="relative mt-4">
                       <Select
                         onValueChange={(val) => {
                           if (val) {
@@ -610,7 +703,7 @@ export function SettingsPage() {
                           }
                         }}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className="w-full h-10">
                           <SelectValue placeholder="Add an interest..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -621,6 +714,11 @@ export function SettingsPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      <Label
+                        className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                      >
+                        Add Interest
+                      </Label>
                     </div>
                   )}
                 </div>

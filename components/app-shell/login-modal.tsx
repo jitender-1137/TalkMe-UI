@@ -13,26 +13,38 @@ export function LoginModal() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [validationError, setValidationError] = useState("")
+  const [emailError, setEmailError] = useState("")
+  const [passwordError, setPasswordError] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setValidationError("")
+    setEmailError("")
+    setPasswordError("")
 
-    if (!email || !password) {
-      setValidationError("Please fill in all fields")
-      return
+    let hasError = false
+    if (!email) {
+      setEmailError("Email is required")
+      hasError = true
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      setEmailError("Please enter a valid email address")
+      hasError = true
     }
 
+    if (!password) {
+      setPasswordError("Password is required")
+      hasError = true
+    }
+
+    if (hasError) return
+
     login(email, password)
-    // Fields are intentionally NOT cleared here so they remain
-    // populated if the login fails with invalid credentials.
   }
 
   const handleSwitchToSignup = () => {
     setEmail("")
     setPassword("")
-    setValidationError("")
+    setEmailError("")
+    setPasswordError("")
     openSignupModal()
   }
 
@@ -43,7 +55,7 @@ export function LoginModal() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black p-4"
+          className="fixed inset-0 z-50 overflow-y-auto flex justify-center items-start bg-black/60 backdrop-blur-xs p-4 md:py-10"
           onClick={closeLoginModal}
         >
           <motion.div
@@ -66,8 +78,8 @@ export function LoginModal() {
               </Button>
               
               <div className="flex items-center gap-3 mb-2">
-                <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-primary text-primary-foreground font-bold text-lg">
-                  T
+                <div className="flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden shadow-md">
+                  <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover" />
                 </div>
                 <h1 className="text-xl font-bold">TalkMe</h1>
               </div>
@@ -77,53 +89,73 @@ export function LoginModal() {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-4">
-              {(validationError || loginError) && (
+              {loginError && (
                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-                  {validationError || loginError}
+                  {loginError}
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
+              <div className="relative mt-4">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    if (emailError) setEmailError("")
+                  }}
+                  aria-invalid={!!emailError}
+                  className="pl-10 h-10"
+                />
+                <Label
+                  htmlFor="email"
+                  className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                >
+                  Email
+                </Label>
+                {emailError && (
+                  <p className="text-xs text-destructive mt-1">{emailError}</p>
+                )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
+              <div className="relative mt-4">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    if (passwordError) setPasswordError("")
+                  }}
+                  aria-invalid={!!passwordError}
+                  className="pl-10 pr-10 h-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 z-10"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+                <Label
+                  htmlFor="password"
+                  className="absolute left-3 -top-2 z-10 px-1 bg-card text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
+                >
+                  Password
+                </Label>
+                {passwordError && (
+                  <p className="text-xs text-destructive mt-1">{passwordError}</p>
+                )}
               </div>
 
               <div className="flex justify-end">

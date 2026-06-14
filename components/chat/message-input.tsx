@@ -206,10 +206,14 @@ export function MessageInput({
 
   // Autofocus input when chat input opens or disabled changes
   useEffect(() => {
-    if (!disabled) {
+    if (!disabled && inputRef.current) {
+      // Focus synchronously to capture user gesture event chain for mobile virtual keyboards
+      inputRef.current.focus();
+
+      // Short delay fallback for slower layout rendering
       const timer = setTimeout(() => {
         inputRef.current?.focus();
-      }, 50);
+      }, 30);
       return () => clearTimeout(timer);
     }
   }, [disabled]);
@@ -795,6 +799,7 @@ export function MessageInput({
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
                 disabled={disabled}
+                autoFocus={true}
                 rows={1}
                 className={cn(
                   "w-full resize-none bg-transparent border-0 p-0 text-base focus:ring-0 focus:outline-none",

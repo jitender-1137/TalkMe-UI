@@ -13,6 +13,10 @@ export interface DiscoverParams {
   isOnline?: boolean
   cursor?: string
   limit?: number
+  minAge?: number
+  maxAge?: number
+  gender?: string
+  country?: string
 }
 
 export const DiscoverService = {

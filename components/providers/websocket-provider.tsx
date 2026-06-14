@@ -12,7 +12,7 @@ import { useProfile } from "@/src/api/hooks/useProfile"
 import { MessageService } from "@/src/api/services/message.service"
 import { ChatService } from "@/src/api/services/chat.service"
 import type { Chat, Contact } from "@/src/api/types"
-import { formatMediaUrls } from "@/src/api/client"
+import { formatMediaUrls, checkIsSameJar } from "@/src/api/client"
 import { X } from "lucide-react"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 
@@ -78,6 +78,26 @@ export function useWebSocket() {
     throw new Error("useWebSocket must be used within a WebSocketProvider")
   }
   return context
+}
+
+let lastSoundPlayTime = 0
+
+const playNotificationSound = () => {
+  const now = Date.now()
+  if (now - lastSoundPlayTime < 500) {
+    return
+  }
+  lastSoundPlayTime = now
+
+  try {
+    const audio = new Audio("/sounds/notification.wav")
+    audio.volume = 0.5
+    audio.play().catch((err) => {
+      console.warn("[WebSocket] Failed to play audio:", err)
+    })
+  } catch (err) {
+    console.error("[WebSocket] Audio play error:", err)
+  }
 }
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
@@ -697,9 +717,37 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const getWsUrl = (): string => {
       if (typeof window !== "undefined") {
         const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const host = window.location.host; // includes port, e.g. localhost:3000
-        const wsPath = `${process.env.NEXT_PUBLIC_API_PATH || "/api/v1"}/ws`;
-        return `${wsProto}//${host}${wsPath}`;
+        
+        if (checkIsSameJar()) {
+          // Same JAR: use current browser origin
+          const host = window.location.host;
+          const wsPath = `${process.env.NEXT_PUBLIC_API_PATH || "/api/v1"}/ws`;
+          return `${wsProto}//${host}${wsPath}`;
+        } else {
+          // Different: use NEXT_PUBLIC_API_URL (reads .env)
+          let apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+          if (apiUrl.startsWith("/")) {
+            apiUrl = `${window.location.protocol}//${window.location.host}${apiUrl}`;
+          }
+          
+          try {
+            const url = new URL(apiUrl);
+            // Replace localhost with actual IP address for mobile local network access
+            if (
+              (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+              window.location.hostname !== "localhost" &&
+              window.location.hostname !== "127.0.0.1"
+            ) {
+              url.hostname = window.location.hostname;
+            }
+            const wsProtocol = window.location.protocol === "https:" ? "wss:" : (url.protocol === "https:" ? "wss:" : "ws:");
+            const host = url.host;
+            const wsPath = `${url.pathname.replace(/\/$/, "")}/ws`;
+            return `${wsProtocol}//${host}${wsPath}`;
+          } catch (e) {
+            console.error("[WebSocket] Failed to parse API URL:", e);
+          }
+        }
       }
       return "ws://localhost:8080/api/v1/ws";
     }
@@ -800,6 +848,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           if (payload.event === "friend_request_received" || payload.event === "friend_request_cancelled" || payload.event === "friend_request_rejected") {
             queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONTACTS.REQUESTS })
             queryClient.invalidateQueries({ queryKey: QUERY_KEYS.DISCOVER.LIST })
+            
+            if (payload.event === "friend_request_received") {
+              const settings = useLobbyStore.getState().notificationSettings
+              if (settings.sound) {
+                playNotificationSound()
+              }
+            }
           }
           if (payload.event === "friend_request_accepted" || payload.event === "friend_removed") {
             queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONTACTS.REQUESTS })
@@ -819,6 +874,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         try {
           console.log("[STOMP] Received notification:", message.body)
           queryClient.invalidateQueries({ queryKey: QUERY_KEYS.NOTIFICATIONS.LIST })
+          
+          const settings = useLobbyStore.getState().notificationSettings
+          if (settings.sound) {
+            playNotificationSound()
+          }
         } catch (err) {
           console.error("[STOMP] Failed to process notification:", err)
         }
@@ -873,6 +933,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           const ownUsername = ownProfileRef.current?.username
           if (ownUsername) {
             useLobbyStore.getState().addMessage(payload, ownUsername)
+          }
+
+          if (payload.sender !== ownUsername) {
+            const settings = useLobbyStore.getState().notificationSettings
+            if (settings.sound) {
+              playNotificationSound()
+            }
           }
 
           // Fire registered handlers (sound notifications etc.)

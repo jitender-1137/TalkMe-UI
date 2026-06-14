@@ -99,8 +99,8 @@ function AppShellContent() {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-background">
         <div className="flex items-center gap-2 animate-pulse">
-          <div className="flex items-center justify-center h-12 w-12 rounded-2xl bg-primary text-primary-foreground font-bold text-xl shadow-lg shadow-primary/25">
-            T
+          <div className="flex items-center justify-center h-12 w-12 rounded-2xl overflow-hidden shadow-lg shadow-primary/25">
+            <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover" />
           </div>
           <span className="text-2xl font-bold text-foreground">TalkMe</span>
         </div>

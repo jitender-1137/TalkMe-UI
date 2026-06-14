@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { X, Sparkles } from "lucide-react"
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { useAuth } from "./auth-context"
+import { X, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "./auth-context";
 
 export function GuestBanner() {
-  const { isAuthenticated, openSignupModal } = useAuth()
-  const [isDismissed, setIsDismissed] = useState(false)
+  const { isAuthenticated, openSignupModal } = useAuth();
+  const [isDismissed, setIsDismissed] = useState(false);
 
-  if (isAuthenticated || isDismissed) return null
+  if (isAuthenticated || isDismissed) return null;
 
   return (
-    <div className="bg-warning text-warning-foreground px-4 py-2.5 flex items-center justify-between gap-3">
+    <div className="bg-warning text-warning-foreground px-2 md:px-20 py-2.5 flex items-center justify-between gap-3">
       <div className="flex items-center gap-3 min-w-0">
         <Sparkles className="h-4 w-4 shrink-0" />
         <p className="text-sm font-medium truncate">
@@ -37,5 +37,5 @@ export function GuestBanner() {
         </button>
       </div>
     </div>
-  )
+  );
 }

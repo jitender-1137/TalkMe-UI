@@ -284,8 +284,8 @@ export function SecondaryPanel() {
       {!viewArchived && (
         <div className="md:hidden sticky top-0 z-20 bg-card">
           <div className="flex items-center gap-3 px-4 py-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-2xl bg-primary text-primary-foreground font-bold text-lg shadow-lg shadow-primary/25">
-              T
+            <div className="flex items-center justify-center h-10 w-10 rounded-2xl overflow-hidden shadow-lg shadow-primary/25">
+              <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover" />
             </div>
             <div className="flex-1">
               <h1 className="text-lg font-semibold text-foreground tracking-tight">TalkMe</h1>

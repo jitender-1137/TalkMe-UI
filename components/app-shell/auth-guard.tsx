@@ -1,13 +1,13 @@
-"use client"
+"use client";
 
-import { motion } from "framer-motion"
-import { Button } from "@/components/ui/button"
-import { useAuth } from "./auth-context"
-import { MessageCircle, Lock, Users, Newspaper, Settings, Compass } from "lucide-react"
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "./auth-context";
+import { MessageCircle, Lock, Users, Newspaper, Settings, Compass } from "lucide-react";
 
 interface AuthGuardProps {
-  children: React.ReactNode
-  tab: string
+  children: React.ReactNode;
+  tab: string;
 }
 
 const tabInfo: Record<string, { icon: React.ElementType; title: string; description: string }> = {
@@ -36,37 +36,39 @@ const tabInfo: Record<string, { icon: React.ElementType; title: string; descript
     title: "Discover",
     description: "Find new people and explore communities",
   },
-}
+};
 
 export function AuthGuard({ children, tab }: AuthGuardProps) {
-  const { isAuthenticated, isGuest, openLoginModal, openSignupModal } = useAuth()
+  const { isAuthenticated, isGuest, openLoginModal, openSignupModal } = useAuth();
 
-  const isGuestBlocked = isAuthenticated && isGuest
+  const isGuestBlocked = isAuthenticated && isGuest;
 
   if (isAuthenticated && !isGuestBlocked) {
-    return <>{children}</>
+    return <>{children}</>;
   }
 
-  const info = tabInfo[tab] || tabInfo.chats
-  const Icon = info.icon
+  const info = tabInfo[tab] || tabInfo.chats;
+  const Icon = info.icon;
 
-  const title = isGuestBlocked ? "Account required" : "Sign in required"
+  const title = isGuestBlocked ? "Account required" : "Sign in required";
   const description = isGuestBlocked
     ? `Guest sessions cannot access the ${info.title.toLowerCase()} page. Please register or sign in with a full account to unlock this feature.`
-    : `Please sign in to access ${info.title.toLowerCase()} and unlock all features`
+    : `Please sign in to access ${info.title.toLowerCase()} and unlock all features`;
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-y-auto pb-32 md:pb-4">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
-        <div className="flex items-center gap-3">
-          <Icon className="h-5 w-5 text-muted-foreground" />
-          <div>
-            <h1 className="text-xl font-bold text-foreground">{info.title}</h1>
-            <p className="text-sm text-muted-foreground">{info.description}</p>
+      {isAuthenticated && (
+        <header className="sticky top-0 z-40 bg-background border-b border-border px-4 md:py-4 py-2">
+          <div className="flex items-center gap-3">
+            <Icon className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <h1 className="text-xl font-bold text-foreground">{info.title}</h1>
+              <p className="text-sm text-muted-foreground">{info.description}</p>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Content */}
       <div className="flex-1 flex items-center justify-center p-4 md:p-6">
@@ -83,32 +85,21 @@ export function AuthGuard({ children, tab }: AuthGuardProps) {
 
             {/* Text */}
             <h2 className="text-2xl font-bold text-foreground mb-2">{title}</h2>
-            <p className="text-muted-foreground mb-6">
-              {description}
-            </p>
+            <p className="text-muted-foreground mb-6">{description}</p>
 
             {/* Buttons */}
             <div className="space-y-3">
-              <Button
-                onClick={openLoginModal}
-                className="w-full h-11"
-              >
+              <Button onClick={openLoginModal} className="w-full h-11">
                 Sign In
               </Button>
-              <Button
-                onClick={openSignupModal}
-                variant="outline"
-                className="w-full h-11"
-              >
+              <Button onClick={openSignupModal} variant="outline" className="w-full h-11">
                 Create Account
               </Button>
             </div>
 
             {/* Features */}
             <div className="mt-8 pt-6 border-t border-border">
-              <p className="text-sm text-muted-foreground mb-4">
-                With an account you can:
-              </p>
+              <p className="text-sm text-muted-foreground mb-4">With an account you can:</p>
               <ul className="text-sm text-left space-y-2">
                 {[
                   "Send and receive messages",
@@ -126,14 +117,13 @@ export function AuthGuard({ children, tab }: AuthGuardProps) {
           </div>
 
           {/* TalkMe Branding */}
-          <div className="mt-6 flex items-center justify-center gap-2">
-            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-              T
+          <div className="mt-6 flex items-center justify-center">
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg overflow-hidden shadow-md">
+              <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover" />
             </div>
-            <span className="text-sm font-medium text-muted-foreground">TalkMe</span>
           </div>
         </motion.div>
       </div>
     </div>
-  )
+  );
 }

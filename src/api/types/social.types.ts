@@ -66,6 +66,8 @@ export interface DiscoverProfile {
   username: string
   bio?: string | null
   location?: string | null
+  city?: string | null
+  country?: string | null
   mutualFriends?: number
   sharedInterests?: string[]
   allInterests?: string[]

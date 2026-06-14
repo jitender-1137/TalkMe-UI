@@ -36,8 +36,10 @@ import {
 } from "@/components/ui/sheet"
 import { useLobbyStore } from "./lobby-store"
 import { useOnlineUsers, useInbox, useChat, usePresence } from "./hooks"
-import { useWebSocket } from "@/components/providers/websocket-provider"
 import { useProfile, useLobbyUsers } from "@/src/api/hooks/useProfile"
+import { useQueryClient } from "@tanstack/react-query"
+import { QUERY_KEYS } from "@/src/api/query-keys"
+import { useWebSocket } from "@/components/providers/websocket-provider"
 import { useAuth } from "@/components/app-shell/auth-context"
 import { useTheme } from "next-themes"
 import { MessageInput } from "@/components/chat/message-input"
@@ -99,20 +101,6 @@ export function LobbyDashboard() {
       joinLobby()
     }
 
-    // Sound notification handler (message persistence is handled by websocket-provider)
-    const unbindMsg = registerHandler("lobby_message", (payload) => {
-      if (
-        notificationSettings.sound &&
-        (selectedUser?.username || selectedUser?.name) !== (payload as any).sender
-      ) {
-        try {
-          const audio = new Audio("/sounds/notification.mp3")
-          audio.volume = 0.5
-          audio.play().catch(() => {})
-        } catch {}
-      }
-    })
-
     const unbindTyping = registerHandler("lobby_typing", (payload) => {
       // payload: { sender, recipient, isTyping }
       setTyping((payload as any).sender, (payload as any).isTyping)
@@ -128,7 +116,6 @@ export function LobbyDashboard() {
 
     return () => {
       leaveLobby()
-      unbindMsg()
       unbindTyping()
       unbindJoin()
       unbindLeave()
@@ -140,9 +127,6 @@ export function LobbyDashboard() {
     registerHandler,
     setTyping,
     setUserOnlineStatus,
-    notificationSettings.sound,
-    selectedUser?.username,
-    selectedUser?.name,
   ])
 
   // Mobile navigation helper
@@ -570,6 +554,7 @@ interface PrivateChatPanelProps {
 }
 
 function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
+  const queryClient = useQueryClient()
   const { data: ownProfile } = useProfile()
   const { guestUser, isGuestMatch } = useAuth()
   const myUsername = ownProfile?.username || (isGuestMatch && guestUser?.name) || "Guest"
@@ -581,9 +566,10 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
   const { data: lobbyUsers = [] } = useLobbyUsers()
   const activeConnections = useLobbyStore((state) => state.activeConnections)
 
-  const onlineUsernames = new Set(
-    lobbyUsers.map((u: any) => u.username || u.name || "")
-  )
+  const onlineUsernames = React.useMemo(() => {
+    const list = lobbyUsers.length > 0 ? lobbyUsers : (queryClient.getQueryData<any[]>(QUERY_KEYS.PRESENCE.LOBBY) || [])
+    return new Set(list.map((u: any) => u.username || u.name || ""))
+  }, [lobbyUsers, queryClient])
 
   const isPartnerOnline = (() => {
     if (activeConnections[partnerUsername] === false) return false
@@ -806,6 +792,7 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
 
       {/* Composer Area — uses shared MessageInput component */}
       <MessageInput
+        key={`lobby-input-${partnerUsername}`}
         onSend={handleSend}
         disabled={!isPartnerOnline}
         onTyping={handleTyping}

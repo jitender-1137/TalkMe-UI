@@ -91,6 +91,7 @@ export function getMediaUrl(path: string | null | undefined): string | undefined
   if (!path) return undefined;
   if (path.startsWith("http")) return path;
   if (path.startsWith("blob:")) return path; // Do not modify local blobs
+  if (path.includes("/uploads/media?path=")) return path; // Prevent double-formatting
   return `${getBaseUrl()}/uploads/media?path=${encodeURIComponent(path)}`;
 }
 
@@ -102,6 +103,7 @@ export function formatMediaUrls(obj: any) {
 
     if (
       typeof value === "string" &&
+      !value.includes("/uploads/media?path=") &&
       (value.startsWith("/opt/media/") || value.startsWith("/uploads/"))
     ) {
       obj[key] = getMediaUrl(value);

@@ -11,10 +11,11 @@ import { ChatSearchSidebar } from "./chat-search-sidebar"
 import { useChatContext } from "./chat-context"
 import * as ContextMenu from "./message-context-menu"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useHashSync } from "@/hooks/use-hash-sync"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { BASE_URL } from "@/src/api/client"
+import { BASE_URL, getMediaUrl } from "@/src/api/client"
 
 import { useProfile, useBlockUser, useUnblockUser } from "@/src/api/hooks/useProfile"
 import { useChat, useClearChat, useMarkChatAsRead, useMuteChat, useUnmuteChat } from "@/src/api/hooks/useChats"
@@ -69,6 +70,8 @@ export function ChatArea({
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null)
   const { data: contacts } = useContacts()
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const handleProfileClose = useHashSync(showProfileModal, () => setShowProfileModal(false), "#profile", "#messages")
+
   const [showCameraModal, setShowCameraModal] = useState(false)
   const [showSearchSidebar, setShowSearchSidebar] = useState(false)
   const [showCallRestrictionModal, setShowCallRestrictionModal] = useState(false)
@@ -236,7 +239,7 @@ export function ChatArea({
       const rawUrl = attachment?.fileUrl || attachment?.url
       const media = attachment ? {
         type: (attachment.type || (m as any).messageType || "document").toLowerCase() as any,
-        url: rawUrl?.startsWith("http") ? rawUrl : `${BASE_URL}/uploads/media?path=${encodeURIComponent(rawUrl)}`,
+        url: getMediaUrl(rawUrl),
         thumbnail: attachment.thumbnailUrl || attachment.thumbnail,
         fileName: attachment.fileName,
         fileSize: typeof attachment.fileSize === "number"
@@ -443,10 +446,14 @@ export function ChatArea({
   }, [fetchNextPage, hasNextPage, isFetchingNextPage])
 
   const handleBack = () => {
-    setSelectedConversationId(null)
-    setShowMobileSecondaryPanel(true)
-    if (onBack) {
-      onBack()
+    if (typeof window !== "undefined" && window.location.hash === "#messages") {
+      window.history.back()
+    } else {
+      setSelectedConversationId(null)
+      setShowMobileSecondaryPanel(true)
+      if (onBack) {
+        onBack()
+      }
     }
   }
 
@@ -641,7 +648,7 @@ export function ChatArea({
         contact={contact}
         userId={otherParticipant?.id}
         isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
+        onClose={handleProfileClose}
         isOwnProfile={false}
         onMessage={() => {}}
         sharedMedia={sharedMedia}

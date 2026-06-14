@@ -13,7 +13,7 @@ import { useAuth } from "./auth-context";
 export function MobileBottomNav() {
   const { showLoginModal, showSignupModal } = useAuth();
   const { activeTab, setActiveTab } = useNavigation();
-  const { showMobileSecondaryPanel } = useChatContext();
+  const { showMobileSecondaryPanel, selectedConversationId } = useChatContext();
   const matchStatus = useMatchStore((state) => state.status);
 
   const { data: conversations = [] } = useChats();
@@ -30,7 +30,17 @@ export function MobileBottomNav() {
   const lobbySelectedUser = useLobbyStore((state) => state.selectedUser);
   const { unreadCount: lobbyUnreadCount } = useInbox();
 
-  if (showLoginModal || showSignupModal) {
+  const isOneToOneOpen = activeTab === "chats" && selectedConversationId !== null && !showMobileSecondaryPanel;
+  const isLobbyChatOpen = activeTab === "match" && lobbySelectedUser !== null;
+  const isStrangerChatOpen = activeTab === "match" && matchStatus === "matched";
+
+  if (
+    showLoginModal ||
+    showSignupModal ||
+    isOneToOneOpen ||
+    isLobbyChatOpen ||
+    isStrangerChatOpen
+  ) {
     return null;
   }
 

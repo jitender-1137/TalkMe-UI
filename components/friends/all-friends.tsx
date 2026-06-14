@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useHashSync } from "@/hooks/use-hash-sync";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ export function AllFriends() {
   const { data: contacts = [], isLoading } = useContacts();
   const [query, setQuery] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const handleProfileClose = useHashSync(!!selectedUserId, () => setSelectedUserId(null), "#profile");
 
   const createChatMutation = useCreateChat();
   const { setSelectedConversationId, setShowMobileSecondaryPanel } = useChatContext();
@@ -91,7 +93,7 @@ export function AllFriends() {
         contact={null}
         userId={selectedUserId}
         isOpen={!!selectedUserId}
-        onClose={() => setSelectedUserId(null)}
+        onClose={handleProfileClose}
         onMessage={() => {
           if (selectedUserId) {
             createChatMutation.mutate(

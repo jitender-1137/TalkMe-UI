@@ -155,19 +155,38 @@ export function useSendMessage(chatId: string) {
         timestamp: newMessage.timestamp || new Date().toISOString(),
         isDeleted: newMessage.isDeleted || false,
       }
-      queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
-        if (!oldChats) return oldChats
-        return oldChats.map((c) => {
-          if (c.id === chatId) {
-            return {
-              ...c,
-              lastMessage,
-              updatedAt: lastMessage.timestamp,
+      // Update chats list in-place if chat exists, otherwise invalidate chats list to fetch the newly active chat
+      const oldChats = queryClient.getQueryData<any[]>(QUERY_KEYS.CHATS.LIST)
+      const chatExists = oldChats?.some((c) => c.id === chatId)
+
+      if (!chatExists) {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
+      } else {
+        queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (prevChats) => {
+          if (!prevChats) return prevChats
+          const updated = prevChats.map((c) => {
+            if (c.id === chatId) {
+              return {
+                ...c,
+                lastMessage,
+                updatedAt: lastMessage.timestamp,
+              }
             }
-          }
-          return c
+            return c
+          })
+          
+          // Sort: pinned first, then by last message timestamp / updatedAt descending
+          return updated.sort((a, b) => {
+            const aPinned = a.pinned || a.isPinned || false
+            const bPinned = b.pinned || b.isPinned || false
+            if (aPinned !== bPinned) return aPinned ? -1 : 1
+            
+            const aTime = a.lastMessage?.timestamp || a.updatedAt || ""
+            const bTime = b.lastMessage?.timestamp || b.updatedAt || ""
+            return new Date(bTime).getTime() - new Date(aTime).getTime()
+          })
         })
-      })
+      }
     },
   })
 }

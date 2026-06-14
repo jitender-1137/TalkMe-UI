@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { LobbyDashboard } from "@/components/lobby"
-import { MatchDashboard } from "./match-dashboard"
-import { Radio, Zap, Settings, LogOut, LogIn } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { useAuth } from "@/components/app-shell/auth-context"
-import { useLobbyStore } from "@/components/lobby/lobby-store"
+import { useState } from "react";
+import { LobbyDashboard } from "@/components/lobby";
+import { MatchDashboard } from "./match-dashboard";
+import { Radio, Zap, Settings, LogOut, LogIn } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/app-shell/auth-context";
+import { useLobbyStore } from "@/components/lobby/lobby-store";
 
 export function ConnectDashboard() {
-  const [activeSubTab, setActiveSubTab] = useState<"lobby" | "match">("lobby")
-  const { isGuestMatch, isAuthenticated, logout, openLoginModal } = useAuth()
-  const setShowSettings = useLobbyStore((state) => state.setShowSettings)
+  const [activeSubTab, setActiveSubTab] = useState<"lobby" | "match">("lobby");
+  const { isGuestMatch, isAuthenticated, logout, openLoginModal } = useAuth();
+  const setShowSettings = useLobbyStore((state) => state.setShowSettings);
 
   return (
     <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
@@ -23,10 +23,10 @@ export function ConnectDashboard() {
           <button
             onClick={() => setActiveSubTab("lobby")}
             className={cn(
-              "flex items-center gap-1.5 px-5 py-1.5 rounded-lg text-sm font-semibold transition-all select-none active:scale-95",
+              "flex items-center gap-1.5 px-3 md:px-5 py-1.5 rounded-lg text-sm font-semibold transition-all select-none active:scale-95",
               activeSubTab === "lobby"
                 ? "bg-primary text-primary-foreground shadow-md shadow-primary/15"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <Radio className="h-4 w-4" />
@@ -35,10 +35,10 @@ export function ConnectDashboard() {
           <button
             onClick={() => setActiveSubTab("match")}
             className={cn(
-              "flex items-center gap-1.5 px-5 py-1.5 rounded-lg text-sm font-semibold transition-all select-none active:scale-95",
+              "flex items-center gap-1.5 px-3 md:px-5 py-1.5 rounded-lg text-sm font-semibold transition-all select-none active:scale-95",
               activeSubTab === "match"
                 ? "bg-primary text-primary-foreground shadow-md shadow-primary/15"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <Zap className="h-4 w-4" />
@@ -104,12 +104,8 @@ export function ConnectDashboard() {
 
       {/* Subtab Content */}
       <div className="flex-1 overflow-hidden">
-        {activeSubTab === "lobby" ? (
-          <LobbyDashboard />
-        ) : (
-          <MatchDashboard />
-        )}
+        {activeSubTab === "lobby" ? <LobbyDashboard /> : <MatchDashboard />}
       </div>
     </div>
-  )
+  );
 }

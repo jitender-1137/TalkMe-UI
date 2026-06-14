@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useHashSync } from "@/hooks/use-hash-sync";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,7 @@ export function DiscoverDashboard() {
   const [minAge, setMinAge] = useState<number>(18);
   const [maxAge, setMaxAge] = useState<number>(99);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const handleProfileClose = useHashSync(!!selectedPerson, () => setSelectedPerson(null), "#profile");
 
   const queryClient = useQueryClient();
   const { data: discoverData, isLoading } = useDiscoverProfiles({
@@ -368,7 +370,7 @@ export function DiscoverDashboard() {
         contact={null}
         userId={selectedPerson?.id}
         isOpen={!!selectedPerson}
-        onClose={() => setSelectedPerson(null)}
+        onClose={handleProfileClose}
         onMessage={() => selectedPerson && handleMessage(selectedPerson)}
       />
     </div>

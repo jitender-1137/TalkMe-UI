@@ -23,6 +23,17 @@ interface LobbyStoreState {
   notificationSettings: {
     sound: boolean
     desktop: boolean
+    conversationTones: boolean
+    messageTone: string
+    messageVibrate: string
+    messageHighPriority: boolean
+    messageReactions: boolean
+    groupTone: string
+    groupVibrate: string
+    groupHighPriority: boolean
+    groupReactions: boolean
+    callRingtone: string
+    callVibrate: string
   }
 
   // Actions
@@ -67,6 +78,17 @@ export const useLobbyStore = create<LobbyStoreState>()(
       notificationSettings: {
         sound: true,
         desktop: true,
+        conversationTones: true,
+        messageTone: "default",
+        messageVibrate: "default",
+        messageHighPriority: true,
+        messageReactions: true,
+        groupTone: "default",
+        groupVibrate: "default",
+        groupHighPriority: true,
+        groupReactions: true,
+        callRingtone: "default",
+        callVibrate: "default",
       },
 
       setActiveTab: (tab) => set({ activeTab: tab }),

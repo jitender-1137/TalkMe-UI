@@ -64,8 +64,24 @@ export function useDeleteChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.deleteChat(chatId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
+    onSuccess: (_data, chatId) => {
+      // 1. Remove the chat from the local chats list cache instantly
+      queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
+        if (!oldChats) return oldChats
+        return oldChats.filter((c) => c.id !== chatId)
+      })
+
+      // 2. Remove details cache
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.CHATS.DETAIL(chatId) })
+      
+      // 3. Remove messages list cache
+      queryClient.removeQueries({ queryKey: QUERY_KEYS.MESSAGES.LIST(chatId) })
+
+      // 4. Force refetch list with a delay to allow backend transaction to commit
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
+      }, 500)
+
       showSuccessToast("Conversation deleted")
     },
     onError: showErrorToast,

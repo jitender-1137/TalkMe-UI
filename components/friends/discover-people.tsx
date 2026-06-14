@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useHashSync } from "@/hooks/use-hash-sync";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ export function DiscoverPeople() {
   const [query, setQuery] = useState("");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const handleProfileClose = useHashSync(!!selectedUserId, () => setSelectedUserId(null), "#profile");
 
   const { data: suggestionsData, isLoading } = useSuggestedFriends();
   const addContactMutation = useAddContact();
@@ -129,7 +131,7 @@ export function DiscoverPeople() {
         contact={null}
         userId={selectedUserId}
         isOpen={!!selectedUserId}
-        onClose={() => setSelectedUserId(null)}
+        onClose={handleProfileClose}
         onMessage={() => {
           if (selectedUserId) {
             createChatMutation.mutate(

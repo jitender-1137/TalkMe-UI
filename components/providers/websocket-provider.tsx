@@ -115,6 +115,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const lobbyTypingSubscriptionRef = useRef<any>(null)
   const strangerChatIdRef = useRef<string | null>(null)
   const markReadTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const processedMessageIdsRef = useRef<Set<string>>(new Set())
   const queryClient = useQueryClient()
 
   // Fetch active chats, contacts and own profile to enable dynamic presence and message subscriptions
@@ -356,6 +357,29 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
     } else {
       // Raw MessageResponse payload
+      if (payload?.id) {
+        if (processedMessageIdsRef.current.has(payload.id)) {
+          console.log(`[WebSocket] Ignoring duplicate message: ${payload.id}`)
+          return
+        }
+
+        const cachedMessages: any = queryClient.getQueryData(QUERY_KEYS.MESSAGES.LIST(chatId))
+        const allItems = cachedMessages?.pages?.flatMap((p: any) => p.items) ?? []
+        if (allItems.some((m: any) => m.id === payload.id)) {
+          console.log(`[WebSocket] Message ${payload.id} already exists in cache. Ignoring.`)
+          processedMessageIdsRef.current.add(payload.id)
+          return
+        }
+
+        processedMessageIdsRef.current.add(payload.id)
+        if (processedMessageIdsRef.current.size > 200) {
+          const firstVal = processedMessageIdsRef.current.values().next().value
+          if (firstVal !== undefined) {
+            processedMessageIdsRef.current.delete(firstVal)
+          }
+        }
+      }
+
       queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (oldData: any) => {
         if (!oldData) return oldData
         const allItems = oldData.pages?.flatMap((p: any) => p.items) ?? []
@@ -472,6 +496,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       // Find the target chat to check if it's muted
       const chatForMuteCheck = queryClient.getQueryData<Chat[]>(QUERY_KEYS.CHATS.LIST)?.find(c => c.id === chatId)
       const isMuted = chatForMuteCheck?.muted || chatForMuteCheck?.isMuted || false
+
+      // Play sound notification if message is from another user and chat is not muted
+      if (isFromOther && !isMuted) {
+        const settings = useLobbyStore.getState().notificationSettings
+        if (settings.sound) {
+          const isGroup = chatForMuteCheck?.chatType === "GROUP" || chatForMuteCheck?.type === "group"
+          const hasSound = isGroup 
+            ? settings.groupTone !== "none" 
+            : settings.messageTone !== "none"
+            
+          if (hasSound) {
+            playNotificationSound()
+          }
+        }
+      }
 
       // Toast notification trigger for messages from other users (only for non-active and non-muted chats)
       if (isFromOther && !isActiveChat && !isMuted) {
@@ -819,7 +858,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       })
 
-      // Subscribe to user chat events (e.g. chat_created)
+      // Subscribe to user chat events (e.g. chat_created, chat_deleted)
       if (chatsSubscriptionRef.current) {
         chatsSubscriptionRef.current.unsubscribe()
       }
@@ -830,6 +869,37 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           console.log("[STOMP] Received user chat event:", payload)
           if (payload.event === "chat_created" || payload.event === "chat_updated") {
             queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
+          } else if (payload.event === "chat_deleted" && payload.payload?.chatId) {
+            const deletedChatId = payload.payload.chatId
+            // 1. Remove the chat from QUERY_KEYS.CHATS.LIST cache instantly
+            queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
+              if (!oldChats) return oldChats
+              return oldChats.filter((c) => c.id !== deletedChatId)
+            })
+
+            // 2. Remove details cache
+            queryClient.removeQueries({ queryKey: QUERY_KEYS.CHATS.DETAIL(deletedChatId) })
+            
+            // 3. Remove messages list cache
+            queryClient.removeQueries({ queryKey: QUERY_KEYS.MESSAGES.LIST(deletedChatId) })
+
+            // 4. Force refetch list with a delay to allow backend transaction to commit
+            setTimeout(() => {
+              queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
+            }, 500)
+
+            // 5. Close the active chat if B currently has this deleted chat open
+            const activeChatId = typeof window !== "undefined" ? (window as any).activeChatId : undefined
+            if (deletedChatId === activeChatId) {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("chat:close", { detail: { chatId: deletedChatId } }))
+              }
+            }
+          } else if (payload.event === "message_received" && payload.payload) {
+            const { chatId, message: msgPayload } = payload.payload
+            if (chatId && msgPayload) {
+              handleChatMessage(chatId, msgPayload)
+            }
           }
         } catch (err) {
           console.error("[STOMP] User chat event parse error:", err)
@@ -851,7 +921,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             
             if (payload.event === "friend_request_received") {
               const settings = useLobbyStore.getState().notificationSettings
-              if (settings.sound) {
+              if (settings.sound && settings.messageTone !== "none") {
                 playNotificationSound()
               }
             }
@@ -876,7 +946,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           queryClient.invalidateQueries({ queryKey: QUERY_KEYS.NOTIFICATIONS.LIST })
           
           const settings = useLobbyStore.getState().notificationSettings
-          if (settings.sound) {
+          if (settings.sound && settings.messageTone !== "none") {
             playNotificationSound()
           }
         } catch (err) {
@@ -937,7 +1007,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
           if (payload.sender !== ownUsername) {
             const settings = useLobbyStore.getState().notificationSettings
-            if (settings.sound) {
+            if (settings.sound && settings.groupTone !== "none") {
               playNotificationSound()
             }
           }
@@ -971,16 +1041,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       syncChatSubscriptions(client)
       syncContactSubscriptions(client)
 
-      // Mark all pending messages as delivered now that we're online.
-      // Skip for guest users — they have no CSRF cookie and no persistent chat history.
-      if (!ownProfileRef.current?.isGuest) {
-        ChatService.markAllAsDelivered().catch((err: any) => {
-          const status = err?.status ?? err?.response?.status
-          if (status !== 401 && status !== 403) {
-            console.error("[WebSocket] markAllAsDelivered on connect failed:", status, err?.message || err)
-          }
-        })
-      }
+      // markAllAsDelivered is now handled via separate useEffect to prevent race conditions with profile loading
     }
 
     client.onWebSocketClose = () => {
@@ -988,6 +1049,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       setIsConnected(false)
       chatSubscriptionsRef.current.clear()
       contactSubscriptionsRef.current.clear()
+      processedMessageIdsRef.current.clear()
       matchSubscriptionRef.current = null
       chatsSubscriptionRef.current = null
       friendsSubscriptionRef.current = null
@@ -1046,6 +1108,28 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       lobbyTypingSubscriptionRef.current = null
     }
   }, [])
+
+  const hasMarkedDeliveredRef = useRef(false)
+
+  // Reset marked delivered status when disconnected
+  useEffect(() => {
+    if (!isConnected) {
+      hasMarkedDeliveredRef.current = false
+    }
+  }, [isConnected])
+
+  // Mark all pending messages as delivered once we are connected and profile is loaded
+  useEffect(() => {
+    if (isConnected && ownProfile && !ownProfile.isGuest && !hasMarkedDeliveredRef.current) {
+      hasMarkedDeliveredRef.current = true
+      ChatService.markAllAsDelivered().catch((err: any) => {
+        const status = err?.status ?? err?.response?.status
+        if (status !== 401 && status !== 403 && status !== 0) {
+          console.error("[WebSocket] markAllAsDelivered failed:", status, err?.message || err)
+        }
+      })
+    }
+  }, [isConnected, ownProfile])
 
   const contextValue = useMemo(() => ({
     isConnected,

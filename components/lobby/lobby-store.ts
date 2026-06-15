@@ -1,8 +1,22 @@
 "use client"
 
 import { create } from "zustand"
-import { persist } from "zustand/middleware"
+import { persist, createJSONStorage } from "zustand/middleware"
 import type { ChatUser, ChatMessage, Conversation } from "./types"
+import { db } from "@/src/api/db"
+
+const dexieStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    const entry = await db.lobby_store.get(name);
+    return entry ? entry.value : null;
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    await db.lobby_store.put({ key: name, value });
+  },
+  removeItem: async (name: string): Promise<void> => {
+    await db.lobby_store.delete(name);
+  }
+};
 
 interface LobbyStoreState {
   // UI State
@@ -256,6 +270,7 @@ export const useLobbyStore = create<LobbyStoreState>()(
     }),
     {
       name: "talkme-lobby-store",
+      storage: createJSONStorage(() => dexieStorage),
       partialize: (state) => ({
         conversations: state.conversations,
         messages: state.messages,

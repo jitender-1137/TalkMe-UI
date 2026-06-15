@@ -81,24 +81,10 @@ export function SettingsPage() {
     // Check initial hash
     if (window.location.hash === "#profile") {
       setActiveTab("profile")
-    } else if (activeTab === "profile" && !window.location.hash) {
-      window.location.hash = "#profile"
     }
 
     return () => window.removeEventListener("hashchange", handleHashChange)
   }, [])
-
-  useEffect(() => {
-    if (activeTab === "profile") {
-      if (window.location.hash !== "#profile") {
-        window.location.hash = "#profile"
-      }
-    } else {
-      if (window.location.hash === "#profile") {
-        window.location.hash = ""
-      }
-    }
-  }, [activeTab])
   const [isEditing, setIsEditing] = useState(false)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [showForgotPassword, setShowForgotPassword] = useState(false)

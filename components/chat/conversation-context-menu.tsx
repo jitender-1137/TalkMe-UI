@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   BellOff,
@@ -30,6 +31,15 @@ export interface ConversationContextMenuProps {
   onViewProfile: () => void
   onBlock: () => void
   onMarkReadToggle: () => void
+}
+
+function Portal({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+    return () => setMounted(false)
+  }, [])
+  return mounted ? createPortal(children, document.body) : null
 }
 
 export function ConversationContextMenu({
@@ -134,50 +144,52 @@ export function ConversationContextMenu({
   const adjustedPos = getAdjustedPosition()
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-[200]"
-          />
-          <motion.div
-            key="menu"
-            ref={menuRef}
-            initial={{ opacity: 0, scale: 0.92, y: -4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.92, y: -4 }}
-            transition={{ duration: 0.13 }}
-            style={{ top: adjustedPos.y, left: adjustedPos.x }}
-            className="fixed z-[201] min-w-[240px] bg-popover border border-white/10 rounded-2xl shadow-xl overflow-hidden"
-          >
-            {actions.map(({ icon: Icon, label, action, danger }, index) => (
-              <div key={label}>
-                {index === 5 && <div className="h-px bg-white/10" />}
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    action(); 
-                    onClose();
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-white/10 active:bg-white/10 transition-colors",
-                    danger ? "text-destructive hover:bg-destructive/10" : "text-foreground"
-                  )}
-                >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  <span className="text-sm font-medium">{label}</span>
-                </button>
-              </div>
-            ))}
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+    <Portal>
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="fixed inset-0 z-[200]"
+            />
+            <motion.div
+              key="menu"
+              ref={menuRef}
+              initial={{ opacity: 0, scale: 0.92, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: -4 }}
+              transition={{ duration: 0.13 }}
+              style={{ top: adjustedPos.y, left: adjustedPos.x }}
+              className="fixed z-[201] min-w-[240px] bg-popover border border-white/10 rounded-2xl shadow-xl overflow-hidden"
+            >
+              {actions.map(({ icon: Icon, label, action, danger }, index) => (
+                <div key={label}>
+                  {index === 5 && <div className="h-px bg-white/10" />}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      action(); 
+                      onClose();
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-white/10 active:bg-white/10 transition-colors",
+                      danger ? "text-destructive hover:bg-destructive/10" : "text-foreground"
+                    )}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" />
+                    <span className="text-sm font-medium">{label}</span>
+                  </button>
+                </div>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </Portal>
   )
 }

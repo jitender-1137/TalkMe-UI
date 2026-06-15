@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AvatarStatusBadge } from "@/components/presence";
 import { ConversationContextMenu } from "@/components/chat/conversation-context-menu";
-import { UserProfileModal } from "@/components/chat/user-profile-modal";
 import { useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/src/api/query-keys";
 import type { ChatContact } from "@/components/chat/types";
@@ -167,7 +166,7 @@ function ConversationItem({
 
 export function SecondaryPanel() {
   const { user } = useAuth();
-  const { selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel } =
+  const { selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, setProfileModal } =
     useChatContext();
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
@@ -175,7 +174,6 @@ export function SecondaryPanel() {
   const [menuTarget, setMenuTarget] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [viewArchived, setViewArchived] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const queryClient = useQueryClient();
 
   const { registerHandler } = useWebSocket();
@@ -429,8 +427,11 @@ export function SecondaryPanel() {
           }
         }}
         onViewProfile={() => {
-          if (targetChat) {
-            setShowProfileModal(true);
+          if (targetChat && contactForModal) {
+            setProfileModal({
+              contact: contactForModal,
+              userId: otherParticipant?.id
+            });
           }
         }}
         onBlock={() => {
@@ -451,17 +452,6 @@ export function SecondaryPanel() {
           }
         }}
       />
-
-      {/* Profile Modal */}
-      {contactForModal && (
-        <UserProfileModal
-          contact={contactForModal}
-          userId={otherParticipant?.id}
-          isOpen={showProfileModal}
-          onClose={() => setShowProfileModal(false)}
-          isOwnProfile={false}
-        />
-      )}
     </div>
   );
 }

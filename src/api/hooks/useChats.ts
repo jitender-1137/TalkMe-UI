@@ -6,6 +6,29 @@ import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
 import type { Chat, CreateChatPayload, MuteChatPayload } from "../types"
 import { getAccessToken } from "../token-store"
+import { useLiveQuery } from "dexie-react-hooks"
+import { db, mapResponseToLocalChat, putChatSafely } from "../db"
+import { useEffect, useState } from "react"
+
+/** Custom hook to reactively track token changes. */
+export function useAuthToken(): string | null {
+  const [token, setToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    setToken(getAccessToken());
+
+    const handleTokenChange = (e: any) => {
+      setToken(e.detail);
+    };
+
+    window.addEventListener("auth:token-changed", handleTokenChange);
+    return () => {
+      window.removeEventListener("auth:token-changed", handleTokenChange);
+    };
+  }, []);
+
+  return token;
+}
 
 /** Returns true when the cached session belongs to a guest user. */
 function useIsGuest(): boolean {
@@ -14,25 +37,96 @@ function useIsGuest(): boolean {
   return me?.isGuest === true
 }
 
-// ── Query: chat list ──────────────────────────────────────────────────────────
+// ── Query: chat list (Dexie local cache + background API sync) ──────────────────
 export function useChats() {
   const isGuest = useIsGuest()
-  return useQuery({
-    queryKey: QUERY_KEYS.CHATS.LIST,
-    queryFn: ChatService.getChats,
-    staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-    enabled: !isGuest && typeof window !== "undefined" && Boolean(getAccessToken()),
-  })
+  const token = useAuthToken()
+
+  // 1. Live Query from IndexedDB
+  const localChats = useLiveQuery(async () => {
+    if (isGuest || typeof window === "undefined" || !getAccessToken()) return [];
+    
+    const chats = await db.chats.toArray();
+    // Sort: pinned first, then by last message timestamp / updatedAt descending
+    return chats.sort((a, b) => {
+      const aPinned = a.pinned || a.isPinned || false;
+      const bPinned = b.pinned || b.isPinned || false;
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      
+      const aTime = a.lastMessage?.timestamp || a.updatedAt || "";
+      const bTime = b.lastMessage?.timestamp || b.updatedAt || "";
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
+  }, [isGuest, token]);
+
+  // 2. Background Sync
+  useEffect(() => {
+    if (isGuest || typeof window === "undefined" || !token) return;
+
+    let active = true;
+    const syncChats = async () => {
+      try {
+        const chats = await ChatService.getChats();
+        if (!active) return;
+
+        // Bulk put in transaction
+        await db.transaction("rw", db.chats, async () => {
+          for (const c of chats) {
+            await putChatSafely(c);
+          }
+        });
+      } catch (err: any) {
+        console.warn("[Dexie Sync] Error syncing chats:", err?.message || err, err);
+      }
+    };
+
+    syncChats();
+
+    return () => {
+      active = false;
+    };
+  }, [isGuest, token]);
+
+  return {
+    data: localChats || [],
+    isLoading: localChats === undefined,
+  };
 }
 
-// ── Query: single chat ────────────────────────────────────────────────────────
+// ── Query: single chat (Dexie local cache + background API sync) ────────────────
 export function useChat(chatId: string) {
-  return useQuery({
-    queryKey: QUERY_KEYS.CHATS.DETAIL(chatId),
-    queryFn: () => ChatService.getChatById(chatId),
-    enabled: Boolean(chatId),
-  })
+  const token = useAuthToken()
+
+  const localChat = useLiveQuery(() => {
+    if (!chatId) return undefined;
+    return db.chats.get(chatId);
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!chatId || !token) return;
+
+    let active = true;
+    const syncSingleChat = async () => {
+      try {
+        const c = await ChatService.getChatById(chatId);
+        if (!active) return;
+        await putChatSafely(c);
+      } catch (err: any) {
+        console.warn("[Dexie Sync] Error syncing single chat:", err?.message || err, err);
+      }
+    };
+
+    syncSingleChat();
+
+    return () => {
+      active = false;
+    };
+  }, [chatId, token]);
+
+  return {
+    data: localChat,
+    isLoading: localChat === undefined && Boolean(chatId),
+  };
 }
 
 // ── Query: search chats ───────────────────────────────────────────────────────
@@ -51,7 +145,8 @@ export function useCreateChat() {
 
   return useMutation({
     mutationFn: (payload: CreateChatPayload) => ChatService.createChat(payload),
-    onSuccess: () => {
+    onSuccess: async (newChat) => {
+      await putChatSafely(newChat);
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
     },
     onError: showErrorToast,
@@ -64,20 +159,22 @@ export function useDeleteChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.deleteChat(chatId),
-    onSuccess: (_data, chatId) => {
-      // 1. Remove the chat from the local chats list cache instantly
+    onSuccess: async (_data, chatId) => {
+      // 1. Remove from local Dexie database instantly
+      await db.transaction("rw", [db.chats, db.messages, db.sync_state], async () => {
+        await db.chats.delete(chatId);
+        await db.messages.where("chatId").equals(chatId).delete();
+        await db.sync_state.delete(chatId);
+      });
+
+      // 2. Clear QueryClient caches
       queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
         if (!oldChats) return oldChats
         return oldChats.filter((c) => c.id !== chatId)
       })
-
-      // 2. Remove details cache
       queryClient.removeQueries({ queryKey: QUERY_KEYS.CHATS.DETAIL(chatId) })
-      
-      // 3. Remove messages list cache
       queryClient.removeQueries({ queryKey: QUERY_KEYS.MESSAGES.LIST(chatId) })
 
-      // 4. Force refetch list with a delay to allow backend transaction to commit
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       }, 500)
@@ -94,7 +191,8 @@ export function useArchiveChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.archiveChat(chatId),
-    onSuccess: () => {
+    onSuccess: async (_data, chatId) => {
+      await db.chats.update(chatId, { archived: true, isArchived: true });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       showSuccessToast("Conversation archived")
     },
@@ -108,7 +206,8 @@ export function useUnarchiveChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.unarchiveChat(chatId),
-    onSuccess: () => {
+    onSuccess: async (_data, chatId) => {
+      await db.chats.update(chatId, { archived: false, isArchived: false });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       showSuccessToast("Conversation unarchived")
     },
@@ -122,7 +221,8 @@ export function usePinChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.pinChat(chatId),
-    onSuccess: () => {
+    onSuccess: async (_data, chatId) => {
+      await db.chats.update(chatId, { pinned: true, isPinned: true });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       showSuccessToast("Conversation pinned")
     },
@@ -136,7 +236,8 @@ export function useUnpinChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.unpinChat(chatId),
-    onSuccess: () => {
+    onSuccess: async (_data, chatId) => {
+      await db.chats.update(chatId, { pinned: false, isPinned: false });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       showSuccessToast("Conversation unpinned")
     },
@@ -151,7 +252,8 @@ export function useMuteChat() {
   return useMutation({
     mutationFn: ({ chatId, payload }: { chatId: string; payload: MuteChatPayload }) =>
       ChatService.muteChat(chatId, payload),
-    onSuccess: () => {
+    onSuccess: async (_data, { chatId }) => {
+      await db.chats.update(chatId, { muted: true, isMuted: true });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       showSuccessToast("Notifications muted")
     },
@@ -165,7 +267,8 @@ export function useUnmuteChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.unmuteChat(chatId),
-    onSuccess: () => {
+    onSuccess: async (_data, chatId) => {
+      await db.chats.update(chatId, { muted: false, isMuted: false });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       showSuccessToast("Notifications unmuted")
     },
@@ -179,7 +282,11 @@ export function useClearChat() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.clearChat(chatId),
-    onSuccess: (_data, chatId) => {
+    onSuccess: async (_data, chatId) => {
+      await db.transaction("rw", [db.messages, db.sync_state], async () => {
+        await db.messages.where("chatId").equals(chatId).delete();
+        await db.sync_state.delete(chatId);
+      });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MESSAGES.LIST(chatId) })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
       showSuccessToast("Chat cleared")
@@ -194,7 +301,8 @@ export function useMarkChatAsRead() {
 
   return useMutation({
     mutationFn: (chatId: string) => ChatService.markAsRead(chatId),
-    onSuccess: (_data, chatId) => {
+    onSuccess: async (_data, chatId) => {
+      await db.chats.update(chatId, { unreadCount: 0 });
       queryClient.setQueryData<Chat[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
         if (!oldChats) return oldChats
         return oldChats.map((c) => (c.id === chatId ? { ...c, unreadCount: 0 } : c))

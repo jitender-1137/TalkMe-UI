@@ -23,10 +23,12 @@ import { useWebSocket } from "@/components/providers"
 import { useQueryClient } from "@tanstack/react-query"
 import { QUERY_KEYS } from "@/src/api/query-keys"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
+import { UserProfileModal } from "@/components/chat/user-profile-modal"
+import { useHashSync } from "@/hooks/use-hash-sync"
 
 function AppShellContent() {
   const { activeTab, setActiveTab } = useNavigation()
-  const { showMobileSecondaryPanel, selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel } = useChatContext()
+  const { showMobileSecondaryPanel, selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, profileModal, setProfileModal } = useChatContext()
   const lobbySelectedUser = useLobbyStore((state) => state.selectedUser)
   const { isAuthenticated, isGuestMatch, isLoading, openLoginModal } = useAuth()
   const queryClient = useQueryClient()
@@ -88,12 +90,24 @@ function AppShellContent() {
     lobbySelectedUserRef.current = lobbySelectedUser
   }, [lobbySelectedUser])
 
+  const profileModalRef = useRef(profileModal)
+  useEffect(() => {
+    profileModalRef.current = profileModal
+  }, [profileModal])
+
+  const handleProfileClose = useHashSync(
+    profileModal !== null,
+    () => setProfileModal(null),
+    "#profile",
+    selectedConversationId ? "#messages" : ""
+  )
+
   // Sync tab state with url hash changes
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash
 
-      // If hash changed away from #messages and #profile, close any open chat rooms
+      // If hash changed away from #messages and #profile, close any open chat rooms and modals
       if (hash !== "#messages" && hash !== "#profile") {
         if (selectedConversationIdRef.current !== null) {
           setSelectedConversationId(null)
@@ -105,9 +119,15 @@ function AppShellContent() {
         if (useMatchStore.getState().status === "matched") {
           useMatchStore.getState().resetMatch()
         }
+        if (profileModalRef.current !== null) {
+          setProfileModal(null)
+        }
       }
 
       if (hash === "#profile") {
+        if (profileModalRef.current !== null) {
+          return
+        }
         const isViewingChat = selectedConversationIdRef.current !== null || lobbySelectedUserRef.current !== null
         const isDiscoverOrFriends = activeTabRef.current === "discover" || activeTabRef.current === "friends"
         if (!isViewingChat && !isDiscoverOrFriends && activeTabRef.current !== "settings") {
@@ -125,7 +145,9 @@ function AppShellContent() {
     // Check initial hash on mount
     const hash = window.location.hash
     if (hash === "#profile") {
-      setActiveTab("settings")
+      if (profileModalRef.current === null) {
+        setActiveTab("settings")
+      }
     } else if (hash === "#messages") {
       setActiveTab("chats")
     }
@@ -309,6 +331,18 @@ function AppShellContent() {
 
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav />
+
+      {/* Global Contact Profile Modal */}
+      {profileModal && (
+        <UserProfileModal
+          contact={profileModal.contact}
+          userId={profileModal.userId}
+          isOpen={profileModal !== null}
+          onClose={handleProfileClose}
+          isOwnProfile={false}
+          sharedMedia={profileModal.sharedMedia || []}
+        />
+      )}
     </div>
   )
 }

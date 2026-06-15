@@ -93,7 +93,7 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
               )}
             >
               {replyTo && <MessageReply reply={replyTo} isSent={isSent} />}
-              {media && <MessageMedia media={media} isSent={isSent} />}
+              {media && <MessageMedia media={media} isSent={isSent} chatId={(message as any).chatId} messageId={message.id} />}
               {content && (
                 <p className={cn("text-sm leading-relaxed whitespace-pre-wrap break-words", media && "mt-1")}>
                   {content}

@@ -1,28 +1,28 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Play, Pause, FileText, Download, Mic, X, Volume2, VolumeX } from "lucide-react"
+import { motion } from "framer-motion"
+import { Play, Pause, FileText, Download, Mic } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Slider } from "@/components/ui/slider"
 import { useImageViewer, useVideoPlayer } from "@/components/providers"
 import type { MediaAttachment } from "./types"
+import { useCachedMedia } from "@/src/api/hooks/use-cached-media"
 
 interface MessageMediaProps {
   media: MediaAttachment
   isSent: boolean
+  chatId?: string
+  messageId?: string
 }
 
-export function MessageMedia({ media, isSent }: MessageMediaProps) {
+export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: MessageMediaProps) {
+  const { url: cachedUrl, thumbnail: cachedThumbnail, cacheVideo } = useCachedMedia(chatId, messageId, media)
   const { showImage } = useImageViewer()
   const { playVideo } = useVideoPlayer()
-  const [lightboxOpen, setLightboxOpen] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [isMuted, setIsMuted] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
 
   // Sticker support (must check first as it uses type "image" or "sticker" from server)
   if (media.type === "sticker" || media.fileName?.includes("sticker")) {
@@ -33,7 +33,7 @@ export function MessageMedia({ media, isSent }: MessageMediaProps) {
         className="relative overflow-hidden max-w-[130px] md:max-w-[170px]"
       >
         <img
-          src={media.url}
+          src={cachedUrl || media.url}
           alt="Shared sticker"
           className="w-full h-auto object-contain select-none pointer-events-none"
         />
@@ -47,11 +47,11 @@ export function MessageMedia({ media, isSent }: MessageMediaProps) {
       <motion.button
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        onClick={() => showImage(media.url)}
-        className="relative rounded-lg overflow-hidden max-w-[280px] mb-2 cursor-pointer hover:opacity-90 transition-opacity"
+        onClick={() => showImage(cachedUrl || media.url)}
+        className="relative rounded-lg overflow-hidden max-w-[280px] mb-2 cursor-pointer hover:opacity-90 transition-opacity animate-fade-in"
       >
         <img
-          src={media.url}
+          src={cachedUrl || media.url}
           alt="Shared image"
           className="w-full h-auto object-cover"
           style={{
@@ -69,18 +69,21 @@ export function MessageMedia({ media, isSent }: MessageMediaProps) {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="relative rounded-lg overflow-hidden max-w-[280px] mb-2 group cursor-pointer"
-        onClick={() => playVideo(media.url, media.thumbnail || undefined)}
+        onClick={() => {
+          cacheVideo()
+          playVideo(cachedUrl || media.url, cachedThumbnail || media.thumbnail || undefined)
+        }}
       >
-        {media.thumbnail ? (
+        {cachedThumbnail || media.thumbnail ? (
           <img
-            src={media.thumbnail}
+            src={cachedThumbnail || media.thumbnail}
             alt="Video thumbnail"
             className="w-full h-auto object-cover"
             style={{ aspectRatio: "16/9" }}
           />
         ) : (
           <video
-            src={media.url}
+            src={cachedUrl || media.url}
             className="w-full h-auto object-cover"
             style={{ aspectRatio: "16/9" }}
             preload="metadata"
@@ -108,8 +111,7 @@ export function MessageMedia({ media, isSent }: MessageMediaProps) {
           audioRef.current.pause()
         } else {
           audioRef.current.play().catch(() => {
-            // Audio play failed, likely no actual audio file
-            console.log("[v0] Demo audio - no actual file to play")
+            console.log("[Audio] Demo audio - no actual file to play")
           })
         }
         setIsPlaying(!isPlaying)
@@ -129,7 +131,7 @@ export function MessageMedia({ media, isSent }: MessageMediaProps) {
       >
         <audio
           ref={audioRef}
-          src={media.url}
+          src={cachedUrl || media.url}
           onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
           onEnded={() => {
             setIsPlaying(false)
@@ -196,7 +198,7 @@ export function MessageMedia({ media, isSent }: MessageMediaProps) {
   if (media.type === "document") {
     const handleDownload = () => {
       const link = document.createElement("a")
-      link.href = media.url
+      link.href = cachedUrl || media.url
       link.download = media.fileName || "document"
       link.click()
     }
@@ -254,7 +256,7 @@ export function MessageMedia({ media, isSent }: MessageMediaProps) {
       </motion.div>
     )
   }
-  
+
   return null
 }
 

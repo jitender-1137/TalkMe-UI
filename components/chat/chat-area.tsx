@@ -4,14 +4,12 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { ChatHeader } from "./chat-header"
 import { VirtualizedChatList } from "./virtualized-chat-list"
 import { MessageInput } from "./message-input"
-import { UserProfileModal } from "./user-profile-modal"
 import { useCall } from "@/components/providers"
 import { CameraModal } from "./camera-modal"
 import { ChatSearchSidebar } from "./chat-search-sidebar"
 import { useChatContext } from "./chat-context"
 import * as ContextMenu from "./message-context-menu"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { useHashSync } from "@/hooks/use-hash-sync"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -60,7 +58,7 @@ export function ChatArea({
   conversationId?: string | null
   onBack?: () => void
 } = {}) {
-  const { selectedConversationId: contextConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, showMobileSecondaryPanel } = useChatContext()
+  const { selectedConversationId: contextConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, showMobileSecondaryPanel, setProfileModal } = useChatContext()
   const selectedConversationId = conversationId !== undefined ? conversationId : contextConversationId
   const isSecondaryActive = conversationId !== undefined ? false : showMobileSecondaryPanel
   const isMobile = useIsMobile()
@@ -69,8 +67,6 @@ export function ChatArea({
   
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null)
   const { data: contacts } = useContacts()
-  const [showProfileModal, setShowProfileModal] = useState(false)
-  const handleProfileClose = useHashSync(showProfileModal, () => setShowProfileModal(false), "#profile", "#messages")
 
   const [showCameraModal, setShowCameraModal] = useState(false)
   const [showSearchSidebar, setShowSearchSidebar] = useState(false)
@@ -629,7 +625,15 @@ export function ChatArea({
           contact={contact} 
           showBackButton 
           onBack={handleBack}
-          onProfileClick={() => setShowProfileModal(true)}
+          onProfileClick={() => {
+            if (contact) {
+              setProfileModal({
+                contact,
+                userId: otherParticipant?.id,
+                sharedMedia
+              });
+            }
+          }}
           onAudioCall={handleAudioCall}
           onVideoCall={handleVideoCall}
           onSearchInChat={handleSearchInChat}
@@ -643,16 +647,6 @@ export function ChatArea({
           isMuted={isChatMuted}
         />
       )}
-
-      <UserProfileModal
-        contact={contact}
-        userId={otherParticipant?.id}
-        isOpen={showProfileModal}
-        onClose={handleProfileClose}
-        isOwnProfile={false}
-        onMessage={() => {}}
-        sharedMedia={sharedMedia}
-      />
       <CameraModal
         isOpen={showCameraModal}
         onClose={() => setShowCameraModal(false)}

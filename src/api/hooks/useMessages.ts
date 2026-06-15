@@ -1,46 +1,199 @@
 "use client"
 
-import {
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { MessageService } from "../services/message.service"
 import { QUERY_KEYS } from "../query-keys"
-import { showSuccessToast, showErrorToast } from "../error-handler"
+import { showErrorToast, showSuccessToast } from "../error-handler"
 import type {
   SendMessagePayload,
   EditMessagePayload,
   ReactToMessagePayload,
   ForwardMessagePayload,
 } from "../types"
+import { useLiveQuery } from "dexie-react-hooks"
+import { db, mapResponseToLocalMessage } from "../db"
+import { useState, useCallback, useEffect } from "react"
+import { useAuthToken } from "./useChats"
 
-// ── Query: infinite message list ──────────────────────────────────────────────
+// ── Query: infinite message list (Dexie local cache + background API sync) ──────────
 export function useMessages(chatId: string) {
-  return useInfiniteQuery({
-    queryKey: QUERY_KEYS.MESSAGES.LIST(chatId),
-    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      MessageService.getMessages(chatId, { cursor: pageParam, limit: 30 }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) =>
-      lastPage.meta.hasNextPage ? String(lastPage.meta.page + 1) : undefined,
-    enabled: Boolean(chatId),
-    staleTime: 10 * 1000,
-  })
+  const token = useAuthToken()
+  const [limit, setLimit] = useState(30)
+  const [isFetching, setIsFetching] = useState(false)
+  const [hasServerMore, setHasServerMore] = useState(true)
+
+  // 1. Live Query from IndexedDB (sort ascending by sequenceNumber for the UI)
+  const localMessages = useLiveQuery(async () => {
+    if (!chatId) return []
+    const msgs = await db.messages
+      .where("chatId")
+      .equals(chatId)
+      .reverse() // latest first
+      .limit(limit)
+      .toArray()
+    
+    // Sort server sequence number ascending, fallback to createdAt
+    return msgs.reverse().sort((a, b) => {
+      if (a.sequenceNumber !== b.sequenceNumber) {
+        return a.sequenceNumber - b.sequenceNumber;
+      }
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+  }, [chatId, limit]) || []
+
+  // Count total local messages to check pagination
+  const localCount = useLiveQuery(() => {
+    if (!chatId) return 0
+    return db.messages.where("chatId").equals(chatId).count()
+  }, [chatId]) || 0
+
+  // 2. Fetch older messages from the server when user scrolls up (pagination)
+  const fetchNextPage = useCallback(async () => {
+    if (isFetching) return
+
+    // If we have more local messages in IndexedDB than current limit, just load them locally
+    if (localCount > limit) {
+      setLimit((prev) => prev + 30)
+      return
+    }
+
+    if (!hasServerMore) return
+    setIsFetching(true)
+
+    try {
+      // Calculate cursor page parameter based on current local count
+      const nextPage = Math.floor(localCount / 30)
+      const response = await MessageService.getMessages(chatId, {
+        cursor: String(nextPage),
+        limit: 30,
+      })
+
+      if (response.items.length === 0) {
+        setHasServerMore(false)
+      } else {
+        // Merge fetched messages into Dexie
+        await db.transaction("rw", db.messages, async () => {
+          for (const m of response.items) {
+            await db.messages.put(mapResponseToLocalMessage(chatId, m))
+          }
+        })
+        setLimit((prev) => prev + 30)
+      }
+    } catch (err: any) {
+      console.warn("[Dexie Sync] Error fetching older messages:", err?.message || err, err)
+    } finally {
+      setIsFetching(false)
+    }
+  }, [chatId, limit, localCount, isFetching, hasServerMore])
+
+  // 3. Background Sync missing/latest messages on load
+  useEffect(() => {
+    if (!chatId || !token) return
+
+    let active = true
+    const syncLatest = async () => {
+      try {
+        // Get last sequence number from sync_state
+        const syncState = await db.sync_state.get(chatId)
+        const lastSeq = syncState?.lastSequenceNumber || 0
+
+        let newMessages: any[] = []
+        if (lastSeq > 0) {
+          // Request missing messages after last known sequence
+          newMessages = await MessageService.getMessagesAfter(chatId, lastSeq)
+        } else {
+          // Load initial page from server to establish baseline
+          const response = await MessageService.getMessages(chatId, { limit: 30 })
+          newMessages = response.items
+        }
+
+        if (!active) return
+
+        if (newMessages.length > 0) {
+          await db.transaction("rw", [db.messages, db.sync_state, db.chats], async () => {
+            let maxSeq = lastSeq
+            for (const m of newMessages) {
+              const mapped = mapResponseToLocalMessage(chatId, m)
+              await db.messages.put(mapped)
+              if (mapped.sequenceNumber > maxSeq) {
+                maxSeq = mapped.sequenceNumber
+              }
+            }
+
+            // Update sync state
+            await db.sync_state.put({
+              chatId,
+              lastSequenceNumber: maxSeq,
+              lastSyncTimestamp: Date.now(),
+            })
+
+            // Update chat metadata with last message info
+            const sorted = [...newMessages].sort((a, b) => b.sequenceNumber - a.sequenceNumber)
+            const latestMsg = sorted[0]
+            const chat = await db.chats.get(chatId)
+            if (chat && latestMsg) {
+              await db.chats.update(chatId, {
+                lastMessageId: latestMsg.id,
+                lastMessagePreview: latestMsg.content || "Media attachment",
+                updatedAt: latestMsg.createdAt || latestMsg.timestamp || chat.updatedAt,
+                lastMessage: {
+                  id: latestMsg.id,
+                  content: latestMsg.content || "",
+                  senderId: latestMsg.senderId,
+                  senderName: latestMsg.senderName || "",
+                  type: latestMsg.type || "TEXT",
+                  timestamp: latestMsg.createdAt || latestMsg.timestamp || new Date().toISOString(),
+                  isDeleted: latestMsg.isDeleted || false,
+                },
+              })
+            }
+          })
+        }
+      } catch (err: any) {
+        console.warn("[Dexie Sync] Error syncing latest messages:", err?.message || err, err)
+      }
+    }
+
+    syncLatest()
+
+    return () => {
+      active = false
+    }
+  }, [chatId, token])
+
+  const hasNextPage = localCount > limit || hasServerMore
+
+  return {
+    data: {
+      pages: [{ items: localMessages }],
+      pageParams: [undefined],
+    },
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage: isFetching,
+  }
 }
 
 // ── Query: search message list ────────────────────────────────────────────────
 export function useSearchChatMessages(chatId: string, query: string) {
-  return useInfiniteQuery({
-    queryKey: [...QUERY_KEYS.MESSAGES.LIST(chatId), "search", query],
-    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      MessageService.searchMessages(chatId, query, { cursor: pageParam, limit: 30 }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) =>
-      lastPage.meta.hasNextPage ? String(lastPage.meta.page + 1) : undefined,
-    enabled: Boolean(chatId) && query.trim().length > 0,
-    staleTime: 10 * 1000,
-  })
+  const localSearchResults = useLiveQuery(async () => {
+    if (!chatId || !query.trim()) return []
+    return db.messages
+      .where("chatId")
+      .equals(chatId)
+      .filter((m) => m.content.toLowerCase().includes(query.toLowerCase()))
+      .sortBy("sequenceNumber")
+  }, [chatId, query]) || []
+
+  return {
+    data: {
+      pages: [{ items: localSearchResults }],
+      pageParams: [undefined],
+    },
+    fetchNextPage: () => {},
+    hasNextPage: false,
+    isFetchingNextPage: false,
+  }
 }
 
 // ── Mutation: send message ────────────────────────────────────────────────────
@@ -50,16 +203,9 @@ export function useSendMessage(chatId: string) {
   return useMutation({
     mutationFn: (payload: SendMessagePayload) => MessageService.sendMessage(chatId, payload),
     onMutate: async (payload: SendMessagePayload) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: QUERY_KEYS.MESSAGES.LIST(chatId) })
-
-      // Snapshot the previous value
-      const previousMessages = queryClient.getQueryData(QUERY_KEYS.MESSAGES.LIST(chatId))
-
-      // Get own profile from cache
       const ownProfile = queryClient.getQueryData<any>(QUERY_KEYS.PROFILE.SELF)
-
       const tempId = `temp-${Date.now()}`
+      
       const optimisticMessage = {
         id: tempId,
         content: payload.content || "",
@@ -80,155 +226,85 @@ export function useSendMessage(chatId: string) {
         senderAvatar: ownProfile?.avatar || undefined,
         timestamp: new Date().toISOString(),
         createdAt: new Date().toISOString(),
-        status: "sending" as any, // "sending" matches MessageStatus type
+        status: "sending",
         reactions: [],
         replyTo: null,
         isDeleted: false,
+        sequenceNumber: 999999 + Date.now(), // Put optimistic messages at the end
       }
 
-      // Add to query cache
-      queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (old: any) => {
-        if (!old || !old.pages) {
-          return {
-            pages: [{ items: [optimisticMessage], meta: { hasNextPage: false, page: 0 } }],
-            pageParams: [undefined]
-          }
-        }
-        return {
-          ...old,
-          pages: old.pages.map((page: any, idx: number) => {
-            if (idx === 0) {
-              return {
-                ...page,
-                items: [optimisticMessage, ...page.items],
-              }
-            }
-            return page
-          }),
-        }
-      })
+      // Save optimistic message to Dexie
+      await db.messages.put(mapResponseToLocalMessage(chatId, optimisticMessage))
 
-      return { previousMessages, tempId }
+      return { tempId }
     },
-    onError: (err, payload, context: any) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), context.previousMessages)
+    onError: async (err, payload, context: any) => {
+      if (context?.tempId) {
+        // Delete optimistic message from Dexie on error
+        await db.messages.delete(context.tempId)
       }
       showErrorToast(err)
     },
-    onSuccess: (newMessage, payload, context: any) => {
-      // Replace optimistic message in the cache with the actual message from the server
-      queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (old: any) => {
-        if (!old || !old.pages) return old
+    onSuccess: async (newMessage, payload, context: any) => {
+      await db.transaction("rw", [db.messages, db.sync_state, db.chats], async () => {
+        // 1. Remove optimistic message
+        if (context?.tempId) {
+          await db.messages.delete(context.tempId)
+        }
         
-        // Check if the message with the new ID is already in the cache (added by WebSocket)
-        const exists = old.pages.some((page: any) =>
-          page.items.some((m: any) => m.id === newMessage.id)
-        )
+        // 2. Put real message into Dexie
+        const mapped = mapResponseToLocalMessage(chatId, newMessage)
+        await db.messages.put(mapped)
 
-        return {
-          ...old,
-          pages: old.pages.map((page: any) => {
-            if (exists) {
-              return {
-                ...page,
-                items: page.items.filter((m: any) => m.id !== context?.tempId),
-              }
-            }
-            return {
-              ...page,
-              items: page.items.map((m: any) =>
-                m.id === context?.tempId ? newMessage : m
-              ),
-            }
-          }),
+        // 3. Advance sync state
+        const syncState = await db.sync_state.get(chatId)
+        const currentSeq = syncState?.lastSequenceNumber || 0
+        if (mapped.sequenceNumber > currentSeq) {
+          await db.sync_state.put({
+            chatId,
+            lastSequenceNumber: mapped.sequenceNumber,
+            lastSyncTimestamp: Date.now(),
+          })
+        }
+
+        // 4. Update chat metadata
+        const chat = await db.chats.get(chatId)
+        if (chat) {
+          await db.chats.update(chatId, {
+            lastMessageId: newMessage.id,
+            lastMessagePreview: newMessage.content || "Media attachment",
+            updatedAt: newMessage.createdAt || newMessage.timestamp || chat.updatedAt,
+            lastMessage: {
+              id: newMessage.id,
+              content: newMessage.content || "",
+              senderId: newMessage.senderId,
+              senderName: newMessage.senderName || "",
+              type: newMessage.type || "TEXT",
+              timestamp: newMessage.createdAt || newMessage.timestamp || new Date().toISOString(),
+              isDeleted: newMessage.isDeleted || false,
+            },
+          })
         }
       })
-
-      // Update chats list in-place
-      const lastMessage = {
-        id: newMessage.id,
-        content: newMessage.content || "",
-        senderId: newMessage.senderId,
-        senderName: newMessage.senderName || "",
-        type: (newMessage.type || "text").toUpperCase(),
-        timestamp: newMessage.timestamp || new Date().toISOString(),
-        isDeleted: newMessage.isDeleted || false,
-      }
-      // Update chats list in-place if chat exists, otherwise invalidate chats list to fetch the newly active chat
-      const oldChats = queryClient.getQueryData<any[]>(QUERY_KEYS.CHATS.LIST)
-      const chatExists = oldChats?.some((c) => c.id === chatId)
-
-      if (!chatExists) {
-        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
-      } else {
-        queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (prevChats) => {
-          if (!prevChats) return prevChats
-          const updated = prevChats.map((c) => {
-            if (c.id === chatId) {
-              return {
-                ...c,
-                lastMessage,
-                updatedAt: lastMessage.timestamp,
-              }
-            }
-            return c
-          })
-          
-          // Sort: pinned first, then by last message timestamp / updatedAt descending
-          return updated.sort((a, b) => {
-            const aPinned = a.pinned || a.isPinned || false
-            const bPinned = b.pinned || b.isPinned || false
-            if (aPinned !== bPinned) return aPinned ? -1 : 1
-            
-            const aTime = a.lastMessage?.timestamp || a.updatedAt || ""
-            const bTime = b.lastMessage?.timestamp || b.updatedAt || ""
-            return new Date(bTime).getTime() - new Date(aTime).getTime()
-          })
-        })
-      }
     },
   })
 }
 
 // ── Mutation: edit message ────────────────────────────────────────────────────
 export function useEditMessage(chatId: string) {
-  const queryClient = useQueryClient()
-
   return useMutation({
     mutationFn: ({ messageId, payload }: { messageId: string; payload: EditMessagePayload }) =>
       MessageService.editMessage(chatId, messageId, payload),
-    onSuccess: (updatedMessage, variables) => {
-      // Update message content in the cache in-place
-      queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (old: any) => {
-        if (!old || !old.pages) return old
-        return {
-          ...old,
-          pages: old.pages.map((page: any) => ({
-            ...page,
-            items: page.items.map((m: any) =>
-              m.id === variables.messageId ? updatedMessage : m
-            ),
-          })),
-        }
-      })
-
-      // Update last message in chats list if it was edited
-      queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
-        if (!oldChats) return oldChats
-        return oldChats.map((c) => {
-          if (c.id === chatId && c.lastMessage?.id === variables.messageId) {
-            return {
-              ...c,
-              lastMessage: {
-                ...c.lastMessage,
-                content: updatedMessage.content,
-              },
-            }
-          }
-          return c
+    onSuccess: async (updatedMessage, variables) => {
+      // Update locally in Dexie
+      const existing = await db.messages.get(variables.messageId)
+      if (existing) {
+        await db.messages.update(variables.messageId, {
+          content: updatedMessage.content,
+          editedAt: new Date().toISOString(),
+          isDeleted: updatedMessage.isDeleted || false,
         })
-      })
+      }
     },
     onError: showErrorToast,
   })
@@ -236,45 +312,20 @@ export function useEditMessage(chatId: string) {
 
 // ── Mutation: delete message ──────────────────────────────────────────────────
 export function useDeleteMessage(chatId: string) {
-  const queryClient = useQueryClient()
-
   return useMutation({
     mutationFn: (messageId: string) => MessageService.deleteMessage(chatId, messageId),
-    onSuccess: (deletedMessage, messageId) => {
-      // Update message status to isDeleted in the cache in-place
-      queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (old: any) => {
-        if (!old || !old.pages) return old
-        return {
-          ...old,
-          pages: old.pages.map((page: any) => ({
-            ...page,
-            items: page.items.map((m: any) =>
-              m.id === messageId
-                ? { ...m, isDeleted: true, content: "This message was deleted", media: undefined }
-                : m
-            ),
-          })),
-        }
-      })
-
-      // Update last message in chats list if it was deleted
-      queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
-        if (!oldChats) return oldChats
-        return oldChats.map((c) => {
-          if (c.id === chatId && c.lastMessage?.id === messageId) {
-            return {
-              ...c,
-              lastMessage: {
-                ...c.lastMessage,
-                isDeleted: true,
-                content: "This message was deleted",
-              },
-            }
-          }
-          return c
+    onSuccess: async (_data, messageId) => {
+      // Update locally in Dexie
+      const existing = await db.messages.get(messageId)
+      if (existing) {
+        await db.messages.update(messageId, {
+          content: "This message was deleted",
+          deleted: 1,
+          isDeleted: true,
+          attachments: [],
+          mediaId: undefined,
         })
-      })
-
+      }
       showSuccessToast("Message deleted")
     },
     onError: showErrorToast,
@@ -283,26 +334,17 @@ export function useDeleteMessage(chatId: string) {
 
 // ── Mutation: react to message ────────────────────────────────────────────────
 export function useReactToMessage(chatId: string) {
-  const queryClient = useQueryClient()
-
   return useMutation({
     mutationFn: ({ messageId, payload }: { messageId: string; payload: ReactToMessagePayload }) =>
       MessageService.reactToMessage(chatId, messageId, payload),
-    onSuccess: (updatedMessage, variables) => {
-      queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (old: any) => {
-        if (!old || !old.pages) return old
-        return {
-          ...old,
-          pages: old.pages.map((page: any) => ({
-            ...page,
-            items: page.items.map((m: any) =>
-              m.id === variables.messageId
-                ? { ...m, reactions: updatedMessage.reactions || m.reactions }
-                : m
-            ),
-          })),
-        }
-      })
+    onSuccess: async (updatedMessage, variables) => {
+      // Update locally in Dexie
+      const existing = await db.messages.get(variables.messageId)
+      if (existing) {
+        await db.messages.update(variables.messageId, {
+          reactions: updatedMessage.reactions || [],
+        })
+      }
     },
     onError: showErrorToast,
   })
@@ -310,26 +352,17 @@ export function useReactToMessage(chatId: string) {
 
 // ── Mutation: remove reaction ─────────────────────────────────────────────────
 export function useRemoveReaction(chatId: string) {
-  const queryClient = useQueryClient()
-
   return useMutation({
     mutationFn: ({ messageId, emoji }: { messageId: string; emoji: string }) =>
       MessageService.removeReaction(chatId, messageId, emoji),
-    onSuccess: (updatedMessage, variables) => {
-      queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (old: any) => {
-        if (!old || !old.pages) return old
-        return {
-          ...old,
-          pages: old.pages.map((page: any) => ({
-            ...page,
-            items: page.items.map((m: any) =>
-              m.id === variables.messageId
-                ? { ...m, reactions: updatedMessage.reactions || m.reactions }
-                : m
-            ),
-          })),
-        }
-      })
+    onSuccess: async (updatedMessage, variables) => {
+      // Update locally in Dexie
+      const existing = await db.messages.get(variables.messageId)
+      if (existing) {
+        await db.messages.update(variables.messageId, {
+          reactions: updatedMessage.reactions || [],
+        })
+      }
     },
     onError: showErrorToast,
   })
@@ -351,6 +384,14 @@ export function useForwardMessage(chatId: string) {
 export function useMarkMessageRead(chatId: string) {
   return useMutation({
     mutationFn: (messageId: string) => MessageService.markRead(chatId, messageId),
+    onSuccess: async (_data, messageId) => {
+      const existing = await db.messages.get(messageId)
+      if (existing) {
+        await db.messages.update(messageId, {
+          status: "seen",
+        })
+      }
+    },
     onError: showErrorToast,
   })
 }

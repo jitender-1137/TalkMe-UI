@@ -15,6 +15,8 @@ import type { Chat, Contact } from "@/src/api/types"
 import { formatMediaUrls, checkIsSameJar } from "@/src/api/client"
 import { X } from "lucide-react"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
+import { db, mapResponseToLocalMessage, mapResponseToLocalChat, normalizeMessageStatus, putChatSafely } from "@/src/api/db"
+
 
 const updateChatPresence = (chat: Chat, userId: string, status: string, lastSeen: string | null): Chat => {
   let updated = false
@@ -117,6 +119,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const markReadTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const processedMessageIdsRef = useRef<Set<string>>(new Set())
   const queryClient = useQueryClient()
+  const connectedTokenRef = useRef<string | null>(null)
 
   // Fetch active chats, contacts and own profile to enable dynamic presence and message subscriptions
   const { data: chatsData } = useChats()
@@ -129,8 +132,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [ownProfile])
 
   // Safely extract arrays from response structures (unwrap-safe)
-  const chats = Array.isArray(chatsData) ? chatsData : (chatsData as any)?.items || []
-  const contacts = Array.isArray(contactsData) ? contactsData : (contactsData as any)?.items || []
+  const chats = useMemo(() => {
+    return Array.isArray(chatsData) ? chatsData : (chatsData as any)?.items || []
+  }, [chatsData])
+  const contacts = useMemo(() => {
+    return Array.isArray(contactsData) ? contactsData : (contactsData as any)?.items || []
+  }, [contactsData])
 
   const registerHandler = useCallback((event: string, handler: (payload: any) => void) => {
     if (!handlersRef.current[event]) {
@@ -197,7 +204,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const handleChatMessage = (chatId: string, payload: any) => {
+  const handleChatMessage = async (chatId: string, payload: any) => {
     // Check if it's an event wrapper
     if (payload && payload.event) {
       const eventName = payload.event
@@ -215,8 +222,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           const myUsername = ownProfileRef.current?.username ?? ""
 
           // Get old reactions for this specific message before we overwrite them
-          const oldPages: any[] = (queryClient.getQueryData<any>(QUERY_KEYS.MESSAGES.LIST(chatId))?.pages) ?? []
-          const oldMsg = oldPages.flatMap((p: any) => p.items ?? []).find((m: any) => m.id === eventData.messageId)
+          const oldMsg = await db.messages.get(eventData.messageId)
           const oldReactions: { username: string; emoji: string }[] = oldMsg?.reactions ?? []
 
           // Detect which reactions are genuinely NEW (not present before this event)
@@ -226,19 +232,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
               !oldReactions.some((old) => old.username === r.username && old.emoji === r.emoji) // was not there before
           )
 
-          // ── 2. Update message reactions in cache ───────────────────────────
-          queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (oldData: any) => {
-            if (!oldData) return oldData
-            return {
-              ...oldData,
-              pages: oldData.pages.map((page: any) => ({
-                ...page,
-                items: page.items.map((m: any) =>
-                  m.id === eventData.messageId ? { ...m, reactions: reactionsPayload } : m
-                ),
-              })),
-            }
-          })
+          // ── 2. Update message reactions in local Dexie ───────────────────────────
+          if (oldMsg) {
+            await db.messages.update(eventData.messageId, { reactions: reactionsPayload })
+          }
 
           // ── 3. Toast-only notification (no badge/unreadCount increment) ────
           // Only fire if: a NEW reaction from someone else landed on the current user's own message
@@ -246,7 +243,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             const msgBelongsToMe = oldMsg?.senderId === ownProfileRef.current?.id
 
             if (msgBelongsToMe) {
-              const chatForReaction = queryClient.getQueryData<Chat[]>(QUERY_KEYS.CHATS.LIST)?.find((c) => c.id === chatId)
+              const chatForReaction = await db.chats.get(chatId)
               const isMuted = chatForReaction?.muted || chatForReaction?.isMuted || false
 
               if (!isMuted) {
@@ -307,97 +304,62 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
 
         case "messages_delivered": {
-          // Update all sent messages to DELIVERED status on the sender's side
-          queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (oldData: any) => {
-            if (!oldData) return oldData
-            return {
-              ...oldData,
-              pages: oldData.pages.map((page: any) => ({
-                ...page,
-                items: page.items.map((m: any) => {
-                  // Only upgrade SENT to DELIVERED for messages sent by current user
-                  if (m.senderId === ownProfileRef.current?.id && (m.status === "SENT" || !m.status)) {
-                    return { ...m, status: "DELIVERED" }
-                  }
-                  return m
-                }),
-              })),
+          // Update all sent messages to delivered status on the sender's side
+          await db.transaction("rw", db.messages, async () => {
+            const msgs = await db.messages
+              .where("chatId")
+              .equals(chatId)
+              .filter(m => m.senderId === ownProfileRef.current?.id && (m.status === "sent" || m.status === "sending" || !m.status))
+              .toArray();
+            for (const m of msgs) {
+              await db.messages.update(m.messageId, { status: "delivered" });
             }
-          })
+          });
           break
         }
         case "messages_read": {
-          queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (oldData: any) => {
-            if (!oldData) return oldData
-            return {
-              ...oldData,
-              pages: oldData.pages.map((page: any) => ({
-                ...page,
-                items: page.items.map((m: any) =>
-                  m.senderId === ownProfileRef.current?.id ? { ...m, status: "READ" } : m
-                ),
-              })),
+          // Update all sent messages to seen status on the sender's side
+          await db.transaction("rw", [db.messages, db.chats], async () => {
+            const msgs = await db.messages
+              .where("chatId")
+              .equals(chatId)
+              .filter(m => m.senderId === ownProfileRef.current?.id)
+              .toArray();
+            for (const m of msgs) {
+              await db.messages.update(m.messageId, { status: "seen" });
             }
-          })
 
-          if (ownProfileRef.current && ownProfileRef.current.id === eventData.readBy) {
-            queryClient.setQueryData<Chat[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
-              if (!oldChats) return oldChats
-              return oldChats.map((c) =>
-                c.id === chatId ? { ...c, unreadCount: 0 } : c
-              )
-            })
-            queryClient.setQueryData<Chat>(QUERY_KEYS.CHATS.DETAIL(chatId), (oldChat) => {
-              if (!oldChat) return oldChat
-              return { ...oldChat, unreadCount: 0 }
-            })
-          }
+            if (ownProfileRef.current && ownProfileRef.current.id === eventData.readBy) {
+              await db.chats.update(chatId, { unreadCount: 0 });
+            }
+          });
           break
         }
       }
     } else {
       // Raw MessageResponse payload
       if (payload?.id) {
-        if (processedMessageIdsRef.current.has(payload.id)) {
+        const exists = await db.messages.get(payload.id)
+        const normalizedStatus = normalizeMessageStatus(payload.status)
+        if (exists && exists.status === normalizedStatus && exists.deleted === (payload.isDeleted ? 1 : 0)) {
           console.log(`[WebSocket] Ignoring duplicate message: ${payload.id}`)
           return
         }
-
-        const cachedMessages: any = queryClient.getQueryData(QUERY_KEYS.MESSAGES.LIST(chatId))
-        const allItems = cachedMessages?.pages?.flatMap((p: any) => p.items) ?? []
-        if (allItems.some((m: any) => m.id === payload.id)) {
-          console.log(`[WebSocket] Message ${payload.id} already exists in cache. Ignoring.`)
-          processedMessageIdsRef.current.add(payload.id)
-          return
-        }
-
-        processedMessageIdsRef.current.add(payload.id)
-        if (processedMessageIdsRef.current.size > 200) {
-          const firstVal = processedMessageIdsRef.current.values().next().value
-          if (firstVal !== undefined) {
-            processedMessageIdsRef.current.delete(firstVal)
-          }
-        }
       }
 
-      queryClient.setQueryData(QUERY_KEYS.MESSAGES.LIST(chatId), (oldData: any) => {
-        if (!oldData) return oldData
-        const allItems = oldData.pages?.flatMap((p: any) => p.items) ?? []
-        if (allItems.some((m: any) => m.id === payload.id)) return oldData
+      const mappedMsg = mapResponseToLocalMessage(chatId, payload)
+      await db.messages.put(mappedMsg)
 
-        return {
-          ...oldData,
-          pages: oldData.pages.map((page: any, index: number) => {
-            if (index === 0) {
-              return {
-                ...page,
-                items: [payload, ...page.items],
-              }
-            }
-            return page
-          }),
-        }
-      })
+      // Advance sync state
+      const syncState = await db.sync_state.get(chatId)
+      const currentSeq = syncState?.lastSequenceNumber || 0
+      if (mappedMsg.sequenceNumber > currentSeq) {
+        await db.sync_state.put({
+          chatId,
+          lastSequenceNumber: mappedMsg.sequenceNumber,
+          lastSyncTimestamp: Date.now(),
+        })
+      }
 
       // In-memory update for the chats list
       let foundInCache = false
@@ -417,49 +379,39 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       const isFromOther = payload.senderId !== ownProfileRef.current?.id
       const isActiveChat = chatId === activeChatId
 
-      queryClient.setQueryData<Chat[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
-        if (!oldChats) return oldChats
-        
-        const chatExists = oldChats.some((c) => c.id === chatId)
-        if (!chatExists) return oldChats
-
+      const chat = await db.chats.get(chatId)
+      if (chat) {
         foundInCache = true
-        const updatedChats = oldChats.map((c) => {
-          if (c.id === chatId) {
-            return {
-              ...c,
-              lastMessage: newLastMessage,
-              // Don't increment unreadCount if the chat is currently active (user is looking at it)
-              unreadCount: (isFromOther && !isActiveChat) ? c.unreadCount + 1 : c.unreadCount,
-              updatedAt: msgTimestamp,
-            }
-          }
-          return c
-        })
-
-        // Sort: pinned first, then by last message timestamp / updatedAt descending
-        return updatedChats.sort((a, b) => {
-          const aPinned = a.pinned || a.isPinned || false
-          const bPinned = b.pinned || b.isPinned || false
-          if (aPinned !== bPinned) return aPinned ? -1 : 1
-          
-          const aTime = a.lastMessage?.timestamp || a.updatedAt || ""
-          const bTime = b.lastMessage?.timestamp || b.updatedAt || ""
-          return new Date(bTime).getTime() - new Date(aTime).getTime()
-        })
-      })
-
-      // Also update individual chat detail query if cached
-      queryClient.setQueryData<Chat>(QUERY_KEYS.CHATS.DETAIL(chatId), (oldChat) => {
-        if (!oldChat) return oldChat
-        return {
-          ...oldChat,
-          lastMessage: newLastMessage,
-          // Don't increment unreadCount if the chat is currently active
-          unreadCount: (isFromOther && !isActiveChat) ? oldChat.unreadCount + 1 : oldChat.unreadCount,
+        await db.chats.update(chatId, {
+          lastMessageId: payload.id,
+          lastMessagePreview: payload.content || "Media attachment",
+          unreadCount: (isFromOther && !isActiveChat) ? chat.unreadCount + 1 : chat.unreadCount,
           updatedAt: msgTimestamp,
+          lastMessage: newLastMessage,
+        })
+      } else {
+        // If chat is not in local database, fetch it from backend and put it
+        try {
+          const serverChat = await ChatService.getChatById(chatId)
+          if (serverChat) {
+            serverChat.lastMessage = {
+              id: payload.id,
+              content: payload.content || "",
+              senderId: payload.senderId,
+              senderName: payload.senderName || "",
+              type: payload.type || payload.messageType || "TEXT",
+              timestamp: msgTimestamp,
+              isDeleted: payload.isDeleted || false,
+            }
+            serverChat.unreadCount = isFromOther && !isActiveChat ? 1 : 0
+            serverChat.updatedAt = msgTimestamp
+          }
+          await putChatSafely(serverChat)
+          foundInCache = true
+        } catch (err) {
+          console.error("[WebSocket] Failed to fetch and cache new chat:", err)
         }
-      })
+      }
 
       if (!foundInCache) {
         queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
@@ -494,7 +446,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Find the target chat to check if it's muted
-      const chatForMuteCheck = queryClient.getQueryData<Chat[]>(QUERY_KEYS.CHATS.LIST)?.find(c => c.id === chatId)
+      const chatForMuteCheck = await db.chats.get(chatId)
       const isMuted = chatForMuteCheck?.muted || chatForMuteCheck?.isMuted || false
 
       // Play sound notification if message is from another user and chat is not muted
@@ -742,15 +694,26 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }
 
   const connect = () => {
+    const token = getAccessToken()
+    if (!token) {
+      if (stompClientRef.current) {
+        stompClientRef.current.deactivate()
+        stompClientRef.current = null
+      }
+      connectedTokenRef.current = null
+      setIsConnected(false)
+      return
+    }
+
+    if (stompClientRef.current && connectedTokenRef.current === token) {
+      console.log("[WebSocket] Already connected/connecting with the current token. Skipping reconnect.")
+      return
+    }
+
+    connectedTokenRef.current = token
     if (stompClientRef.current) {
       stompClientRef.current.deactivate()
       stompClientRef.current = null
-    }
-
-    const token = getAccessToken()
-    if (!token) {
-      setIsConnected(false)
-      return
     }
 
     const getWsUrl = (): string => {
@@ -869,26 +832,42 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           console.log("[STOMP] Received user chat event:", payload)
           if (payload.event === "chat_created" || payload.event === "chat_updated") {
             queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
+            if (payload.payload?.chatId) {
+              ChatService.getChatById(payload.payload.chatId).then((c) => {
+                putChatSafely(c)
+              }).catch((err) => {
+                console.error("[WebSocket] Failed to fetch and cache new chat:", err)
+              })
+            }
           } else if (payload.event === "chat_deleted" && payload.payload?.chatId) {
             const deletedChatId = payload.payload.chatId
-            // 1. Remove the chat from QUERY_KEYS.CHATS.LIST cache instantly
+            // 1. Remove the chat from local Dexie database instantly
+            db.transaction("rw", [db.chats, db.messages, db.sync_state], async () => {
+              await db.chats.delete(deletedChatId)
+              await db.messages.where("chatId").equals(deletedChatId).delete()
+              await db.sync_state.delete(deletedChatId)
+            }).catch((err) => {
+              console.error("[WebSocket] Failed to delete chat from Dexie:", err)
+            })
+
+            // 2. Remove the chat from QUERY_KEYS.CHATS.LIST cache instantly
             queryClient.setQueryData<any[]>(QUERY_KEYS.CHATS.LIST, (oldChats) => {
               if (!oldChats) return oldChats
               return oldChats.filter((c) => c.id !== deletedChatId)
             })
 
-            // 2. Remove details cache
+            // 3. Remove details cache
             queryClient.removeQueries({ queryKey: QUERY_KEYS.CHATS.DETAIL(deletedChatId) })
             
-            // 3. Remove messages list cache
+            // 4. Remove messages list cache
             queryClient.removeQueries({ queryKey: QUERY_KEYS.MESSAGES.LIST(deletedChatId) })
 
-            // 4. Force refetch list with a delay to allow backend transaction to commit
+            // 5. Force refetch list with a delay to allow backend transaction to commit
             setTimeout(() => {
               queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
             }, 500)
 
-            // 5. Close the active chat if B currently has this deleted chat open
+            // 6. Close the active chat if B currently has this deleted chat open
             const activeChatId = typeof window !== "undefined" ? (window as any).activeChatId : undefined
             if (deletedChatId === activeChatId) {
               if (typeof window !== "undefined") {

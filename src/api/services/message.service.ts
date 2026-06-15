@@ -138,6 +138,17 @@ export const MessageService = {
     await apiClient.post(ENDPOINTS.MESSAGES.FORWARD(chatId, messageId), payload)
   },
 
+  /** Get all messages sent after a specific sequence number. */
+  getMessagesAfter: async (chatId: string, afterSequence: number): Promise<Message[]> => {
+    const response = await apiClient.get<{
+      success: boolean
+      message: string
+      data: Message[]
+      timestamp: string
+    }>(`${ENDPOINTS.MESSAGES.LIST(chatId)}/sync`, { params: { afterSequence } })
+    return unwrapResponse(response)
+  },
+
   /** Mark a message as delivered. */
   markDelivered: async (chatId: string, messageId: string): Promise<void> => {
     await apiClient.post(ENDPOINTS.MESSAGES.MARK_DELIVERED(chatId, messageId))

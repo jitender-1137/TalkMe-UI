@@ -15,6 +15,7 @@ import {
   subscribeToRefresh,
   notifyRefreshSubscribers,
   isAccessTokenExpired,
+  getTokenExpiresAt,
 } from "./token-store";
 import { ENDPOINTS } from "./endpoints";
 
@@ -277,8 +278,16 @@ apiClient.interceptors.response.use(
 export async function proactiveTokenRefresh(): Promise<boolean> {
   if (!getAccessToken() || getIsRefreshing()) return false;
 
-  // Only refresh if token will expire in the next 2 minutes
-  if (!isAccessTokenExpired()) return false;
+  const expiresAt = getTokenExpiresAt();
+  if (expiresAt) {
+    const timeToExpiry = expiresAt - Date.now();
+    // Only refresh if token will expire in the next 2 minutes
+    if (timeToExpiry > 2 * 60 * 1000) {
+      return false;
+    }
+  } else {
+    return false;
+  }
 
   setIsRefreshing(true);
 

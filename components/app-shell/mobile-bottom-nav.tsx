@@ -32,14 +32,14 @@ export function MobileBottomNav() {
 
   const isOneToOneOpen = activeTab === "chats" && selectedConversationId !== null && !showMobileSecondaryPanel;
   const isLobbyChatOpen = activeTab === "match" && lobbySelectedUser !== null;
-  const isStrangerChatOpen = activeTab === "match" && matchStatus === "matched";
+  const isMatchActive = activeTab === "match" && matchStatus !== "idle";
 
   if (
     showLoginModal ||
     showSignupModal ||
     isOneToOneOpen ||
     isLobbyChatOpen ||
-    isStrangerChatOpen
+    isMatchActive
   ) {
     return null;
   }

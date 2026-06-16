@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -9,24 +9,40 @@ import { MatchRadar } from "./match-radar"
 import { MatchFiltersPanel } from "./match-filters"
 import { StrangerChatScreen } from "./stranger-chat-screen"
 import { Play, Square, Users, Zap, Shield } from "lucide-react"
-import type { StrangerMessage, Stranger } from "./types"
+import { useWebSocket } from "@/components/providers"
+import { useAuth } from "@/components/app-shell/auth-context"
+import {
+  useMatchOnlineCount,
+  useGetActiveSession,
+} from "@/src/api/hooks/useMatch"
+import type { StrangerMessage } from "./types"
+import Dexie from "dexie"
+import { useLiveQuery } from "dexie-react-hooks"
 
-// Mock data for demonstration
-const mockStrangers: Stranger[] = [
-  { id: "1", anonymousName: "Mystery Fox", interests: ["Music", "Gaming", "Technology"] },
-  { id: "2", anonymousName: "Cosmic Bear", interests: ["Travel", "Photography", "Art"] },
-  { id: "3", anonymousName: "Silent Wolf", interests: ["Movies", "Books", "Food"] },
-]
+function getSessionDb(sessionId: string) {
+  const dbName = `random-chat-${sessionId}`
+  const sdb = new Dexie(dbName)
+  sdb.version(1).stores({
+    messages: "id, timestamp"
+  })
+  return sdb
+}
 
-const generateMockResponse = (strangerId: string): string => {
-  const responses = [
-    "Hey! Nice to meet you!",
-    "How's your day going?",
-    "That's interesting! Tell me more.",
-    "I love that too!",
-    "What brings you here today?",
-  ]
-  return responses[Math.floor(Math.random() * responses.length)]
+const saveSessionMessage = async (sessionId: string, msg: any) => {
+  try {
+    const sdb = getSessionDb(sessionId)
+    await sdb.table("messages").put(msg)
+  } catch (err) {
+    console.error("Failed to save session message:", err)
+  }
+}
+
+const clearSessionDb = async (sessionId: string) => {
+  try {
+    await Dexie.delete(`random-chat-${sessionId}`)
+  } catch (err) {
+    console.error("Failed to clear session DB:", err)
+  }
 }
 
 export function MatchDashboard() {
@@ -34,21 +50,46 @@ export function MatchDashboard() {
     status,
     filters,
     stranger,
-    messages,
     searchTime,
     setStatus,
     setFilters,
     setStranger,
-    addMessage,
-    revealMedia,
     clearMessages,
     resetMatch,
     incrementSearchTime,
   } = useMatchStore()
 
+  const { user } = useAuth()
+  const { registerHandler, sendEvent } = useWebSocket()
   const [onlineUsers, setOnlineUsers] = useState(1247)
 
-  // Simulate search time counter
+  // API queries
+  const { data: onlineCount } = useMatchOnlineCount()
+  const { data: activeSession } = useGetActiveSession()
+
+  // Track online users count
+  useEffect(() => {
+    if (typeof onlineCount === "number") {
+      setOnlineUsers(onlineCount)
+    }
+  }, [onlineCount])
+
+  // Restore active session on mount
+  useEffect(() => {
+    if (activeSession && status === "idle") {
+      setStranger({
+        id: activeSession.partner?.id || "stranger",
+        anonymousName: activeSession.partner?.username || "Stranger",
+        interests: Array.from(activeSession.partner?.interests || []),
+        chatId: activeSession.chatId,
+        sessionId: activeSession.id,
+        isGuest: activeSession.partner?.isGuest || false,
+      })
+      setStatus("matched")
+    }
+  }, [activeSession, status, setStranger, setStatus])
+
+  // Sync search time counter
   useEffect(() => {
     let interval: NodeJS.Timeout
     if (status === "searching") {
@@ -59,79 +100,234 @@ export function MatchDashboard() {
     return () => clearInterval(interval)
   }, [status, incrementSearchTime])
 
-  // Simulate finding a match
+  // General WebSocket matchmaking event handlers
   useEffect(() => {
-    let timeout: NodeJS.Timeout
-    if (status === "searching" && searchTime > 3) {
-      const randomDelay = Math.random() * 3000 + 2000
-      timeout = setTimeout(() => {
-        const randomStranger = mockStrangers[Math.floor(Math.random() * mockStrangers.length)]
-        setStranger(randomStranger)
+    if (!registerHandler) return
+
+    const unbindWaiting = registerHandler("WAITING", () => {
+      console.log("[Matchmaker] WAITING received")
+      setStatus("searching")
+    })
+
+    const unbindMatchFound = registerHandler("MATCH_FOUND", (payload: any) => {
+      console.log("[Matchmaker] MATCH_FOUND received:", payload)
+      if (payload) {
+        setStranger({
+          id: payload.partner?.id || "stranger",
+          anonymousName: payload.partner?.username || "Stranger",
+          interests: Array.from(payload.partner?.interests || []),
+          chatId: payload.sessionId,
+          sessionId: payload.sessionId,
+          isGuest: payload.partner?.isGuest || false,
+        })
         setStatus("matched")
         clearMessages()
-      }, randomDelay)
-    }
-    return () => clearTimeout(timeout)
-  }, [status, searchTime, setStranger, setStatus, clearMessages])
+      }
+    })
 
-  // Simulate online users fluctuation
+    const unbindDisconnect = registerHandler("STRANGER_DISCONNECTED", (payload: any) => {
+      console.log("[Matchmaker] STRANGER_DISCONNECTED received")
+      if (stranger?.sessionId) {
+        clearSessionDb(stranger.sessionId)
+      }
+      setStatus("disconnected")
+    })
+
+    const unbindMatchEnded = registerHandler("MATCH_ENDED", (payload: any) => {
+      console.log("[Matchmaker] MATCH_ENDED received")
+      if (stranger?.sessionId) {
+        clearSessionDb(stranger.sessionId)
+      }
+      resetMatch()
+    })
+
+    return () => {
+      unbindWaiting()
+      unbindMatchFound()
+      unbindDisconnect()
+      unbindMatchEnded()
+    }
+  }, [registerHandler, stranger?.sessionId, setStranger, setStatus, clearMessages, resetMatch])
+
+  // Session-specific WebSocket message event handlers
   useEffect(() => {
-    const interval = setInterval(() => {
-      setOnlineUsers((prev) => prev + Math.floor(Math.random() * 20) - 10)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
+    if (!registerHandler || !stranger?.sessionId) return
+    const sessionId = stranger.sessionId
+
+    const unbindMsgReceived = registerHandler("MESSAGE_RECEIVED", (payload: any) => {
+      console.log("[Matchmaker] MESSAGE_RECEIVED received:", payload)
+      if (payload) {
+        saveSessionMessage(sessionId, {
+          id: payload.id,
+          content: payload.content,
+          timestamp: payload.timestamp,
+          time: new Date(payload.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isFromStranger: true
+        })
+      }
+    })
+
+    const unbindGifReceived = registerHandler("GIF_RECEIVED", (payload: any) => {
+      console.log("[Matchmaker] GIF_RECEIVED received:", payload)
+      if (payload) {
+        saveSessionMessage(sessionId, {
+          id: payload.id,
+          content: "",
+          timestamp: payload.timestamp,
+          time: new Date(payload.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isFromStranger: true,
+          media: payload.media ? { ...payload.media, isBlurred: true } : undefined
+        })
+      }
+    })
+
+    const unbindImgReceived = registerHandler("IMAGE_RECEIVED", (payload: any) => {
+      console.log("[Matchmaker] IMAGE_RECEIVED received:", payload)
+      if (payload) {
+        saveSessionMessage(sessionId, {
+          id: payload.id,
+          content: "",
+          timestamp: payload.timestamp,
+          time: new Date(payload.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isFromStranger: true,
+          media: payload.media ? { ...payload.media, isBlurred: true } : undefined
+        })
+      }
+    })
+
+    const unbindImgReq = registerHandler("IMAGE_REQUEST_RECEIVED", (payload: any) => {
+      console.log("[Matchmaker] IMAGE_REQUEST_RECEIVED received")
+      saveSessionMessage(sessionId, {
+        id: `req-${Date.now()}`,
+        content: "__IMAGE_REQUEST__",
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isFromStranger: true
+      })
+    })
+
+    const unbindImgAccepted = registerHandler("IMAGE_REQUEST_ACCEPTED", (payload: any) => {
+      console.log("[Matchmaker] IMAGE_REQUEST_ACCEPTED received")
+      saveSessionMessage(sessionId, {
+        id: `acc-${Date.now()}`,
+        content: "__IMAGE_ACCEPT__",
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isFromStranger: true
+      })
+    })
+
+    const unbindImgDeclined = registerHandler("IMAGE_REQUEST_DECLINED", (payload: any) => {
+      console.log("[Matchmaker] IMAGE_REQUEST_DECLINED received")
+      saveSessionMessage(sessionId, {
+        id: `rej-${Date.now()}`,
+        content: "__IMAGE_REJECT__",
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isFromStranger: true
+      })
+    })
+
+    return () => {
+      unbindMsgReceived()
+      unbindGifReceived()
+      unbindImgReceived()
+      unbindImgReq()
+      unbindImgAccepted()
+      unbindImgDeclined()
+    }
+  }, [registerHandler, stranger?.sessionId])
+
+  // Reactive message list from IndexedDB using useLiveQuery
+  const messages = useLiveQuery(async () => {
+    if (!stranger?.sessionId) return []
+    const sdb = getSessionDb(stranger.sessionId)
+    return await sdb.table("messages").orderBy("timestamp").toArray()
+  }, [stranger?.sessionId]) || []
+
+  const formatMsg = (id: string, content: string, isFromStranger: boolean, media?: any) => {
+    const timestamp = Date.now()
+    const time = new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    return {
+      id,
+      content,
+      timestamp,
+      time,
+      isFromStranger,
+      media
+    }
+  }
 
   const startSearch = () => {
     setStatus("searching")
+    clearMessages()
+    setStranger(null)
+    sendEvent("START_MATCHING", {})
   }
 
   const stopSearch = () => {
+    sendEvent("EXIT_CHAT", {})
     resetMatch()
   }
 
-  const handleSendMessage = useCallback((content: string) => {
-    const newMessage: StrangerMessage = {
-      id: Date.now().toString(),
-      content,
-      timestamp: Date.now(),
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      isFromStranger: false,
-    }
-    addMessage(newMessage)
+  const handleSendMessage = useCallback(
+    (content: string, type: "text" | "image" = "text", media?: any) => {
+      if (!stranger?.sessionId) return
+      const sessionId = stranger.sessionId
 
-    // Simulate stranger response
-    if (stranger) {
-      const typingStranger = { ...stranger, isTyping: true }
-      setStranger(typingStranger)
-      
-      setTimeout(() => {
-        const responseMessage: StrangerMessage = {
-          id: (Date.now() + 1).toString(),
-          content: generateMockResponse(stranger.id),
-          timestamp: Date.now(),
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          isFromStranger: true,
+      if (content === "__IMAGE_REQUEST__") {
+        sendEvent("REQUEST_IMAGE", {})
+        saveSessionMessage(sessionId, formatMsg(`req-${Date.now()}`, "__IMAGE_REQUEST__", false))
+      } else if (content === "__IMAGE_ACCEPT__") {
+        sendEvent("ACCEPT_IMAGE_REQUEST", {})
+      } else if (content === "__IMAGE_REJECT__") {
+        sendEvent("DECLINE_IMAGE_REQUEST", {})
+      } else {
+        if (type === "image") {
+          const isGif = media?.url?.includes("giphy") || media?.url?.includes(".gif")
+          const mediaPayload = media ? { ...media, isBlurred: true } : undefined
+          if (isGif) {
+            sendEvent("SEND_GIF", { media: mediaPayload })
+            saveSessionMessage(sessionId, formatMsg(`gif-${Date.now()}`, "", false, mediaPayload))
+          } else {
+            sendEvent("SEND_IMAGE", { media: mediaPayload })
+            saveSessionMessage(sessionId, formatMsg(`img-${Date.now()}`, "", false, mediaPayload))
+          }
+        } else {
+          sendEvent("SEND_MESSAGE", { content })
+          saveSessionMessage(sessionId, formatMsg(`msg-${Date.now()}`, content, false))
         }
-        addMessage(responseMessage)
-        setStranger({ ...stranger, isTyping: false })
-      }, 1500 + Math.random() * 2000)
-    }
-  }, [addMessage, stranger, setStranger])
+      }
+    },
+    [stranger, sendEvent]
+  )
 
   const handleSkip = () => {
+    if (stranger?.sessionId) {
+      clearSessionDb(stranger.sessionId)
+    }
     setStatus("searching")
     setStranger(null)
     clearMessages()
+    sendEvent("NEW_CHAT", {})
   }
 
   const handleReport = () => {
-    console.log("Reported user:", stranger?.id)
     handleSkip()
   }
 
   const handleBlock = () => {
-    console.log("Blocked user:", stranger?.id)
+    handleExit()
+  }
+
+  const handleExit = () => {
+    if (stranger?.sessionId) {
+      sendEvent("EXIT_CHAT", {})
+      clearSessionDb(stranger.sessionId)
+    }
     resetMatch()
   }
 
@@ -141,8 +337,36 @@ export function MatchDashboard() {
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  // Show chat screen when matched
-  if (status === "matched" && stranger) {
+  const handleRevealMedia = async (messageId: string) => {
+    if (!stranger?.sessionId) return
+    try {
+      const sdb = getSessionDb(stranger.sessionId)
+      const msg = await sdb.table("messages").get(messageId)
+      if (msg && msg.media) {
+        msg.media.isBlurred = false
+        await sdb.table("messages").put(msg)
+      }
+    } catch (err) {
+      console.error("Failed to reveal media:", err)
+    }
+  }
+
+  const handleHideMedia = async (messageId: string) => {
+    if (!stranger?.sessionId) return
+    try {
+      const sdb = getSessionDb(stranger.sessionId)
+      const msg = await sdb.table("messages").get(messageId)
+      if (msg && msg.media) {
+        msg.media.isBlurred = true
+        await sdb.table("messages").put(msg)
+      }
+    } catch (err) {
+      console.error("Failed to hide media:", err)
+    }
+  }
+
+  // Render chat screen when matched or disconnected
+  if ((status === "matched" || status === "disconnected") && stranger) {
     return (
       <StrangerChatScreen
         stranger={stranger}
@@ -151,7 +375,9 @@ export function MatchDashboard() {
         onSkip={handleSkip}
         onReport={handleReport}
         onBlock={handleBlock}
-        onRevealMedia={revealMedia}
+        onExit={handleExit}
+        onRevealMedia={handleRevealMedia}
+        onHideMedia={handleHideMedia}
       />
     )
   }
@@ -182,7 +408,7 @@ export function MatchDashboard() {
           {/* Radar section */}
           <div className="flex flex-col items-center gap-6">
             <MatchRadar isSearching={status === "searching"} />
-            
+
             {/* Search status */}
             <AnimatePresence mode="wait">
               {status === "searching" ? (

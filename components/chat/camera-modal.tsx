@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Camera, RotateCcw, Send, AlertCircle } from 'lucide-react'
+import { X, Camera, RotateCcw, Send, AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface CameraModalProps {
@@ -16,6 +16,7 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
   const [capturedFile, setCapturedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -28,7 +29,7 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
   useEffect(() => {
     if (isOpen && !capturedFile) {
       navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }, 
+        video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }, 
         audio: false 
       })
       .then((mediaStream) => {
@@ -50,7 +51,15 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
         streamRef.current.getTracks().forEach(track => track.stop())
       }
     }
-  }, [isOpen, capturedFile])
+  }, [isOpen, capturedFile, facingMode])
+
+  const toggleFacingMode = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+      setStream(null)
+    }
+    setFacingMode(prev => prev === 'user' ? 'environment' : 'user')
+  }
 
   const handleCapture = () => {
     if (!videoRef.current) return
@@ -64,9 +73,11 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
 
     const ctx = canvas.getContext('2d')
     if (ctx) {
-      // Mirror picture to match mirrored preview
-      ctx.translate(width, 0)
-      ctx.scale(-1, 1)
+      // Mirror picture to match mirrored preview only if using front camera
+      if (facingMode === 'user') {
+        ctx.translate(width, 0)
+        ctx.scale(-1, 1)
+      }
       ctx.drawImage(video, 0, 0, width, height)
       ctx.setTransform(1, 0, 0, 1, 0, 0) // Reset transform
       
@@ -115,6 +126,7 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
     setCapturedFile(null)
     setPreviewUrl(null)
     setError(null)
+    setFacingMode('user')
     onClose()
   }
 
@@ -151,7 +163,7 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-full object-cover scale-x-[-1]"
+                  className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
                 />
               )}
             </div>
@@ -198,13 +210,25 @@ export function CameraModal({ isOpen, onClose, onCapture }: CameraModalProps) {
                 </div>
               ) : (
                 /* Live Capture Mode Controls */
-                <button
-                  onClick={handleCapture}
-                  className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all group z-30 shadow-lg"
-                  title="Capture Photo"
-                >
-                  <div className="w-11 h-11 bg-white rounded-full group-hover:bg-neutral-200 transition-colors" />
-                </button>
+                <div className="flex items-center justify-center gap-8 w-full max-w-xs z-30">
+                  <div className="w-10 h-10" /> {/* Spacer to balance layout */}
+                  <button
+                    onClick={handleCapture}
+                    className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all group shadow-lg"
+                    title="Capture Photo"
+                  >
+                    <div className="w-11 h-11 bg-white rounded-full group-hover:bg-neutral-200 transition-colors" />
+                  </button>
+                  <Button
+                    onClick={toggleFacingMode}
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 text-neutral-300 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                    title="Switch Camera"
+                  >
+                    <RefreshCw className="h-6 w-6" />
+                  </Button>
+                </div>
               )}
             </div>
           </motion.div>

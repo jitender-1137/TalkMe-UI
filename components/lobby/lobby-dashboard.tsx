@@ -3,32 +3,19 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Settings,
   MessageSquare,
   Send,
   Smile,
   Users,
   ArrowLeft,
   X,
-  Volume2,
-  Bell,
   Globe,
   Loader2,
-  Lock,
-  UserCheck,
-  UserMinus,
-  MessageCircle,
-  Moon,
-  Sun,
-  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLobbyStore } from "./lobby-store";
 import { useOnlineUsers, useInbox, useChat, usePresence } from "./hooks";
 import { useProfile, useLobbyUsers } from "@/src/api/hooks/useProfile";
@@ -36,7 +23,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/src/api/query-keys";
 import { useWebSocket } from "@/components/providers/websocket-provider";
 import { useAuth } from "@/components/app-shell/auth-context";
-import { useTheme } from "next-themes";
 import { MessageInput } from "@/components/chat/message-input";
 import type { ChatUser, ChatMessage, Conversation } from "./types";
 
@@ -75,7 +61,6 @@ const isMediaUrl = (content: string) => {
 export function LobbyDashboard() {
   const { data: ownProfile } = useProfile();
   const { guestUser, isGuestMatch, isAuthenticated, logout, openLoginModal } = useAuth();
-  const { theme, setTheme } = useTheme();
   const myUsername = ownProfile?.username || (isGuestMatch && guestUser?.name) || "Guest";
   const { registerHandler } = useWebSocket();
   const { joinLobby, leaveLobby, isConnected } = usePresence();
@@ -90,18 +75,11 @@ export function LobbyDashboard() {
   const selectedUser = useLobbyStore((state) => state.selectedUser);
   const setSelectedUser = useLobbyStore((state) => state.setSelectedUser);
 
-  const showSettings = useLobbyStore((state) => state.showSettings);
-  const setShowSettings = useLobbyStore((state) => state.setShowSettings);
-
   const addMessage = useLobbyStore((state) => state.addMessage);
   const setTyping = useLobbyStore((state) => state.setTyping);
   const setUserOnlineStatus = useLobbyStore((state) => state.setUserOnlineStatus);
   const blockedUsers = useLobbyStore((state) => state.blockedUsers);
   const blockUser = useLobbyStore((state) => state.blockUser);
-  const unblockUser = useLobbyStore((state) => state.unblockUser);
-  const notificationSettings = useLobbyStore((state) => state.notificationSettings);
-  const updateNotificationSettings = useLobbyStore((state) => state.updateNotificationSettings);
-  const clearAllData = useLobbyStore((state) => state.clearAllData);
 
   // Hooks
   const { onlineUsers, isLoading: isUsersLoading, refetch } = useOnlineUsers();
@@ -158,178 +136,7 @@ export function LobbyDashboard() {
 
   return (
     <div className="h-full flex flex-col bg-background text-foreground overflow-hidden relative">
-      {/* Settings Drawer */}
-      <Sheet open={showSettings} onOpenChange={setShowSettings}>
-        <SheetContent className="bg-card border-border text-foreground w-full sm:max-w-md">
-          <SheetHeader className="border-b border-border pb-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-primary/10 text-primary rounded-2xl border border-primary/10">
-                <Settings className="w-5 h-5 transition-transform duration-700 hover:rotate-90" />
-              </div>
-              <div>
-                <SheetTitle className="text-foreground font-bold text-lg leading-tight">
-                  Lobby Settings
-                </SheetTitle>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Customise your transient lobby & chat profile preferences
-                </p>
-              </div>
-            </div>
-          </SheetHeader>
 
-          <div className="space-y-6 pt-6 pb-8 px-1 overflow-y-auto max-h-[calc(100vh-120px)] custom-scrollbar">
-            {/* Preferences Group */}
-            <div className="bg-muted/30 border border-border rounded-2xl p-4 space-y-4 shadow-inner">
-              <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider select-none">
-                App Preferences
-              </h3>
-
-              {/* Notification sound switch */}
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-primary" />
-                    Sound Effects
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground leading-normal">
-                    Play notification sound on new messages
-                  </p>
-                </div>
-                <Switch
-                  checked={notificationSettings.sound}
-                  onCheckedChange={(val) => updateNotificationSettings({ sound: val })}
-                />
-              </div>
-
-              <div className="h-px bg-border/40" />
-
-              {/* Notification desktop switch */}
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <Bell className="w-4 h-4 text-primary" />
-                    Desktop Notifications
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground leading-normal">
-                    Show desktop alert cards for new activity
-                  </p>
-                </div>
-                <Switch
-                  checked={notificationSettings.desktop}
-                  onCheckedChange={(val) => updateNotificationSettings({ desktop: val })}
-                />
-              </div>
-            </div>
-
-            {/* Theme switcher */}
-            <div className="bg-muted/30 border border-border rounded-2xl p-4 space-y-3 shadow-inner">
-              <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider select-none">
-                Theme & Appearance
-              </h3>
-              <div className="flex gap-2 bg-muted/60 p-1.5 rounded-xl border border-border">
-                <button
-                  type="button"
-                  onClick={() => setTheme("light")}
-                  className={cn(
-                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all select-none active:scale-95",
-                    theme === "light"
-                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/10"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <Sun className="w-4 h-4" />
-                  Light
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTheme("dark")}
-                  className={cn(
-                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all select-none active:scale-95",
-                    theme === "dark"
-                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/10"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <Moon className="w-4 h-4" />
-                  Dark
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTheme("system")}
-                  className={cn(
-                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center transition-all select-none active:scale-95",
-                    theme === "system"
-                      ? "bg-primary text-primary-foreground shadow-md shadow-primary/10"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  System
-                </button>
-              </div>
-            </div>
-
-            {/* Blocked Users Section */}
-            <div className="bg-muted/30 border border-border rounded-2xl p-4 space-y-3 shadow-inner">
-              <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider select-none flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-primary" />
-                Privacy & Blocks ({blockedUsers.length})
-              </h3>
-              {blockedUsers.length === 0 ? (
-                <p className="text-xs text-muted-foreground/80 italic py-1 select-none">
-                  No blocked users in this session
-                </p>
-              ) : (
-                <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                  {blockedUsers.map((username, idx) => (
-                    <div
-                      key={username || `block-${idx}`}
-                      className="flex items-center justify-between p-2 rounded-xl bg-card border border-border"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-destructive/10 text-destructive text-[10px] font-bold flex items-center justify-center border border-destructive/20 select-none shrink-0">
-                          {(username || "G").slice(0, 2).toUpperCase()}
-                        </div>
-                        <span className="text-xs font-semibold text-foreground/90 truncate max-w-[120px]">
-                          @{username}
-                        </span>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-[11px] text-destructive hover:text-destructive-foreground hover:bg-destructive h-7 px-2.5 rounded-lg transition-all flex items-center gap-1 active:scale-95 shrink-0"
-                        onClick={() => unblockUser(username)}
-                      >
-                        <UserMinus className="w-3 h-3" />
-                        Unblock
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Danger Zone */}
-            <div className="bg-destructive/5 border border-destructive/10 rounded-2xl p-4 space-y-3">
-              <h3 className="text-[10px] font-bold text-destructive uppercase tracking-wider select-none">
-                Danger Zone
-              </h3>
-              <Button
-                variant="destructive"
-                className="w-full h-11 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground border border-destructive/20 hover:border-transparent rounded-xl transition-all font-semibold flex items-center justify-center gap-2 active:scale-95 shadow-sm"
-                onClick={() => {
-                  if (confirm("Are you sure you want to clear all transient chat history?")) {
-                    clearAllData();
-                    setShowSettings(false);
-                  }
-                }}
-              >
-                <Trash2 className="w-4 h-4" />
-                Clear Local Chat History
-              </Button>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
 
       {/* Main Layout Container */}
       <div className="flex-1 flex overflow-hidden">

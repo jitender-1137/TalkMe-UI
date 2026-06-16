@@ -9,9 +9,10 @@ import type { StrangerMessage } from "./types"
 interface SafeModeMediaProps {
   message: StrangerMessage
   onReveal: () => void
+  onHide: () => void
 }
 
-export function SafeModeMedia({ message, onReveal }: SafeModeMediaProps) {
+export function SafeModeMedia({ message, onReveal, onHide }: SafeModeMediaProps) {
   const media = message.media
   
   if (!media) return null
@@ -97,6 +98,7 @@ export function SafeModeMedia({ message, onReveal }: SafeModeMediaProps) {
               <Button
                 size="sm"
                 variant="ghost"
+                onClick={onHide}
                 className="h-7 px-2 text-xs bg-black/50 hover:bg-black/70 text-white"
               >
                 <EyeOff className="h-3 w-3 mr-1" />

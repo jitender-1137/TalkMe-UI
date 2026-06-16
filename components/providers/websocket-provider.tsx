@@ -185,14 +185,24 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             body: JSON.stringify(false)
           })
         }
-      } else if (event.startsWith("call_") && payload.chatId) {
-        client.publish({
-          destination: `/topic/chat/${payload.chatId}/messages`,
-          body: JSON.stringify({
-            event: event,
-            payload: payload
-          })
-        })
+      } else if (event === "START_MATCHING") {
+        client.publish({ destination: "/app/match/start" })
+      } else if (event === "SEND_MESSAGE") {
+        client.publish({ destination: "/app/match/message", body: JSON.stringify(payload) })
+      } else if (event === "SEND_GIF") {
+        client.publish({ destination: "/app/match/gif", body: JSON.stringify(payload) })
+      } else if (event === "REQUEST_IMAGE") {
+        client.publish({ destination: "/app/match/request-image" })
+      } else if (event === "ACCEPT_IMAGE_REQUEST") {
+        client.publish({ destination: "/app/match/accept-image" })
+      } else if (event === "DECLINE_IMAGE_REQUEST") {
+        client.publish({ destination: "/app/match/decline-image" })
+      } else if (event === "SEND_IMAGE") {
+        client.publish({ destination: "/app/match/send-image", body: JSON.stringify(payload) })
+      } else if (event === "EXIT_CHAT") {
+        client.publish({ destination: "/app/match/exit" })
+      } else if (event === "NEW_CHAT") {
+        client.publish({ destination: "/app/match/new-chat" })
       } else {
         client.publish({
           destination: `/app/${event}`,
@@ -781,40 +791,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
       matchSubscriptionRef.current = client.subscribe("/user/queue/match", (message) => {
         try {
-          const payload = JSON.parse(message.body)
-          formatMediaUrls(payload)
-          console.log("[STOMP] Received match message:", payload)
+          const envelope = JSON.parse(message.body)
+          console.log("[STOMP] Received match envelope:", envelope)
+          const { event, payload } = envelope
+          
+          if (payload) {
+            formatMediaUrls(payload)
+          }
 
-          if (payload.isActive === true) {
-            const strangerChatId = payload.chatId
-            strangerChatIdRef.current = strangerChatId
-            subscribeToChat(strangerChatId)
-
-            const strangerPayload = {
-              stranger: {
-                id: payload.partner?.id,
-                name: payload.partner?.name,
-                avatar: payload.partner?.avatar,
-                interests: Array.from(payload.partner?.interests || []),
-                isTyping: false,
-                anonymousName: payload.partner?.name || "Stranger"
-              },
-              sessionId: payload.id
-            }
-
-            if (handlersRef.current["match_found"]) {
-              handlersRef.current["match_found"].forEach((handler) => handler(strangerPayload))
-            }
-          } else if (payload.isActive === false) {
-            const strangerChatId = strangerChatIdRef.current
-            if (strangerChatId) {
-              unsubscribeFromChat(strangerChatId)
-            }
-            strangerChatIdRef.current = null
-
-            if (handlersRef.current["stranger_disconnected"]) {
-              handlersRef.current["stranger_disconnected"].forEach((handler) => handler(null))
-            }
+          if (event && handlersRef.current[event]) {
+            handlersRef.current[event].forEach((handler) => handler(payload))
           }
         } catch (err) {
           console.error("[STOMP] Match payload parse error:", err)

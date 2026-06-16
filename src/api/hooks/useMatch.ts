@@ -14,6 +14,15 @@ export function useMatchOnlineCount() {
   })
 }
 
+export function useGetActiveSession() {
+  return useQuery({
+    queryKey: ["match", "active-session"],
+    queryFn: () => MatchService.getActiveSession(),
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+}
+
 export function useStartMatching() {
   return useMutation({
     mutationFn: (filters: MatchFilters) => MatchService.startMatching(filters),
@@ -31,6 +40,24 @@ export function useCancelMatching() {
 export function useSkipStranger() {
   return useMutation({
     mutationFn: () => MatchService.skipStranger(),
+    onError: showErrorToast,
+  })
+}
+
+export function useEndMatching() {
+  return useMutation({
+    mutationFn: () => MatchService.endMatching(),
+    onError: showErrorToast,
+  })
+}
+
+export function useReportStranger() {
+  return useMutation({
+    mutationFn: ({ reason, details }: { reason: string; details?: string }) =>
+      MatchService.reportStranger(reason, details),
+    onSuccess: () => {
+      showSuccessToast("Stranger reported successfully")
+    },
     onError: showErrorToast,
   })
 }

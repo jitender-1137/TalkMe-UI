@@ -18,6 +18,7 @@ export interface Stranger {
   region?: string
   isTyping?: boolean
   isRecording?: boolean
+  isGuest?: boolean
 }
 
 export interface StrangerMessage {

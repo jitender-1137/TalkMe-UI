@@ -173,7 +173,7 @@ export const ENDPOINTS = {
     SKIP: "/match/skip",
     REPORT: "/match/report",
     BLOCK: "/match/queue", // fallback
-    ONLINE_COUNT: "/match/session", // fallback
+    ONLINE_COUNT: "/match/online",
     END: "/match/end", // added
     SESSION: "/match/session", // added
   },

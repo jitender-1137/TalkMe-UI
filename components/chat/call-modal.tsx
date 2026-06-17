@@ -21,6 +21,7 @@ interface CallModalProps {
   contact: ChatContact
   isOpen: boolean
   onClose: () => void
+  onHangup: () => void
   callType: "audio" | "video"
   status: "ringing" | "connecting" | "connected" | "ended"
   duration: number
@@ -38,6 +39,7 @@ export function CallModal({
   contact,
   isOpen,
   onClose,
+  onHangup,
   callType,
   status,
   duration,
@@ -266,7 +268,7 @@ export function CallModal({
               variant="ghost"
               size="icon"
               className="h-14 w-14 rounded-full bg-red-600 hover:bg-red-700 text-white shrink-0 shadow-lg cursor-pointer transition-all hover:scale-105 active:scale-95"
-              onClick={onClose}
+              onClick={onHangup}
               title="Hang up"
             >
               <PhoneOff className="h-6 w-6" />

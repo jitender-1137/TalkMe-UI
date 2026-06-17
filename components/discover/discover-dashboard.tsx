@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useHashSync } from "@/hooks/use-hash-sync";
 import { motion, AnimatePresence } from "framer-motion";
+import { AppLayout } from "@/components/ui/app-layout";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import {
   User,
   LayoutGrid,
   List,
+  Compass,
 } from "lucide-react";
 import { cn, getAvatarUrl } from "@/lib/utils";
 import { toast } from "sonner";
@@ -138,10 +140,10 @@ export function DiscoverDashboard() {
         onSuccess: (chat) => {
           setSelectedConversationId(chat.id);
           setShowMobileSecondaryPanel(false);
+          if (typeof window !== "undefined") {
+            window.location.hash = "#discover-message";
+          }
           setActiveTab("chats");
-          // toast.success(`Starting chat with ${person.name}`, {
-          //   icon: <MessageCircle className="h-4 w-4" />,
-          // })
           setSelectedPerson(null);
         },
       },
@@ -149,23 +151,23 @@ export function DiscoverDashboard() {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-background pb-16 md:pb-0">
-      {/* Page Header */}
-      <div className="shrink-0 px-6 pt-6 pb-4 border-b border-border bg-card">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Discover</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Find interesting people near you</p>
-          </div>
+    <div className="h-full w-full">
+      <AppLayout
+        title="Discover"
+        icon={Compass}
+        searchPlaceholder="Search by name, interest, or location..."
+        searchValue={query}
+        onSearchChange={setQuery}
+        headerRight={
           <div className="flex items-center gap-2">
             {/* View Mode Toggle */}
-            <div className="flex items-center bg-muted p-0.5 rounded-lg border border-border">
+            <div className="flex items-center bg-muted/60 dark:bg-muted/40 p-0.5 rounded-lg border border-border/50">
               <Button
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-8 w-8 rounded-md transition-all p-0",
-                  viewMode === "grid" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground bg-transparent"
+                  "h-8 w-8 rounded-md transition-all p-0 cursor-pointer",
+                  viewMode === "grid" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground bg-transparent"
                 )}
                 onClick={() => setViewMode("grid")}
               >
@@ -175,8 +177,8 @@ export function DiscoverDashboard() {
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-8 w-8 rounded-md transition-all p-0",
-                  viewMode === "list" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground bg-transparent"
+                  "h-8 w-8 rounded-md transition-all p-0 cursor-pointer",
+                  viewMode === "list" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground bg-transparent"
                 )}
                 onClick={() => setViewMode("list")}
               >
@@ -187,34 +189,22 @@ export function DiscoverDashboard() {
             <Button
               variant={showFilters ? "default" : "outline"}
               size="icon"
-              className="h-9 w-9"
+              className="h-9 w-9 cursor-pointer"
               onClick={() => setShowFilters(!showFilters)}
             >
               <Filter className="h-4 w-4" />
             </Button>
           </div>
-        </div>
-      </div>
-
-      {/* Search bar and Filters */}
-      <div className="shrink-0 px-6 py-4 bg-card border-b border-border flex flex-col gap-3">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Search by name, interest, or location..."
-            className="pl-9 h-10 bg-muted border-0"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-
+        }
+      >
+        {/* Expandable filters section - Scrolls with the list content */}
         <AnimatePresence>
           {showFilters && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden flex flex-wrap gap-4 pt-2 border-t border-border/50"
+              className="overflow-hidden flex flex-wrap gap-4 px-6 py-4 bg-muted/30 border-b border-border/50"
             >
               {/* Gender Filter */}
               <div className="flex flex-col gap-1.5">
@@ -281,7 +271,7 @@ export function DiscoverDashboard() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-9 text-xs text-muted-foreground hover:text-foreground"
+                  className="h-9 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                   onClick={() => {
                     setGender("all");
                     setCountry("All");
@@ -295,75 +285,75 @@ export function DiscoverDashboard() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
-      {/* People List */}
-      <div className="flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <p className="text-sm text-muted-foreground">Loading people...</p>
-          </div>
-        ) : people.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-              <Sparkles className="h-8 w-8 text-muted-foreground" />
+        {/* People List */}
+        <div className="flex-1 px-6 pb-6">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <p className="text-sm text-muted-foreground">Loading people...</p>
             </div>
-            <p className="text-sm font-medium text-foreground">No people found</p>
-            <p className="text-sm text-muted-foreground mt-1">Try adjusting your search</p>
-          </div>
-        ) : (
-          <div className={cn(
-            "py-4 mx-auto w-full",
-            viewMode === "grid"
-              ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 max-w-[1600px]"
-              : "flex flex-col gap-3 max-w-xl"
-          )}>
-            {people.map((person) => (
-              viewMode === "grid" ? (
-                <PersonGridCard
-                  key={person.id}
-                  person={person}
-                  isLiked={Boolean(person.isLiked)}
-                  isHovered={hoveredId === person.id}
-                  onHover={() => setHoveredId(person.id)}
-                  onLeave={() => setHoveredId(null)}
-                  onLike={() => handleLike(person)}
-                  onProfileClick={() => setSelectedPerson(person)}
-                  onMessage={() => handleMessage(person)}
-                  onAddFriend={() => handleAddFriend(person)}
-                  onRemoveFriend={() => handleRemoveFriend(person)}
-                  isAddingFriend={
-                    addFriendMutation.isPending && addFriendMutation.variables === person.id
-                  }
-                  isRemovingFriend={
-                    removeFriendMutation.isPending && removeFriendMutation.variables === person.id
-                  }
-                />
-              ) : (
-                <PersonCard
-                  key={person.id}
-                  person={person}
-                  isLiked={Boolean(person.isLiked)}
-                  isHovered={hoveredId === person.id}
-                  onHover={() => setHoveredId(person.id)}
-                  onLeave={() => setHoveredId(null)}
-                  onLike={() => handleLike(person)}
-                  onProfileClick={() => setSelectedPerson(person)}
-                  onMessage={() => handleMessage(person)}
-                  onAddFriend={() => handleAddFriend(person)}
-                  onRemoveFriend={() => handleRemoveFriend(person)}
-                  isAddingFriend={
-                    addFriendMutation.isPending && addFriendMutation.variables === person.id
-                  }
-                  isRemovingFriend={
-                    removeFriendMutation.isPending && removeFriendMutation.variables === person.id
-                  }
-                />
-              )
-            ))}
-          </div>
-        )}
-      </div>
+          ) : people.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                <Sparkles className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">No people found</p>
+              <p className="text-sm text-muted-foreground mt-1">Try adjusting your search</p>
+            </div>
+          ) : (
+            <div className={cn(
+              "py-4 mx-auto w-full",
+              viewMode === "grid"
+                ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 max-w-[1600px]"
+                : "flex flex-col gap-3 max-w-xl"
+            )}>
+              {people.map((person) => (
+                viewMode === "grid" ? (
+                  <PersonGridCard
+                    key={person.id}
+                    person={person}
+                    isLiked={Boolean(person.isLiked)}
+                    isHovered={hoveredId === person.id}
+                    onHover={() => setHoveredId(person.id)}
+                    onLeave={() => setHoveredId(null)}
+                    onLike={() => handleLike(person)}
+                    onProfileClick={() => setSelectedPerson(person)}
+                    onMessage={() => handleMessage(person)}
+                    onAddFriend={() => handleAddFriend(person)}
+                    onRemoveFriend={() => handleRemoveFriend(person)}
+                    isAddingFriend={
+                      addFriendMutation.isPending && addFriendMutation.variables === person.id
+                    }
+                    isRemovingFriend={
+                      removeFriendMutation.isPending && removeFriendMutation.variables === person.id
+                    }
+                  />
+                ) : (
+                  <PersonCard
+                    key={person.id}
+                    person={person}
+                    isLiked={Boolean(person.isLiked)}
+                    isHovered={hoveredId === person.id}
+                    onHover={() => setHoveredId(person.id)}
+                    onLeave={() => setHoveredId(null)}
+                    onLike={() => handleLike(person)}
+                    onProfileClick={() => setSelectedPerson(person)}
+                    onMessage={() => handleMessage(person)}
+                    onAddFriend={() => handleAddFriend(person)}
+                    onRemoveFriend={() => handleRemoveFriend(person)}
+                    isAddingFriend={
+                      addFriendMutation.isPending && addFriendMutation.variables === person.id
+                    }
+                    isRemovingFriend={
+                      removeFriendMutation.isPending && removeFriendMutation.variables === person.id
+                    }
+                  />
+                )
+              ))}
+            </div>
+          )}
+        </div>
+      </AppLayout>
 
       {/* Profile Modal */}
       <UserProfileModal

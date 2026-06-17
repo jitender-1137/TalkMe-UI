@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { LobbyDashboard } from "@/components/lobby";
 import { MatchDashboard } from "./match-dashboard";
+import { AppLayout } from "@/components/ui/app-layout";
 import {
   Radio,
   Zap,
@@ -30,7 +31,7 @@ import { useTheme } from "next-themes";
 export function ConnectDashboard() {
   const [activeSubTab, setActiveSubTab] = useState<"lobby" | "match">("lobby");
   const { isGuestMatch, isAuthenticated, logout, openLoginModal } = useAuth();
-  
+
   // Lobby settings store selectors
   const showSettings = useLobbyStore((state) => state.showSettings);
   const setShowSettings = useLobbyStore((state) => state.setShowSettings);
@@ -39,6 +40,7 @@ export function ConnectDashboard() {
   const blockedUsers = useLobbyStore((state) => state.blockedUsers);
   const unblockUser = useLobbyStore((state) => state.unblockUser);
   const clearAllData = useLobbyStore((state) => state.clearAllData);
+  const lobbySelectedUser = useLobbyStore((state) => state.selectedUser);
   const { theme, setTheme } = useTheme();
   const { status } = useMatchStore();
   const isMatchActive = status !== "idle";
@@ -50,8 +52,13 @@ export function ConnectDashboard() {
     }
   }, [isMatchActive]);
 
+  const handleFilterChange = (id: string) => {
+    if (isMatchActive && id === "lobby") return;
+    setActiveSubTab(id as "lobby" | "match");
+  };
+
   return (
-    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
+    <div className="h-full w-full">
       {/* Settings Drawer */}
       <Sheet open={showSettings} onOpenChange={setShowSettings}>
         <SheetContent className="bg-card border-border text-foreground w-full sm:max-w-md">
@@ -105,7 +112,7 @@ export function ConnectDashboard() {
                     Desktop Notifications
                   </Label>
                   <p className="text-[11px] text-muted-foreground leading-normal">
-                    Show desktop alert cards for new activity
+                    Show native push alerts for incoming activity
                   </p>
                 </div>
                 <Switch
@@ -115,17 +122,34 @@ export function ConnectDashboard() {
               </div>
             </div>
 
-            {/* Theme switcher */}
-            <div className="bg-muted/30 border border-border rounded-2xl p-4 space-y-3 shadow-inner">
+            {/* Theme Selector */}
+            <div className="bg-muted/30 border border-border rounded-2xl p-4 space-y-4 shadow-inner">
               <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider select-none">
-                Theme & Appearance
+                Interface Customization
               </h3>
-              <div className="flex gap-2 bg-muted/60 p-1.5 rounded-xl border border-border">
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    {theme === "dark" ? (
+                      <Moon className="w-4 h-4 text-primary animate-pulse" />
+                    ) : (
+                      <Sun className="w-4 h-4 text-primary animate-spin-slow" />
+                    )}
+                    Select Theme Mode
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    Adjust the visual styling of your interface
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex bg-muted p-1 rounded-xl border border-border shadow-inner mt-1">
                 <button
                   type="button"
                   onClick={() => setTheme("light")}
                   className={cn(
-                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all select-none active:scale-95",
+                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer",
                     theme === "light"
                       ? "bg-primary text-primary-foreground shadow-md shadow-primary/10"
                       : "text-muted-foreground hover:text-foreground",
@@ -138,7 +162,7 @@ export function ConnectDashboard() {
                   type="button"
                   onClick={() => setTheme("dark")}
                   className={cn(
-                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all select-none active:scale-95",
+                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all select-none active:scale-95 cursor-pointer",
                     theme === "dark"
                       ? "bg-primary text-primary-foreground shadow-md shadow-primary/10"
                       : "text-muted-foreground hover:text-foreground",
@@ -151,7 +175,7 @@ export function ConnectDashboard() {
                   type="button"
                   onClick={() => setTheme("system")}
                   className={cn(
-                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center transition-all select-none active:scale-95",
+                    "flex-1 h-9 rounded-lg text-xs font-semibold flex items-center justify-center transition-all select-none active:scale-95 cursor-pointer",
                     theme === "system"
                       ? "bg-primary text-primary-foreground shadow-md shadow-primary/10"
                       : "text-muted-foreground hover:text-foreground",
@@ -209,7 +233,7 @@ export function ConnectDashboard() {
               </h3>
               <Button
                 variant="destructive"
-                className="w-full h-11 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground border border-destructive/20 hover:border-transparent rounded-xl transition-all font-semibold flex items-center justify-center gap-2 active:scale-95 shadow-sm"
+                className="w-full h-11 bg-destructive/10 hover:bg-destructive text-destructive hover:text-destructive-foreground border border-destructive/20 hover:border-transparent rounded-xl transition-all font-semibold flex items-center justify-center gap-2 active:scale-95 shadow-sm cursor-pointer"
                 onClick={() => {
                   if (confirm("Are you sure you want to clear all transient chat history?")) {
                     clearAllData();
@@ -225,79 +249,57 @@ export function ConnectDashboard() {
         </SheetContent>
       </Sheet>
 
-      {/* Subtab Bar */}
-      <div className="flex items-center justify-between bg-card border-b border-border py-2 px-4 shrink-0">
-        {/* Left: Tab Switcher */}
-        <div className="flex items-center bg-muted p-1 rounded-xl border border-border shadow-inner">
-          <button
-            onClick={() => !isMatchActive && setActiveSubTab("lobby")}
-            disabled={isMatchActive}
-            className={cn(
-              "flex items-center gap-1.5 px-3 md:px-5 py-1.5 rounded-lg text-sm font-semibold transition-all select-none active:scale-95",
-              isMatchActive && "opacity-50 cursor-not-allowed",
-              activeSubTab === "lobby"
-                ? "bg-primary text-primary-foreground shadow-md shadow-primary/15"
-                : "text-muted-foreground hover:text-foreground",
+      <AppLayout
+        title="Connect"
+        icon={Zap}
+        filterChips={[
+          { id: "lobby", label: "Lobby" },
+          { id: "match", label: "Matchmaker" },
+        ]}
+        activeFilterId={activeSubTab}
+        onFilterChange={handleFilterChange}
+        collapseFiltersToHeader={true}
+        disableBottomPadding={(activeSubTab === "lobby" && !!lobbySelectedUser) || isMatchActive}
+        headerRight={
+          <div className="flex items-center gap-2">
+            {(!isAuthenticated || isGuestMatch) && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={openLoginModal}
+                className="text-xs text-primary hover:text-primary-foreground hover:bg-primary/20 border-primary/30 h-8 w-8 sm:w-auto px-0 sm:px-3 rounded-xl transition-all font-semibold flex items-center justify-center cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">Login</span>
+              </Button>
             )}
-          >
-            <Radio className="h-4 w-4" />
-            Lobby
-          </button>
-          <button
-            onClick={() => setActiveSubTab("match")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 md:px-5 py-1.5 rounded-lg text-sm font-semibold transition-all select-none active:scale-95",
-              activeSubTab === "match"
-                ? "bg-primary text-primary-foreground shadow-md shadow-primary/15"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Zap className="h-4 w-4" />
-            Matchmaker
-          </button>
-        </div>
 
-        {/* Right: Auth + Settings */}
-        <div className="flex items-center gap-2">
-          {(!isAuthenticated || isGuestMatch) && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={openLoginModal}
-              className="text-xs text-primary hover:text-primary-foreground hover:bg-primary/20 border-primary/30 h-8 w-8 sm:w-auto px-0 sm:px-3 rounded-xl transition-all font-semibold flex items-center justify-center"
-            >
-              <LogIn className="w-3.5 h-3.5 sm:mr-1" />
-              <span className="hidden sm:inline">Login</span>
-            </Button>
-          )}
-
-          <Button
-            size="icon"
-            variant="secondary"
-            onClick={() => setShowSettings(true)}
-            className="w-8 h-8 bg-muted hover:bg-primary text-foreground hover:text-primary-foreground rounded-xl transition-all"
-          >
-            <Settings className="w-4 h-4" />
-          </Button>
-
-          {isGuestMatch && (
             <Button
               size="icon"
-              variant="outline"
-              onClick={logout}
-              className="w-8 h-8 text-destructive hover:text-destructive-foreground hover:bg-destructive/20 border-destructive/30 rounded-xl transition-all flex items-center justify-center shrink-0"
+              variant="secondary"
+              onClick={() => setShowSettings(true)}
+              className="w-8 h-8 bg-muted hover:bg-primary text-foreground hover:text-primary-foreground rounded-xl transition-all cursor-pointer"
             >
-              <LogOut className="w-4 h-4" />
+              <Settings className="w-4 h-4" />
             </Button>
-          )}
-        </div>
-      </div>
 
-      {/* Subtab Content */}
-      <div className="flex-1 overflow-hidden">
-        {activeSubTab === "lobby" ? <LobbyDashboard /> : <MatchDashboard />}
-      </div>
+            {isGuestMatch && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={logout}
+                className="w-8 h-8 text-destructive hover:text-destructive-foreground hover:bg-destructive/20 border-destructive/30 rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        }
+      >
+        <div className="flex-1 w-full px-2 mt-0 flex flex-col min-h-0">
+          {activeSubTab === "lobby" ? <LobbyDashboard /> : <MatchDashboard />}
+        </div>
+      </AppLayout>
     </div>
   );
 }
-

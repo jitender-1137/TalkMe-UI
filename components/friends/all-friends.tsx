@@ -50,7 +50,7 @@ export function AllFriends() {
   return (
     <div className="flex flex-col">
       {/* Search + count row */}
-      <div className="flex items-center justify-between gap-3 px-6 py-4">
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4">
         <div className="relative max-w-xs w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
@@ -66,7 +66,7 @@ export function AllFriends() {
       </div>
 
       {/* Grid */}
-      <div className="px-6 pb-6">
+      <div className="px-4 sm:px-6 pb-6">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-sm text-muted-foreground">Loading friends...</p>
@@ -77,7 +77,7 @@ export function AllFriends() {
             <p className="text-sm text-muted-foreground mt-1">Try a different search term</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {filtered.map((friend) => (
               <FriendCard
                 key={friend.id}

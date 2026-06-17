@@ -291,6 +291,7 @@ export function ChatArea({
         sendMessageMutation.mutate({
           content: content.trim(),
           type: pendingAttachment.type,
+          replyToId: replyTo?.id || undefined,
           media: {
             url: res.url,
             type: pendingAttachment.type,
@@ -304,6 +305,7 @@ export function ChatArea({
         sendMessageMutation.mutate({
           content: content.trim(),
           type: "text",
+          replyToId: replyTo?.id || undefined,
         })
       }
     } catch (err) {
@@ -312,7 +314,7 @@ export function ChatArea({
       setUploadProgress(null)
       setReplyTo(null)
     }
-  }, [selectedConversationId, sendMessageMutation, pendingAttachment])
+  }, [selectedConversationId, sendMessageMutation, pendingAttachment, replyTo])
 
   const handleSendMediaDirectly = useCallback(async (url: string, type: "image" | "sticker") => {
     try {
@@ -442,7 +444,10 @@ export function ChatArea({
   }, [fetchNextPage, hasNextPage, isFetchingNextPage])
 
   const handleBack = () => {
-    if (typeof window !== "undefined" && window.location.hash === "#messages") {
+    if (
+      typeof window !== "undefined" &&
+      (window.location.hash === "#messages" || window.location.hash === "#discover-message")
+    ) {
       window.history.back()
     } else {
       setSelectedConversationId(null)

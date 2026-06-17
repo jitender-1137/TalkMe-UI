@@ -9,6 +9,7 @@ import { useMatchStore } from "@/components/match/match-store";
 import { useInbox } from "@/components/lobby/hooks";
 import { useLobbyStore } from "@/components/lobby/lobby-store";
 import { useAuth } from "./auth-context";
+import { motion } from "framer-motion";
 
 export function MobileBottomNav() {
   const { showLoginModal, showSignupModal } = useAuth();
@@ -23,24 +24,17 @@ export function MobileBottomNav() {
   // Calculate unread counts
   const unreadChatsCount = conversations.reduce((acc, chat) => acc + (chat.unreadCount || 0), 0);
   const pendingRequestsCount = contactRequests.length;
-  const unreadNotificationsCount = Array.isArray(notifications)
-    ? notifications.filter((n) => !n.isRead).length
-    : 0;
 
   const lobbySelectedUser = useLobbyStore((state) => state.selectedUser);
   const { unreadCount: lobbyUnreadCount } = useInbox();
 
-  const isOneToOneOpen = activeTab === "chats" && selectedConversationId !== null && !showMobileSecondaryPanel;
+  const isOneToOneOpen =
+    activeTab === "chats" && selectedConversationId !== null && !showMobileSecondaryPanel;
   const isLobbyChatOpen = activeTab === "match" && lobbySelectedUser !== null;
   const isMatchActive = activeTab === "match" && matchStatus !== "idle";
 
-  if (
-    showLoginModal ||
-    showSignupModal ||
-    isOneToOneOpen ||
-    isLobbyChatOpen ||
-    isMatchActive
-  ) {
+  // Hide nav bar when active in a conversation room or auth modals
+  if (showLoginModal || showSignupModal || isOneToOneOpen || isLobbyChatOpen || isMatchActive) {
     return null;
   }
 
@@ -52,12 +46,14 @@ export function MobileBottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden safe-area-bottom">
-      <div className="mx-6 mb-8 rounded-full bg-card border border-white/10 shadow-lg shadow-black/10">
-        <div className="flex items-center justify-around h-14 px-1">
+    <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+28px)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg md:hidden">
+      {/* Floating glassmorphic rounded pill */}
+      <div className="rounded-full bg-white/70 dark:bg-[rgba(30,30,30,0.75)] backdrop-blur-[25px] border border-black/5 dark:border-white/10 shadow-lg shadow-black/10 dark:shadow-black/30 px-2">
+        <div className="flex items-center justify-around h-13 py-1 relative">
           {navigationItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
+            const badgeCount = getBadgeCount(item.id);
 
             return (
               <button
@@ -66,33 +62,50 @@ export function MobileBottomNav() {
                   setActiveTab(item.id);
                 }}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-0.5 flex-1 py-2 transition-all duration-200 relative rounded-xl",
-                  isActive ? "text-primary" : "text-white/70 hover:text-white/90 active:scale-95",
+                  "flex flex-col items-center justify-center relative flex-1 py-1.5 transition-all cursor-pointer select-none",
+                  isActive
+                    ? "text-primary opacity-100"
+                    : "text-muted-foreground hover:opacity-85 active:scale-95",
                 )}
               >
-                <div className="relative">
-                  <div
-                    className={cn(
-                      "rounded-xl transition-all duration-200",
-                      isActive && "bg-primary/10",
-                    )}
-                  >
-                    <Icon className={cn("h-5 w-5 transition-transform", isActive && "scale-110")} />
+                {/* Sliding active background indicator using Framer Motion spring layout */}
+                {isActive && (
+                  <motion.div
+                    layoutId="activeTabIndicator"
+                    className="absolute inset-x-1.5 inset-y-0.5 bg-primary/10 dark:bg-primary/20 rounded-full z-0"
+                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                  />
+                )}
+
+                <div className="relative z-10 flex flex-col items-center">
+                  <div className="p-1 rounded-full">
+                    {/* Fill icon and animate scale on tab switch */}
+                    <Icon
+                      className={cn(
+                        "h-5 w-5 transition-transform duration-200",
+                        isActive && "scale-110",
+                      )}
+                      fill={isActive ? "currentColor" : "none"}
+                      strokeWidth={isActive ? 2 : 1.75}
+                    />
                   </div>
-                  {getBadgeCount(item.id) > 0 && (
-                    <span className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold px-1">
-                      {getBadgeCount(item.id) > 99 ? "99+" : getBadgeCount(item.id)}
+
+                  {/* Badge */}
+                  {badgeCount > 0 && (
+                    <span className="absolute -top-1 -right-1.5 h-4 min-w-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-1 ring-1 ring-background">
+                      {badgeCount > 99 ? "99+" : badgeCount}
                     </span>
                   )}
+
+                  <span
+                    className={cn(
+                      "text-[9px] tracking-tight transition-all",
+                      isActive ? "font-semibold text-primary" : "font-medium text-muted-foreground",
+                    )}
+                  >
+                    {item.label}
+                  </span>
                 </div>
-                <span
-                  className={cn(
-                    "text-[10px] font-medium transition-all",
-                    isActive && "font-semibold",
-                  )}
-                >
-                  {item.label}
-                </span>
               </button>
             );
           })}

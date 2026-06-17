@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+import { AppLayout } from "@/components/ui/app-layout"
 import { Settings, User, Camera, Save, Edit2, Lock, KeyRound, X, Palette, LogOut, Image as ImageIcon, Trash2, ChevronDown, MessageSquare, Users, Phone, Bell, Volume2, Smile } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { CameraModal } from "@/components/chat/camera-modal"
@@ -58,6 +59,7 @@ type SettingsTab = "profile" | "settings" | "appearance"
 export function SettingsPage() {
   // Reference useLobbyStore to prevent Turbopack optimization/ReferenceError issues
   const _lobbyStore = useLobbyStore
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const status = usePresenceStore((state) => state.status)
   const invisibleMode = usePresenceStore((state) => state.invisibleMode)
@@ -227,84 +229,31 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col h-[100dvh]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 h-16 border-b border-border shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <Settings className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-foreground">Settings</h2>
-              <p className="text-xs text-muted-foreground">Manage your account</p>
-            </div>
-          </div>
-        </div>
-        {activeTab === "profile" && !isEditing && !showPasswordForm && !showForgotPassword && (
-          <Button variant="ghost" size="icon" onClick={handleEditStart} className="h-9 w-9">
-            <Edit2 className="h-5 w-5" />
-          </Button>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-border px-4">
-        <button
-          onClick={() => {
-            setActiveTab("profile")
-            setIsEditing(false)
-            setShowPasswordForm(false)
-            setShowForgotPassword(false)
-          }}
-          className={cn(
-            "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors",
-            activeTab === "profile"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <User className="h-4 w-4" />
-          Profile
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("settings")
-            setIsEditing(false)
-            setShowPasswordForm(false)
-            setShowForgotPassword(false)
-          }}
-          className={cn(
-            "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors",
-            activeTab === "settings"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Settings className="h-4 w-4" />
-          Preferences
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab("appearance")
-            setIsEditing(false)
-            setShowPasswordForm(false)
-            setShowForgotPassword(false)
-          }}
-          className={cn(
-            "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors",
-            activeTab === "appearance"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Palette className="h-4 w-4" />
-          Appearance
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto pb-24 md:pb-8">
+    <div className="h-full w-full">
+      <AppLayout
+        title="Settings"
+        icon={Settings}
+        filterChips={[
+          { id: "profile", label: "Profile" },
+          { id: "settings", label: "Preferences" },
+          { id: "appearance", label: "Appearance" },
+        ]}
+        activeFilterId={activeTab}
+        onFilterChange={(id) => {
+          setActiveTab(id as SettingsTab);
+          setIsEditing(false);
+          setShowPasswordForm(false);
+          setShowForgotPassword(false);
+        }}
+        headerRight={
+          activeTab === "profile" && !isEditing && !showPasswordForm && !showForgotPassword && (
+            <Button variant="ghost" size="icon" onClick={handleEditStart} className="h-9 w-9 text-primary cursor-pointer">
+              <Edit2 className="h-5 w-5" />
+            </Button>
+          )
+        }
+      >
+        <div className="flex-1 p-4 space-y-6 max-w-2xl mx-auto w-full">
         {isProfileLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -472,20 +421,12 @@ export function SettingsPage() {
                               <Camera className="h-4 w-4" />
                               Take photo
                             </DropdownMenuItem>
-                            <DropdownMenuItem asChild className="cursor-pointer gap-2">
-                              <label className="flex items-center w-full">
-                                <ImageIcon className="h-4 w-4 mr-2" />
-                                Choose from gallery
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={handleImageSelect}
-                                  onClick={(e) => {
-                                    (e.target as HTMLInputElement).value = ""
-                                  }}
-                                  className="hidden"
-                                />
-                              </label>
+                            <DropdownMenuItem
+                              onClick={() => fileInputRef.current?.click()}
+                              className="cursor-pointer gap-2"
+                            >
+                              <ImageIcon className="h-4 w-4" />
+                              Choose from gallery
                             </DropdownMenuItem>
                             {editForm.profileImage && (
                               <>
@@ -852,6 +793,16 @@ export function SettingsPage() {
         )}
       </div>
 
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*"
+        onChange={handleImageSelect}
+        onClick={(e) => {
+          (e.target as HTMLInputElement).value = ""
+        }}
+        className="hidden"
+      />
       <AvatarCropperModal
         isOpen={!!selectedImageFile}
         onClose={() => setSelectedImageFile(null)}
@@ -866,6 +817,7 @@ export function SettingsPage() {
           setShowCameraModal(false)
         }}
       />
+      </AppLayout>
     </div>
   )
 }

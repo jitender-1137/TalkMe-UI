@@ -47,20 +47,230 @@ const attachmentOptions = [
 const emojiCategories = [
   {
     name: "Smileys & Emotion",
-    emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🥸", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖", "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥", "😓", "🤗", "🤔", "🫣", "🤭", "🤫", "🤥", "😶", "😐", "😑", "😬", "🫠", "🙄", "😯", "😦", "😧", "😮", "😲", "🥱", "😴", "🤤", "😪", "😵", "🤐", "🥴", "🤢", "🤮", "🤧", "😷", "🤒", "🤕"]
+    emojis: [
+      "😀",
+      "😃",
+      "😄",
+      "😁",
+      "😆",
+      "😅",
+      "😂",
+      "🤣",
+      "😊",
+      "😇",
+      "🙂",
+      "🙃",
+      "😉",
+      "😌",
+      "😍",
+      "🥰",
+      "😘",
+      "😗",
+      "😙",
+      "😚",
+      "😋",
+      "😛",
+      "😝",
+      "😜",
+      "🤪",
+      "🤨",
+      "🧐",
+      "🤓",
+      "😎",
+      "🥸",
+      "🤩",
+      "🥳",
+      "😏",
+      "😒",
+      "😞",
+      "😔",
+      "😟",
+      "😕",
+      "🙁",
+      "☹️",
+      "😣",
+      "😖",
+      "😫",
+      "😩",
+      "🥺",
+      "😢",
+      "😭",
+      "😤",
+      "😠",
+      "😡",
+      "🤬",
+      "🤯",
+      "😳",
+      "🥵",
+      "🥶",
+      "😱",
+      "😨",
+      "😰",
+      "😥",
+      "😓",
+      "🤗",
+      "🤔",
+      "🫣",
+      "🤭",
+      "🤫",
+      "🤥",
+      "😶",
+      "😐",
+      "😑",
+      "😬",
+      "🫠",
+      "🙄",
+      "😯",
+      "😦",
+      "😧",
+      "😮",
+      "😲",
+      "🥱",
+      "😴",
+      "🤤",
+      "😪",
+      "😵",
+      "🤐",
+      "🥴",
+      "🤢",
+      "🤮",
+      "🤧",
+      "😷",
+      "🤒",
+      "🤕",
+    ],
   },
   {
     name: "Gestures & Body",
-    emojis: ["👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤌", "🤏", "✌️", "🤞", "🫰", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛", "🤜", "👏", "🙌", "👐", "🫶", "🤲", "🤝", "🙏", "✍️", "💅", "🤳"]
+    emojis: [
+      "👋",
+      "🤚",
+      "🖐️",
+      "✋",
+      "🖖",
+      "👌",
+      "🤌",
+      "🤏",
+      "✌️",
+      "🤞",
+      "🫰",
+      "🤟",
+      "🤘",
+      "🤙",
+      "👈",
+      "👉",
+      "👆",
+      "🖕",
+      "👇",
+      "☝️",
+      "👍",
+      "👎",
+      "✊",
+      "👊",
+      "🤛",
+      "🤜",
+      "👏",
+      "🙌",
+      "👐",
+      "🫶",
+      "🤲",
+      "🤝",
+      "🙏",
+      "✍️",
+      "💅",
+      "🤳",
+    ],
   },
   {
     name: "Hearts & Symbols",
-    emojis: ["❤️", "🩷", "🧡", "💛", "💚", "💙", "🩵", "💜", "🤎", "🖤", "🩶", "🤍", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟", "💌", "💤", "💢", "💣", "💥", "💦", "💫", "💬", "💭", "🗯️"]
+    emojis: [
+      "❤️",
+      "🩷",
+      "🧡",
+      "💛",
+      "💚",
+      "💙",
+      "🩵",
+      "💜",
+      "🤎",
+      "🖤",
+      "🩶",
+      "🤍",
+      "💔",
+      "❤️‍🔥",
+      "❤️‍🩹",
+      "❣️",
+      "💕",
+      "💞",
+      "💓",
+      "💗",
+      "💖",
+      "💘",
+      "💝",
+      "💟",
+      "💌",
+      "💤",
+      "💢",
+      "💣",
+      "💥",
+      "💦",
+      "💫",
+      "💬",
+      "💭",
+      "🗯️",
+    ],
   },
   {
     name: "Food & Activity",
-    emojis: ["🍏", "🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍍", "🥑", "🥦", "🍕", "🍔", "🍟", "🌭", "🍿", "🍩", "🍪", "🎂", "🧁", "🍫", "🍬", "🍭", "🍦", "🍷", "🍺", "🍻", "🥂", "🥃", "☕", "🥤", "⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🎱", "🏓", "🎮", "🕹️", "👾", "🎯"]
-  }
+    emojis: [
+      "🍏",
+      "🍎",
+      "🍊",
+      "🍋",
+      "🍌",
+      "🍉",
+      "🍇",
+      "🍓",
+      "🫐",
+      "🍍",
+      "🥑",
+      "🥦",
+      "🍕",
+      "🍔",
+      "🍟",
+      "🌭",
+      "🍿",
+      "🍩",
+      "🍪",
+      "🎂",
+      "🧁",
+      "🍫",
+      "🍬",
+      "🍭",
+      "🍦",
+      "🍷",
+      "🍺",
+      "🍻",
+      "🥂",
+      "🥃",
+      "☕",
+      "🥤",
+      "⚽",
+      "🏀",
+      "🏈",
+      "⚾",
+      "🥎",
+      "🎾",
+      "🏐",
+      "🏉",
+      "🎱",
+      "🏓",
+      "🎮",
+      "🕹️",
+      "👾",
+      "🎯",
+    ],
+  },
 ];
 
 const stickerPacks = [
@@ -81,7 +291,7 @@ const stickerPacks = [
       "https://api.dicebear.com/7.x/fun-emoji/svg?seed=angry",
       "https://api.dicebear.com/7.x/fun-emoji/svg?seed=shock",
       "https://api.dicebear.com/7.x/fun-emoji/svg?seed=scared",
-    ]
+    ],
   },
   {
     id: "robots",
@@ -100,7 +310,7 @@ const stickerPacks = [
       "https://api.dicebear.com/7.x/bottts/svg?seed=bot10",
       "https://api.dicebear.com/7.x/bottts/svg?seed=bot11",
       "https://api.dicebear.com/7.x/bottts/svg?seed=bot12",
-    ]
+    ],
   },
   {
     id: "cats",
@@ -119,7 +329,7 @@ const stickerPacks = [
       "https://robohash.org/cat10.png?set=set4",
       "https://robohash.org/cat11.png?set=set4",
       "https://robohash.org/cat12.png?set=set4",
-    ]
+    ],
   },
   {
     id: "adventurers",
@@ -138,7 +348,7 @@ const stickerPacks = [
       "https://api.dicebear.com/7.x/adventurer/svg?seed=adv10",
       "https://api.dicebear.com/7.x/adventurer/svg?seed=adv11",
       "https://api.dicebear.com/7.x/adventurer/svg?seed=adv12",
-    ]
+    ],
   },
   {
     id: "doodles",
@@ -157,8 +367,8 @@ const stickerPacks = [
       "https://api.dicebear.com/7.x/croodles/svg?seed=doodle10",
       "https://api.dicebear.com/7.x/croodles/svg?seed=doodle11",
       "https://api.dicebear.com/7.x/croodles/svg?seed=doodle12",
-    ]
-  }
+    ],
+  },
 ];
 
 export function MessageInput({
@@ -179,6 +389,12 @@ export function MessageInput({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (replyTo && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [replyTo]);
   const recordingInterval = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isTypingRef = useRef(false);
@@ -246,7 +462,7 @@ export function MessageInput({
         const data = await res.json();
         if (active && data && data.data) {
           const newUrls = data.data.map((item: any) => item.images.fixed_height.url);
-          setGifs(prev => gifOffset === 0 ? newUrls : [...prev, ...newUrls]);
+          setGifs((prev) => (gifOffset === 0 ? newUrls : [...prev, ...newUrls]));
           setHasMoreGifs(data.data.length === 16);
         }
       } catch (err) {
@@ -287,7 +503,7 @@ export function MessageInput({
     const reachedBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 45;
     if (reachedBottom) {
       isLoadingRef.current = true; // Synchronously guard against repeat triggers
-      setGifOffset(prev => prev + 16);
+      setGifOffset((prev) => prev + 16);
     }
   };
 
@@ -297,9 +513,9 @@ export function MessageInput({
     const query = emojiSearch.toLowerCase();
     const results: string[] = [];
 
-    emojiCategories.forEach(cat => {
+    emojiCategories.forEach((cat) => {
       if (cat.name.toLowerCase().includes(query)) {
-        cat.emojis.forEach(e => {
+        cat.emojis.forEach((e) => {
           if (!results.includes(e)) results.push(e);
         });
       }
@@ -309,7 +525,23 @@ export function MessageInput({
       smile: ["😀", "😃", "😄", "😁", "😆", "😅", "😊", "🙂"],
       laugh: ["😆", "😅", "😂", "🤣"],
       love: ["😍", "🥰", "😘", "❤️", "💕", "💖", "🫶"],
-      heart: ["❤️", "🩷", "🧡", "💛", "💚", "💙", "🩵", "💜", "🖤", "🩶", "🤍", "💔", "❤️‍🔥", "❤️‍🩹", "❣️"],
+      heart: [
+        "❤️",
+        "🩷",
+        "🧡",
+        "💛",
+        "💚",
+        "💙",
+        "🩵",
+        "💜",
+        "🖤",
+        "🩶",
+        "🤍",
+        "💔",
+        "❤️‍🔥",
+        "❤️‍🩹",
+        "❣️",
+      ],
       sad: ["😞", "😔", "😟", "😕", "🙁", "☹️", "🥺", "😢", "😭"],
       angry: ["😤", "😠", "😡", "🤬"],
       hands: ["👋", "🤚", "🖐️", "✋", "🖖", "👌", "👍", "👎", "👏", "🙌", "🙏"],
@@ -321,12 +553,30 @@ export function MessageInput({
       fire: ["🔥"],
       party: ["🎉", "🥳"],
       game: ["🎮", "🕹️", "👾", "🎯"],
-      food: ["🍏", "🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍍", "🥑", "🥦", "🍕", "🍔", "🍟", "🌭", "🍿"],
+      food: [
+        "🍏",
+        "🍎",
+        "🍊",
+        "🍋",
+        "🍌",
+        "🍉",
+        "🍇",
+        "🍓",
+        "🫐",
+        "🍍",
+        "🥑",
+        "🥦",
+        "🍕",
+        "🍔",
+        "🍟",
+        "🌭",
+        "🍿",
+      ],
     };
 
-    Object.keys(keywords).forEach(kw => {
+    Object.keys(keywords).forEach((kw) => {
       if (kw.includes(query) || query.includes(kw)) {
-        keywords[kw].forEach(e => {
+        keywords[kw].forEach((e) => {
           if (!results.includes(e)) results.push(e);
         });
       }
@@ -442,11 +692,7 @@ export function MessageInput({
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <input
               type="text"
-              placeholder={
-                activePickerTab === "emoji"
-                  ? "Search Emojis..."
-                  : "Search GIFs..."
-              }
+              placeholder={activePickerTab === "emoji" ? "Search Emojis..." : "Search GIFs..."}
               value={activePickerTab === "emoji" ? emojiSearch : gifQuery}
               onChange={(e) => {
                 if (activePickerTab === "emoji") {
@@ -460,7 +706,7 @@ export function MessageInput({
           </div>
         ) : (
           <div className="p-2 border-b border-border flex gap-2 bg-muted/30 overflow-x-auto shrink-0 scrollbar-none">
-            {stickerPacks.map(pack => (
+            {stickerPacks.map((pack) => (
               <button
                 key={pack.id}
                 type="button"
@@ -469,7 +715,7 @@ export function MessageInput({
                   "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all shrink-0",
                   activeStickerPack === pack.id
                     ? "bg-primary text-primary-foreground border-transparent"
-                    : "bg-muted text-muted-foreground border-transparent hover:bg-muted/70"
+                    : "bg-muted text-muted-foreground border-transparent hover:bg-muted/70",
                 )}
               >
                 <img src={pack.icon} className="w-3.5 h-3.5 object-contain rounded-sm" alt="" />
@@ -480,10 +726,7 @@ export function MessageInput({
         )}
 
         {/* Content Area */}
-        <div 
-          onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-3 scrollbar-thin"
-        >
+        <div onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 scrollbar-thin">
           {/* EMOJI TAB CONTENT */}
           {activePickerTab === "emoji" && (
             <div>
@@ -573,7 +816,12 @@ export function MessageInput({
                         }}
                         className="relative h-24 rounded-lg overflow-hidden bg-muted hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                       >
-                        <img src={gifUrl} className="w-full h-full object-cover" alt="gif" loading="lazy" />
+                        <img
+                          src={gifUrl}
+                          className="w-full h-full object-cover"
+                          alt="gif"
+                          loading="lazy"
+                        />
                       </button>
                     ))}
                   </div>
@@ -596,7 +844,7 @@ export function MessageInput({
           {activePickerTab === "sticker" && (
             <div className="grid grid-cols-4 gap-2">
               {stickerPacks
-                .find(p => p.id === activeStickerPack)
+                .find((p) => p.id === activeStickerPack)
                 ?.stickers.map((stickerUrl, idx) => (
                   <button
                     key={`${stickerUrl}-${idx}`}
@@ -607,7 +855,11 @@ export function MessageInput({
                     }}
                     className="flex items-center justify-center p-1.5 hover:bg-muted rounded-xl transition-all hover:scale-105 active:scale-95 duration-200"
                   >
-                    <img src={stickerUrl} className="w-14 h-14 object-contain rounded-md" alt="sticker" />
+                    <img
+                      src={stickerUrl}
+                      className="w-14 h-14 object-contain rounded-md"
+                      alt="sticker"
+                    />
                   </button>
                 ))}
             </div>
@@ -621,7 +873,9 @@ export function MessageInput({
             type="button"
             className={cn(
               "flex-1 py-1.5 flex justify-center rounded-lg transition-all",
-              activePickerTab === "emoji" ? "text-primary bg-primary/10 font-bold" : "text-muted-foreground hover:bg-muted"
+              activePickerTab === "emoji"
+                ? "text-primary bg-primary/10 font-bold"
+                : "text-muted-foreground hover:bg-muted",
             )}
           >
             <Smile className="h-5 w-5" />
@@ -631,7 +885,9 @@ export function MessageInput({
             type="button"
             className={cn(
               "flex-1 py-1.5 flex justify-center rounded-lg transition-all",
-              activePickerTab === "gif" ? "text-primary bg-primary/10 font-bold" : "text-muted-foreground hover:bg-muted"
+              activePickerTab === "gif"
+                ? "text-primary bg-primary/10 font-bold"
+                : "text-muted-foreground hover:bg-muted",
             )}
           >
             <Film className="h-5 w-5" />
@@ -641,7 +897,9 @@ export function MessageInput({
             type="button"
             className={cn(
               "flex-1 py-1.5 flex justify-center rounded-lg transition-all",
-              activePickerTab === "sticker" ? "text-primary bg-primary/10 font-bold" : "text-muted-foreground hover:bg-muted"
+              activePickerTab === "sticker"
+                ? "text-primary bg-primary/10 font-bold"
+                : "text-muted-foreground hover:bg-muted",
             )}
           >
             <Sticker className="h-5 w-5" />
@@ -702,9 +960,16 @@ export function MessageInput({
                 {pendingAttachment.previewUrl && (
                   <div className="h-10 w-10 relative rounded overflow-hidden mr-2 shrink-0">
                     {pendingAttachment.type === "image" ? (
-                      <img src={pendingAttachment.previewUrl} alt="Preview" className="object-cover h-full w-full" />
+                      <img
+                        src={pendingAttachment.previewUrl}
+                        alt="Preview"
+                        className="object-cover h-full w-full"
+                      />
                     ) : pendingAttachment.type === "video" ? (
-                      <video src={pendingAttachment.previewUrl} className="object-cover h-full w-full" />
+                      <video
+                        src={pendingAttachment.previewUrl}
+                        className="object-cover h-full w-full"
+                      />
                     ) : null}
                   </div>
                 )}
@@ -759,7 +1024,7 @@ export function MessageInput({
         </AnimatePresence>
 
         {!isRecording && (
-          <div className="flex items-end gap-1.5 bg-muted/65 border border-white/10 rounded-[24px] px-2 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+          <div className="flex items-end gap-1.5 bg-muted/65 border border-white/10 rounded-3xl px-2 py-0.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
             {/* Emoji button */}
             <div className="relative shrink-0">
               <Button
@@ -791,7 +1056,7 @@ export function MessageInput({
             </div>
 
             {/* Text input */}
-            <div className="flex-1 relative min-h-[36px] flex items-center">
+            <div className="flex-1 relative min-h-9 flex items-center">
               <textarea
                 ref={inputRef}
                 value={message}
@@ -803,7 +1068,7 @@ export function MessageInput({
                 rows={1}
                 className={cn(
                   "w-full resize-none bg-transparent border-0 p-0 text-base focus:ring-0 focus:outline-none",
-                  "placeholder:text-muted-foreground max-h-32 min-h-[24px] py-1.5 px-2 scrollbar-thin transition-colors",
+                  "placeholder:text-muted-foreground max-h-32 min-h-6 py-0.5 px-2 scrollbar-thin transition-colors",
                 )}
                 style={{
                   height: "auto",
@@ -855,7 +1120,9 @@ export function MessageInput({
                             >
                               <Icon className="h-5 w-5 text-white" />
                             </div>
-                            <span className="text-[11px] font-medium text-foreground/90">{option.label}</span>
+                            <span className="text-[11px] font-medium text-foreground/90">
+                              {option.label}
+                            </span>
                           </button>
                         );
                       })}
@@ -867,7 +1134,7 @@ export function MessageInput({
 
             {/* Send / Record button */}
             <div className="shrink-0">
-              {(message.trim() || pendingAttachment) ? (
+              {message.trim() || pendingAttachment ? (
                 <Button
                   size="icon"
                   className="h-9 w-9 bg-primary hover:bg-primary/90 rounded-full flex items-center justify-center"
@@ -906,4 +1173,3 @@ export function MessageInput({
     </div>
   );
 }
-

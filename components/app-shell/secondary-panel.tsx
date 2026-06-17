@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Search, MoreVertical, Plus, Pin, BellOff, ChevronLeft, Archive } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Search, MoreVertical, Plus, Pin, BellOff, ChevronLeft, Archive, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AvatarStatusBadge } from "@/components/presence";
 import { ConversationContextMenu } from "@/components/chat/conversation-context-menu";
@@ -14,8 +13,8 @@ import { useChatContext } from "@/components/chat/chat-context";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion } from "framer-motion";
-import { toast } from "sonner";
 import { useAuth } from "./auth-context";
+import { AppLayout } from "@/components/ui/app-layout";
 import {
   useChats,
   useMuteChat,
@@ -30,6 +29,7 @@ import {
 import { useBlockUser } from "@/src/api/hooks/useProfile";
 import type { Chat } from "@/src/api/types";
 import { useWebSocket } from "@/components/providers";
+import { useNavigation } from "./navigation-context";
 
 interface ConvItemProps {
   conversation: Chat;
@@ -112,8 +112,8 @@ function ConversationItem({
       }}
       onContextMenu={longPressHandlers.onContextMenu}
       className={cn(
-        "w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 text-left cursor-pointer select-none border-b border-border",
-        isSelected ? "bg-primary/12" : "hover:bg-white/5 active:bg-white/10 active:scale-[0.98]",
+        "w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 text-left cursor-pointer select-none border-b border-border/40 dark:border-white/5",
+        isSelected ? "bg-primary/10" : "hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 dark:active:bg-white/10 active:scale-[0.98]",
       )}
       style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", touchAction: "manipulation" }}
       role="button"
@@ -136,7 +136,7 @@ function ConversationItem({
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm text-foreground truncate">{displayName}</span>
+          <span className="font-semibold text-sm text-foreground truncate">{displayName}</span>
           <span className="text-xs text-muted-foreground shrink-0">{lastMessageTime}</span>
         </div>
         <div className="flex items-center justify-between gap-2 mt-0.5">
@@ -166,10 +166,12 @@ function ConversationItem({
 
 export function SecondaryPanel() {
   const { user } = useAuth();
+  const { setActiveTab } = useNavigation();
   const { selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, setProfileModal } =
     useChatContext();
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTarget, setMenuTarget] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -247,6 +249,11 @@ export function SecondaryPanel() {
         if (isChatArchived) return false;
       }
 
+      // Filter chips handling
+      if (activeFilter === "unread" && c.unreadCount === 0) return false;
+      if (activeFilter === "pinned" && !(c.pinned || c.isPinned)) return false;
+      if (activeFilter === "groups" && !isGroupChat) return false;
+
       const other = c.otherUser ?? c.participants?.find((p) => p.id !== user?.id);
       const displayName = isGroupChat ? (c.name ?? "Group Chat") : (other?.name || other?.username || "Unknown User");
       return displayName.toLowerCase().includes(searchQuery.toLowerCase());
@@ -277,112 +284,98 @@ export function SecondaryPanel() {
   const archivedChatsCount = conversations.filter((c) => c.archived || c.isArchived).length;
 
   return (
-    <div className="flex flex-col bg-card border-r border-white/10 h-dvh md:w-80 lg:w-96 md:fixed md:left-[72px] md:top-0 pb-20 md:pb-0">
-      {/* App Branding Header - Mobile Only */}
-      {!viewArchived && (
-        <div className="md:hidden sticky top-0 z-20 bg-card">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <div className="flex items-center justify-center h-10 w-10 rounded-2xl overflow-hidden shadow-lg shadow-primary/25">
-              <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover" />
-            </div>
-            <div className="flex-1">
-              <h1 className="text-lg font-semibold text-foreground tracking-tight">TalkMe</h1>
-              <p className="text-xs text-muted-foreground">Connect. Chat. Share.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Chats Header */}
-      <div className="sticky top-0 md:top-0 z-10 flex items-center justify-between px-4 h-16 bg-card border-b border-border/50">
-        {viewArchived ? (
-          <div className="flex items-center gap-2">
+    <div className="flex flex-col bg-card border-r border-white/10 h-dvh w-full md:w-80 lg:w-96 md:fixed md:left-[72px] md:top-0">
+      <AppLayout
+        title={viewArchived ? "Archived" : "TalkMe"}
+        logo={viewArchived ? undefined : "/apple-icon.png"}
+        icon={viewArchived ? Archive : MessageCircle}
+        searchPlaceholder="Search conversations"
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        filterChips={
+          viewArchived
+            ? undefined
+            : [
+                { id: "all", label: "All" },
+                { id: "unread", label: "Unread" },
+                { id: "pinned", label: "Pinned" },
+                { id: "groups", label: "Groups" },
+              ]
+        }
+        activeFilterId={activeFilter}
+        onFilterChange={setActiveFilter}
+        headerRight={
+          viewArchived ? (
             <Button
               variant="ghost"
-              size="icon"
+              size="sm"
               onClick={() => setViewArchived(false)}
-              className="h-10 w-10 rounded-full hover:bg-white/10 active:scale-95 -ml-2"
+              className="text-primary hover:text-primary-foreground font-semibold flex items-center gap-1 cursor-pointer"
             >
-              <ChevronLeft className="h-6 w-6" />
+              <ChevronLeft className="h-4 w-4" />
+              Chats
             </Button>
-            <h2 className="text-xl font-bold text-foreground">Archived</h2>
-          </div>
-        ) : (
-          <>
-            <h2 className="text-2xl font-bold text-foreground">Chats</h2>
-            <div className="flex items-center gap-2">
+          ) : (
+            <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-full hover:bg-white/10 active:scale-95 transition-all"
+                onClick={() => setActiveTab("discover")}
+                className="h-9 w-9 rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all text-primary cursor-pointer"
               >
-                <Plus className="h-6 w-6" />
+                <Plus className="h-5 w-5" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-10 w-10 rounded-full hover:bg-white/10 active:scale-95 transition-all"
+                className="h-9 w-9 rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all text-muted-foreground cursor-pointer"
               >
-                <MoreVertical className="h-6 w-6" />
+                <MoreVertical className="h-5 w-5" />
               </Button>
             </div>
-          </>
-        )}
-      </div>
-
-      {/* Search */}
-      <div className="sticky top-16 z-10 px-4 py-3 bg-card">
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-          <Input
-            placeholder="Search conversations"
-            className="pl-12 bg-muted/60 border-white/10 h-11 rounded-full focus:bg-muted transition-colors placeholder:text-muted-foreground text-foreground"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Conversation List - Scrollable */}
-      <div className="flex-1 overflow-y-auto overscroll-contain">
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <p className="text-sm text-muted-foreground">Loading chats...</p>
-          </div>
-        ) : filteredConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center px-4">
-            <p className="text-sm font-medium text-foreground">
-              {viewArchived ? "No archived chats" : "No chats found"}
-            </p>
-          </div>
-        ) : (
-          <div className="px-0 py-0">
-            {!viewArchived && !searchQuery && archivedChatsCount > 0 && (
-              <div
-                className="w-full flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-white/5 active:bg-white/10 transition-colors border-b border-border/50"
-                onClick={() => setViewArchived(true)}
-              >
-                <div className="flex items-center gap-4">
-                  <Archive className="h-5 w-5 text-muted-foreground" />
-                  <span className="font-medium text-foreground">Archived</span>
+          )
+        }
+      >
+        <div className="flex-1">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <p className="text-sm text-muted-foreground">Loading chats...</p>
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center px-4">
+              <p className="text-sm font-medium text-foreground">
+                {viewArchived ? "No archived chats" : "No chats found"}
+              </p>
+            </div>
+          ) : (
+            <div className="px-0 py-0">
+              {!viewArchived && !searchQuery && archivedChatsCount > 0 && (
+                <div
+                  className="w-full flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 dark:active:bg-white/10 transition-colors border-b border-border/40 dark:border-white/5"
+                  onClick={() => setViewArchived(true)}
+                >
+                  <div className="flex items-center gap-4">
+                    <Archive className="h-5 w-5 text-muted-foreground" />
+                    <span className="font-semibold text-foreground">Archived</span>
+                  </div>
+                  <span className="text-xs font-semibold text-primary">{archivedChatsCount}</span>
                 </div>
-                <span className="text-xs font-semibold text-primary">{archivedChatsCount}</span>
-              </div>
-            )}
-            {filteredConversations.map((conversation) => (
-              <ConversationItem
-                key={conversation.id}
-                conversation={conversation}
-                isSelected={selectedConversationId === conversation.id}
-                onSelect={() => handleSelectConversation(conversation.id)}
-                onContextMenu={openContextMenu}
-                currentUserId={user?.id}
-                isTyping={typingChats[conversation.id]}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+              )}
+              {filteredConversations.map((conversation) => (
+                <ConversationItem
+                  key={conversation.id}
+                  conversation={conversation}
+                  isSelected={selectedConversationId === conversation.id}
+                  onSelect={() => handleSelectConversation(conversation.id)}
+                  onContextMenu={openContextMenu}
+                  currentUserId={user?.id}
+                  isTyping={typingChats[conversation.id]}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </AppLayout>
 
       {/* Context Menu */}
       <ConversationContextMenu

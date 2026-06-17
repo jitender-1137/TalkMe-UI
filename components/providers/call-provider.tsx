@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { useWebSocket } from "./websocket-provider"
 import { useProfile } from "@/src/api/hooks/useProfile"
 import { CallModal } from "../chat/call-modal"
+import { MinimizedCallWidget } from "../chat/minimized-call-widget"
 import { toast } from "sonner"
 import type { ChatContact } from "../chat/types"
+import { MessageService } from "@/src/api/services/message.service"
 
 // Sound synthesis helper using Web Audio API to avoid external static files
 class RingtoneManager {
@@ -149,10 +151,28 @@ export function useCall() {
   return ctx
 }
 
+const formatCallDuration = (seconds: number) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, "0")}`
+}
+
 export function CallProvider({ children }: { children: React.ReactNode }) {
   const { registerHandler, sendEvent } = useWebSocket()
   const { data: ownProfile } = useProfile()
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null)
+  const [isMinimized, setIsMinimized] = useState(false)
+
+  const saveCallMessage = useCallback(async (chatId: string, content: string) => {
+    try {
+      await MessageService.sendMessage(chatId, {
+        content: content,
+        type: "text"
+      })
+    } catch (error) {
+      console.error("[CallProvider] Failed to save call message:", error)
+    }
+  }, [])
   
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoOn, setIsVideoOn] = useState(true)
@@ -166,6 +186,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const activeCallRef = useRef<ActiveCall | null>(null)
   const isSettingDescriptionRef = useRef(false)
   const queuedCandidatesRef = useRef<RTCIceCandidateInit[]>([])
+  const pendingOfferRef = useRef<any>(null)
+  const pendingAnswerRef = useRef<any>(null)
 
 
   // Sync ref to allow callbacks to read state without stale closures
@@ -195,6 +217,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     }
     isSettingDescriptionRef.current = false
     queuedCandidatesRef.current = []
+    pendingOfferRef.current = null
+    pendingAnswerRef.current = null
+    setIsMinimized(false)
   }, [localStream])
 
   // Helper to process remote candidates queued before remote description was set
@@ -217,22 +242,31 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const endCall = useCallback(() => {
     const call = activeCallRef.current
     if (call) {
-      sendEvent("call_end", { chatId: call.chatId, callId: call.callId })
+      sendEvent("call_end", { chatId: call.chatId, callId: call.callId, senderId: ownProfile?.id })
+      if (!call.incoming) {
+        const typeStr = call.callType === "video" ? "video" : "voice"
+        const emoji = call.callType === "video" ? "📹" : "📞"
+        if (call.status === "connected" && call.duration) {
+          saveCallMessage(call.chatId, `${emoji} ${typeStr.charAt(0).toUpperCase() + typeStr.slice(1)} call (${formatCallDuration(call.duration)})`)
+        } else {
+          saveCallMessage(call.chatId, `${emoji} Missed ${typeStr} call`)
+        }
+      }
       setActiveCall((prev) => (prev ? { ...prev, status: "ended" } : null))
       setTimeout(() => setActiveCall(null), 1000)
     }
     cleanupWebRTC()
-  }, [sendEvent, cleanupWebRTC])
+  }, [sendEvent, cleanupWebRTC, ownProfile?.id, saveCallMessage])
 
   // Decline Call Callback
   const declineCall = useCallback(() => {
     const call = activeCallRef.current
     if (call) {
-      sendEvent("call_decline", { chatId: call.chatId, callId: call.callId })
+      sendEvent("call_decline", { chatId: call.chatId, callId: call.callId, senderId: ownProfile?.id })
       setActiveCall(null)
     }
     cleanupWebRTC()
-  }, [sendEvent, cleanupWebRTC])
+  }, [sendEvent, cleanupWebRTC, ownProfile?.id])
 
   // Setup WebRTC connection
   const setupWebRTC = useCallback(async (call: ActiveCall, isInitiator: boolean) => {
@@ -269,6 +303,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             chatId: call.chatId,
             callId: call.callId,
             candidate: event.candidate,
+            senderId: ownProfile?.id,
           })
         }
       }
@@ -276,12 +311,57 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       if (isInitiator) {
         // Create WebRTC Offer
         const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        sendEvent("call_offer", {
-          chatId: call.chatId,
-          callId: call.callId,
-          sdp: offer,
-        })
+        isSettingDescriptionRef.current = true
+        try {
+          await pc.setLocalDescription(offer)
+          sendEvent("call_offer", {
+            chatId: call.chatId,
+            callId: call.callId,
+            sdp: offer,
+            senderId: ownProfile?.id,
+          })
+        } finally {
+          isSettingDescriptionRef.current = false
+        }
+
+        // Process early-arriving answer if queued
+        if (pendingAnswerRef.current) {
+          const answerPayload = pendingAnswerRef.current
+          pendingAnswerRef.current = null
+          isSettingDescriptionRef.current = true
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answerPayload.sdp))
+            setActiveCall((prev) => (prev ? { ...prev, status: "connected" } : null))
+            await processQueuedCandidates()
+          } catch (e) {
+            console.error("Error processing early call_answer:", e)
+          } finally {
+            isSettingDescriptionRef.current = false
+          }
+        }
+      } else {
+        // Process early-arriving offer if queued
+        if (pendingOfferRef.current) {
+          const offerPayload = pendingOfferRef.current
+          pendingOfferRef.current = null
+          isSettingDescriptionRef.current = true
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(offerPayload.sdp))
+            const answer = await pc.createAnswer()
+            await pc.setLocalDescription(answer)
+            sendEvent("call_answer", {
+              chatId: offerPayload.chatId,
+              callId: offerPayload.callId,
+              sdp: answer,
+              senderId: ownProfile?.id,
+            })
+            await processQueuedCandidates()
+          } catch (e) {
+            console.error("Error processing early call_offer:", e)
+          } finally {
+            isSettingDescriptionRef.current = false
+          }
+        }
       }
     } catch (err) {
       console.error("Error setting up WebRTC:", err)
@@ -289,7 +369,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       // fallback to mock call
       setActiveCall((prev) => (prev ? { ...prev, status: "connected" } : null))
     }
-  }, [sendEvent, cleanupWebRTC])
+  }, [sendEvent, cleanupWebRTC, ownProfile?.id, processQueuedCandidates])
 
   // Accept Call Callback
   const acceptCall = useCallback(async () => {
@@ -298,10 +378,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
     ringtoneManagerRef.current?.stop()
     setActiveCall((prev) => (prev ? { ...prev, status: "connecting" } : null))
+    setIsMinimized(false)
 
-    sendEvent("call_accept", { chatId: call.chatId, callId: call.callId })
+    sendEvent("call_accept", { chatId: call.chatId, callId: call.callId, senderId: ownProfile?.id })
     await setupWebRTC(call, false)
-  }, [sendEvent, setupWebRTC])
+  }, [sendEvent, setupWebRTC, ownProfile?.id])
 
   // Make Call Callback
   const makeCall = useCallback((chatId: string, contact: ChatContact, type: "audio" | "video") => {
@@ -319,6 +400,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setIsVideoOn(type === "video")
     setIsSpeakerOn(false)
     setActiveCall(newCall)
+    setIsMinimized(false)
 
     ringtoneManagerRef.current?.startOutgoing()
 
@@ -329,6 +411,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       callerName: ownProfile?.name || ownProfile?.username || "Friend",
       callerAvatar: ownProfile?.avatar || "",
       callType: type,
+      senderId: ownProfile?.id,
     })
 
     // Auto-timeout call after 45s if unanswered
@@ -339,17 +422,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         endCall()
       }
     }, 45000)
-  }, [ownProfile, sendEvent, endCall])
+  }, [ownProfile?.id, ownProfile?.name, ownProfile?.username, ownProfile?.avatar, sendEvent, endCall])
 
   // WebSockets Call Events Handlers
   useEffect(() => {
     const unbindInvite = registerHandler("call_invite", (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       if (payload.callerId === ownProfile?.id) return
 
       const current = activeCallRef.current
       if (current && current.status !== "ended") {
         // Already in call, send busy signal
-        sendEvent("call_busy", { chatId: payload.chatId, callId: payload.callId })
+        sendEvent("call_busy", { chatId: payload.chatId, callId: payload.callId, senderId: ownProfile?.id })
         return
       }
 
@@ -371,11 +455,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setIsVideoOn(payload.callType === "video")
       setIsSpeakerOn(false)
       setActiveCall(incomingCall)
+      setIsMinimized(false)
 
       ringtoneManagerRef.current?.startIncoming()
     })
 
     const unbindAccept = registerHandler("call_accept", async (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       const current = activeCallRef.current
       if (current && current.callId === payload.callId) {
         ringtoneManagerRef.current?.stop()
@@ -385,26 +471,48 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     })
 
     const unbindDecline = registerHandler("call_decline", (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       const current = activeCallRef.current
       if (current && current.callId === payload.callId) {
         toast.info("Call declined")
+        if (!current.incoming) {
+          const typeStr = current.callType === "video" ? "video" : "voice"
+          const emoji = current.callType === "video" ? "📹" : "📞"
+          saveCallMessage(current.chatId, `${emoji} Missed ${typeStr} call`)
+        }
         cleanupWebRTC()
         setActiveCall(null)
       }
     })
 
     const unbindBusy = registerHandler("call_busy", (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       const current = activeCallRef.current
       if (current && current.callId === payload.callId) {
         toast.error("User is busy")
+        if (!current.incoming) {
+          const typeStr = current.callType === "video" ? "video" : "voice"
+          const emoji = current.callType === "video" ? "📹" : "📞"
+          saveCallMessage(current.chatId, `${emoji} Missed ${typeStr} call (Busy)`)
+        }
         cleanupWebRTC()
         setActiveCall(null)
       }
     })
 
     const unbindEnd = registerHandler("call_end", (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       const current = activeCallRef.current
       if (current && current.callId === payload.callId) {
+        if (!current.incoming) {
+          const typeStr = current.callType === "video" ? "video" : "voice"
+          const emoji = current.callType === "video" ? "📹" : "📞"
+          if (current.status === "connected" && current.duration) {
+            saveCallMessage(current.chatId, `${emoji} ${typeStr.charAt(0).toUpperCase() + typeStr.slice(1)} call (${formatCallDuration(current.duration)})`)
+          } else {
+            saveCallMessage(current.chatId, `${emoji} Missed ${typeStr} call`)
+          }
+        }
         cleanupWebRTC()
         setActiveCall((prev) => (prev ? { ...prev, status: "ended" } : null))
         setTimeout(() => setActiveCall(null), 1000)
@@ -413,6 +521,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
     // WebRTC Signaling handlers
     const unbindOffer = registerHandler("call_offer", async (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       const pc = peerConnectionRef.current
       if (pc && pc.signalingState === "stable" && !isSettingDescriptionRef.current) {
         try {
@@ -424,6 +533,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             chatId: payload.chatId,
             callId: payload.callId,
             sdp: answer,
+            senderId: ownProfile?.id,
           })
           await processQueuedCandidates()
         } catch (e) {
@@ -431,10 +541,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         } finally {
           isSettingDescriptionRef.current = false
         }
+      } else {
+        pendingOfferRef.current = payload
       }
     })
 
     const unbindAnswer = registerHandler("call_answer", async (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       const pc = peerConnectionRef.current
       if (pc && pc.signalingState === "have-local-offer" && !isSettingDescriptionRef.current) {
         try {
@@ -447,13 +560,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         } finally {
           isSettingDescriptionRef.current = false
         }
+      } else {
+        pendingAnswerRef.current = payload
       }
     })
 
     const unbindCandidate = registerHandler("call_candidate", async (payload) => {
+      if (payload.senderId === ownProfile?.id) return
       const pc = peerConnectionRef.current
-      if (pc && payload.candidate) {
-        if (pc.remoteDescription) {
+      if (payload.candidate) {
+        if (pc && pc.remoteDescription) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
             setActiveCall((prev) => (prev ? { ...prev, status: "connected" } : null))
@@ -476,7 +592,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       unbindAnswer()
       unbindCandidate()
     }
-  }, [ownProfile?.id, registerHandler, sendEvent, setupWebRTC, cleanupWebRTC, processQueuedCandidates])
+  }, [ownProfile?.id, registerHandler, sendEvent, setupWebRTC, cleanupWebRTC, processQueuedCandidates, saveCallMessage])
 
   // Call duration counter
   useEffect(() => {
@@ -586,27 +702,47 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         )}
       </AnimatePresence>
 
-      {/* Call Window Modal */}
+      {/* Call Window Modal / Minimized PiP View */}
       {activeCall &&
         (activeCall.status === "connected" ||
           activeCall.status === "connecting" ||
           (activeCall.status === "ringing" && !activeCall.incoming)) && (
-          <CallModal
-            contact={activeCall.contact}
-            isOpen={true}
-            onClose={endCall}
-            callType={activeCall.callType}
-            status={activeCall.status}
-            duration={activeCall.duration || 0}
-            localStream={localStream}
-            remoteStream={remoteStream}
-            isMuted={isMuted}
-            setIsMuted={setIsMuted}
-            isVideoOn={isVideoOn}
-            setIsVideoOn={setIsVideoOn}
-            isSpeakerOn={isSpeakerOn}
-            setIsSpeakerOn={setIsSpeakerOn}
-          />
+          <>
+            {!isMinimized ? (
+              <CallModal
+                contact={activeCall.contact}
+                isOpen={true}
+                onClose={() => setIsMinimized(true)}
+                onHangup={endCall}
+                callType={activeCall.callType}
+                status={activeCall.status}
+                duration={activeCall.duration || 0}
+                localStream={localStream}
+                remoteStream={remoteStream}
+                isMuted={isMuted}
+                setIsMuted={setIsMuted}
+                isVideoOn={isVideoOn}
+                setIsVideoOn={setIsVideoOn}
+                isSpeakerOn={isSpeakerOn}
+                setIsSpeakerOn={setIsSpeakerOn}
+              />
+            ) : (
+              <MinimizedCallWidget
+                contact={activeCall.contact}
+                callType={activeCall.callType}
+                status={activeCall.status}
+                duration={activeCall.duration || 0}
+                localStream={localStream}
+                remoteStream={remoteStream}
+                isMuted={isMuted}
+                setIsMuted={setIsMuted}
+                isVideoOn={isVideoOn}
+                setIsVideoOn={setIsVideoOn}
+                onMaximize={() => setIsMinimized(false)}
+                onHangup={endCall}
+              />
+            )}
+          </>
         )}
     </CallContext.Provider>
   )

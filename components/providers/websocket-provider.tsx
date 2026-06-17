@@ -203,6 +203,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         client.publish({ destination: "/app/match/exit" })
       } else if (event === "NEW_CHAT") {
         client.publish({ destination: "/app/match/new-chat" })
+      } else if (event.startsWith("call_") && payload.chatId) {
+        client.publish({
+          destination: `/topic/chat/${payload.chatId}/messages`,
+          body: JSON.stringify({
+            event: event,
+            payload: payload
+          })
+        })
       } else {
         client.publish({
           destination: `/app/${event}`,

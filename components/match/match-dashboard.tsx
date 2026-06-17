@@ -384,7 +384,7 @@ export function MatchDashboard() {
 
   // Show radar/search view
   return (
-    <div className="flex flex-col h-full overflow-y-auto pb-24 md:pb-4">
+    <div className="flex flex-col h-full overflow-y-auto pb-6 md:pb-4">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">

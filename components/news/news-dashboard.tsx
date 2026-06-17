@@ -30,7 +30,7 @@ export default function NewsDashboard() {
   const posts = feedData?.items || []
 
   return (
-    <div className="flex h-full flex-col bg-black overflow-y-auto">
+    <div className="flex h-full flex-col bg-black overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+96px)] md:pb-6">
       <FeedHeader />
       
       <div className="mx-auto flex w-full max-w-[820px] justify-center pt-8">

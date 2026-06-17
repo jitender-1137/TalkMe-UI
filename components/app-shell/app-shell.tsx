@@ -48,10 +48,14 @@ function AppShellContent() {
     const isNotLoggedIn = !isAuthenticated
 
     if (!hasInitializedTab.current) {
-      // On initial load, check if hash is #profile for deep-linking
+      // On initial load, check if hash is #profile or #discover for deep-linking
       if (window.location.hash === "#profile" && isAuthenticated && !isGuest) {
         if (activeTab !== "settings") {
           setActiveTab("settings")
+        }
+      } else if (window.location.hash === "#discover") {
+        if (activeTab !== "discover") {
+          setActiveTab("discover")
         }
       } else if (isNotLoggedIn || isGuest) {
         if (activeTab !== "match") {
@@ -107,8 +111,8 @@ function AppShellContent() {
     const handleHashChange = () => {
       const hash = window.location.hash
 
-      // If hash changed away from #messages and #profile, close any open chat rooms and modals
-      if (hash !== "#messages" && hash !== "#profile") {
+      // If hash changed away from #messages, #profile and #discover, close any open chat rooms and modals
+      if (hash !== "#messages" && hash !== "#profile" && hash !== "#discover" && hash !== "#discover-message") {
         if (selectedConversationIdRef.current !== null) {
           setSelectedConversationId(null)
           setShowMobileSecondaryPanel(true)
@@ -137,6 +141,21 @@ function AppShellContent() {
         if (activeTabRef.current !== "chats" && activeTabRef.current !== "match") {
           setActiveTab("chats")
         }
+      } else if (hash === "#discover") {
+        if (activeTabRef.current !== "discover") {
+          setActiveTab("discover")
+        }
+        if (selectedConversationIdRef.current !== null) {
+          setSelectedConversationId(null)
+          setShowMobileSecondaryPanel(true)
+        }
+      } else if (hash === "#discover-message") {
+        if (activeTabRef.current !== "chats") {
+          setActiveTab("chats")
+        }
+        setShowMobileSecondaryPanel(false)
+      } else if (activeTabRef.current === "discover") {
+        setActiveTab("chats")
       }
     }
 
@@ -150,6 +169,11 @@ function AppShellContent() {
       }
     } else if (hash === "#messages") {
       setActiveTab("chats")
+    } else if (hash === "#discover") {
+      setActiveTab("discover")
+    } else if (hash === "#discover-message") {
+      setActiveTab("chats")
+      setShowMobileSecondaryPanel(false)
     }
 
     return () => window.removeEventListener("hashchange", handleHashChange)
@@ -162,22 +186,35 @@ function AppShellContent() {
   useEffect(() => {
     const isMessagingActive = isOneToOneOpen || isLobbyChatOpen
     const isProfileActive = activeTab === "settings"
-    const isDiscoverOrFriends = activeTab === "discover" || activeTab === "friends"
+    const isDiscoverActive = activeTab === "discover"
 
     if (isMessagingActive) {
-      if (window.location.hash !== "#messages" && window.location.hash !== "#profile") {
+      if (
+        window.location.hash !== "#messages" &&
+        window.location.hash !== "#profile" &&
+        window.location.hash !== "#discover-message"
+      ) {
         window.location.hash = "#messages"
       }
-    } else if (isProfileActive) {
-      if (window.location.hash === "#messages") {
-        window.location.hash = ""
+    } else if (isDiscoverActive) {
+      if (window.location.hash !== "#discover" && window.location.hash !== "#discover-message") {
+        window.location.hash = "#discover"
       }
-    } else if (isDiscoverOrFriends) {
-      if (window.location.hash === "#messages") {
+    } else if (isProfileActive) {
+      if (
+        window.location.hash === "#messages" ||
+        window.location.hash === "#discover" ||
+        window.location.hash === "#discover-message"
+      ) {
         window.location.hash = ""
       }
     } else {
-      if (window.location.hash === "#messages" || window.location.hash === "#profile") {
+      if (
+        window.location.hash === "#messages" ||
+        window.location.hash === "#discover" ||
+        window.location.hash === "#discover-message" ||
+        window.location.hash === "#profile"
+      ) {
         window.location.hash = ""
       }
     }

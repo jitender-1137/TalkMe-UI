@@ -206,6 +206,19 @@ export function useSendMessage(chatId: string) {
       const ownProfile = queryClient.getQueryData<any>(QUERY_KEYS.PROFILE.SELF)
       const tempId = `temp-${Date.now()}`
       
+      let replyToObj = null
+      if (payload.replyToId) {
+        const parentMsg = await db.messages.get(payload.replyToId)
+        if (parentMsg) {
+          replyToObj = {
+            id: parentMsg.id,
+            senderName: parentMsg.senderName,
+            content: parentMsg.content,
+            type: parentMsg.type || "TEXT",
+          }
+        }
+      }
+
       const optimisticMessage = {
         id: tempId,
         content: payload.content || "",
@@ -228,7 +241,7 @@ export function useSendMessage(chatId: string) {
         createdAt: new Date().toISOString(),
         status: "sending",
         reactions: [],
-        replyTo: null,
+        replyTo: replyToObj,
         isDeleted: false,
         sequenceNumber: 999999 + Date.now(), // Put optimistic messages at the end
       }

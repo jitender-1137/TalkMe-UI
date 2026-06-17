@@ -172,6 +172,21 @@ export function StrangerChatScreen({
     toast.success(`${type === "image" ? "GIF" : "Sticker"} sent successfully`)
   }
 
+  const handleSendAudio = async (file: File) => {
+    if (isDisconnected) return
+    setIsUploading(true)
+    try {
+      const response = await UploadService.uploadFile(file, "audio", stranger.id)
+      if (response && response.url) {
+        onSendMessage(response.url, "text")
+      }
+    } catch (err) {
+      toast.error("Failed to send voice recording")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   const handleImageClick = () => {
     if (verifyImagePermission()) {
       fileInputRef.current?.click()
@@ -386,6 +401,7 @@ export function StrangerChatScreen({
         onTyping={handleTyping}
         onAttachClick={handleAttachClick}
         onSendMediaDirectly={handleSendMediaDirectly}
+        onRecordComplete={handleSendAudio}
       />
 
       <CameraModal

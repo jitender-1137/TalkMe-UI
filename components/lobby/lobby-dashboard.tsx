@@ -1,20 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  MessageSquare,
-  Send,
-  Smile,
-  Users,
-  ArrowLeft,
-  X,
-  Globe,
-  Loader2,
-} from "lucide-react";
+import React, { useEffect, useRef, useCallback } from "react";
+import { MessageSquare, Users, ArrowLeft, X, Globe, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useLobbyStore } from "./lobby-store";
 import { useOnlineUsers, useInbox, useChat, usePresence } from "./hooks";
@@ -24,37 +13,43 @@ import { QUERY_KEYS } from "@/src/api/query-keys";
 import { useWebSocket } from "@/components/providers/websocket-provider";
 import { useAuth } from "@/components/app-shell/auth-context";
 import { MessageInput } from "@/components/chat/message-input";
-import type { ChatUser, ChatMessage, Conversation } from "./types";
-
-const COMMON_EMOJIS = [
-  "😊",
-  "😂",
-  "🤣",
-  "❤️",
-  "👍",
-  "🔥",
-  "😍",
-  "😘",
-  "🥺",
-  "😭",
-  "😮",
-  "🙏",
-  "😎",
-  "✨",
-  "🎉",
-  "💯",
-];
+import { UploadService } from "@/src/api/services/upload.service";
+import { toast } from "sonner";
+import { MessageMedia } from "@/components/chat/message-media";
+import type { MediaAttachment } from "@/components/chat/types";
+import type { ChatUser} from "./types";
 
 // Helper to detect if a message content is a media URL (GIF/sticker)
 const isMediaUrl = (content: string) => {
   if (!content) return false;
   const trimmed = content.trim();
+  const isUrl = trimmed.startsWith("https://") || 
+                trimmed.startsWith("http://") || 
+                trimmed.startsWith("/api/") || 
+                trimmed.startsWith("/uploads/");
   return (
-    (trimmed.startsWith("https://") || trimmed.startsWith("http://")) &&
+    isUrl &&
     (trimmed.match(/\.(gif|png|jpg|jpeg|webp|svg)(\?.*)?$/i) ||
       trimmed.includes("giphy.com") ||
       trimmed.includes("dicebear.com") ||
-      trimmed.includes("robohash.org"))
+      trimmed.includes("robohash.org") ||
+      (trimmed.includes("/uploads/media") && (trimmed.includes(".gif") || trimmed.includes(".png") || trimmed.includes(".jpg") || trimmed.includes(".jpeg") || trimmed.includes(".webp") || trimmed.includes(".svg"))))
+  );
+};
+
+const isAudioUrl = (content: string) => {
+  if (!content) return false;
+  const trimmed = content.trim();
+  const isUrl = trimmed.startsWith("https://") || 
+                trimmed.startsWith("http://") || 
+                trimmed.startsWith("/api/") || 
+                trimmed.startsWith("/uploads/");
+  return (
+    isUrl &&
+    (trimmed.match(/\.(webm|mp3|wav|ogg|m4a)(\?.*)?$/i) ||
+      trimmed.includes("/uploads/voice-message-") ||
+      trimmed.includes("/uploads/audio-") ||
+      (trimmed.includes("/uploads/media") && (trimmed.includes(".webm") || trimmed.includes(".mp3") || trimmed.includes(".wav") || trimmed.includes(".ogg") || trimmed.includes(".m4a"))))
   );
 };
 
@@ -128,18 +123,28 @@ export function LobbyDashboard() {
 
   const handleCloseChat = () => {
     if (typeof window !== "undefined" && window.location.hash === "#messages") {
-      window.history.back()
+      window.history.back();
     } else {
-      setSelectedUser(null)
+      setSelectedUser(null);
     }
   };
 
   return (
-    <div className="h-full flex flex-col bg-background text-foreground overflow-hidden relative">
-
-
+    <div
+      className={cn(
+        "flex flex-col bg-background text-foreground relative",
+        selectedUser
+          ? "h-full overflow-hidden"
+          : "h-auto md:h-full md:overflow-hidden overflow-visible"
+      )}
+    >
       {/* Main Layout Container */}
-      <div className="flex-1 flex overflow-hidden">
+      <div
+        className={cn(
+          "flex-1 flex md:overflow-hidden",
+          selectedUser ? "overflow-hidden" : "overflow-visible"
+        )}
+      >
         {/* LEFT COLUMN: User list and Inbox */}
         <div
           className={cn(
@@ -148,7 +153,7 @@ export function LobbyDashboard() {
           )}
         >
           {/* Header Card */}
-          <div className="p-4 bg-card border-b border-border shrink-0">
+          <div className="p-4 bg-card border-b border-border shrink-0 md:static sticky top-[calc(env(safe-area-inset-top)+56px)] z-20">
             <h1 className="text-lg font-bold text-foreground tracking-tight flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shrink-0" />
               Talk with Strangers
@@ -156,7 +161,7 @@ export function LobbyDashboard() {
           </div>
 
           {/* Statistics Tabs */}
-          <div className="grid grid-cols-2 p-2 gap-2 bg-card border-b border-border shrink-0">
+          <div className="grid grid-cols-2 p-2 gap-2 bg-card border-b border-border shrink-0 md:static sticky top-[calc(env(safe-area-inset-top)+112px)] z-20">
             <button
               onClick={() => setActiveTab("lobby")}
               className={cn(
@@ -191,16 +196,13 @@ export function LobbyDashboard() {
 
           {/* Filter Bar (Lobby view only) */}
           {activeTab === "lobby" && (
-            <div className="px-4 py-3 bg-background border-b border-border shrink-0 flex items-center gap-2 overflow-x-auto select-none no-scrollbar">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0 mr-1">
-                Filter:
-              </span>
+            <div className="d-flex justify-center py-0.5 bg-background shrink-0 flex items-center gap-0.5 overflow-x-auto select-none no-scrollbar md:static sticky top-[calc(env(safe-area-inset-top)+168px)] z-20">
               <button
                 onClick={() => setGenderFilter("all")}
                 className={cn(
                   "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0",
                   genderFilter === "all"
-                    ? "bg-foreground text-background"
+                    ? "bg-primary text-background"
                     : "bg-card text-muted-foreground hover:bg-muted",
                 )}
               >
@@ -211,7 +213,7 @@ export function LobbyDashboard() {
                 className={cn(
                   "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0",
                   genderFilter === "female"
-                    ? "bg-foreground text-background"
+                    ? "bg-primary text-background"
                     : "bg-card text-muted-foreground hover:bg-muted",
                 )}
               >
@@ -222,7 +224,7 @@ export function LobbyDashboard() {
                 className={cn(
                   "px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all shrink-0",
                   genderFilter === "male"
-                    ? "bg-foreground text-background"
+                    ? "bg-primary text-background"
                     : "bg-card text-muted-foreground hover:bg-muted",
                 )}
               >
@@ -232,7 +234,7 @@ export function LobbyDashboard() {
           )}
 
           {/* Scrollable Container (User List or Inbox list) */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+          <div className="flex-1 md:overflow-y-auto overflow-visible custom-scrollbar p-3 space-y-2">
             {activeTab === "lobby" ? (
               isUsersLoading ? (
                 <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-2">
@@ -492,6 +494,18 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
     [sendMessage],
   );
 
+  const handleSendAudio = useCallback(
+    async (file: File) => {
+      try {
+        const res = await UploadService.uploadFile(file, "audio", "lobby", () => {});
+        sendMessage(res.url);
+      } catch (err) {
+        toast.error("Failed to send audio message");
+      }
+    },
+    [sendMessage]
+  );
+
   const formatMessageTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
@@ -605,7 +619,42 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
                   key={msg.id || `msg-${idx}`}
                   className={cn("flex w-full", isOwn ? "justify-end" : "justify-start")}
                 >
-                  {isMediaUrl(msg.content) ? (
+                  {isAudioUrl(msg.content) ? (
+                    <div
+                      className={cn(
+                        "rounded-2xl p-2.5 shadow-sm transition-all duration-300 relative group max-w-[300px]",
+                        isOwn
+                          ? "bg-primary text-primary-foreground rounded-br-none"
+                          : "bg-card border border-border text-foreground rounded-bl-none",
+                      )}
+                    >
+                      <MessageMedia
+                        media={{
+                          type: "audio",
+                          url: msg.content,
+                          fileName: "voice-message.webm",
+                        }}
+                        isSent={isOwn}
+                        chatId="lobby"
+                        messageId={msg.id}
+                      />
+                      <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
+                        <span
+                          className={cn(
+                            "text-[9px]",
+                            isOwn ? "text-primary-foreground/60" : "text-muted-foreground",
+                          )}
+                        >
+                          {formatMessageTime(msg.timestamp || new Date(msg.createdAt).getTime())}
+                        </span>
+                        {isOwn && (
+                          <span className="text-[10px] text-primary-foreground/70">
+                            {msg.read ? "✓✓" : "✓"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : isMediaUrl(msg.content) ? (
                     <div className="relative">
                       <img
                         src={msg.content}
@@ -688,6 +737,7 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
         disabled={!isPartnerOnline}
         onTyping={handleTyping}
         onSendMediaDirectly={handleSendMediaDirectly}
+        onRecordComplete={handleSendAudio}
       />
     </div>
   );

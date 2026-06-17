@@ -4,7 +4,25 @@ import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { SafeModeMedia } from "./safe-mode-media"
+import { MessageMedia } from "@/components/chat/message-media"
+import type { MediaAttachment } from "@/components/chat/types"
 import type { StrangerMessage } from "./types"
+
+const isAudioUrl = (content: string) => {
+  if (!content) return false;
+  const trimmed = content.trim();
+  const isUrl = trimmed.startsWith("https://") || 
+                trimmed.startsWith("http://") || 
+                trimmed.startsWith("/api/") || 
+                trimmed.startsWith("/uploads/");
+  return (
+    isUrl &&
+    (trimmed.match(/\.(webm|mp3|wav|ogg|m4a)(\?.*)?$/i) ||
+      trimmed.includes("/uploads/voice-message-") ||
+      trimmed.includes("/uploads/audio-") ||
+      (trimmed.includes("/uploads/media") && (trimmed.includes(".webm") || trimmed.includes(".mp3") || trimmed.includes(".wav") || trimmed.includes(".ogg") || trimmed.includes(".m4a"))))
+  );
+};
 
 interface StrangerChatBubbleProps {
   message: StrangerMessage
@@ -117,8 +135,24 @@ export function StrangerChatBubble({
           )}
 
           {/* Text content */}
-          {message.content && (
+          {message.content && !isAudioUrl(message.content) && (
             <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+          )}
+
+          {/* Audio content */}
+          {message.content && isAudioUrl(message.content) && (
+            <div className="my-1.5">
+              <MessageMedia
+                media={{
+                  type: "audio",
+                  url: message.content,
+                  fileName: "voice-message.webm",
+                }}
+                isSent={!isFromStranger}
+                chatId="stranger"
+                messageId={message.id}
+              />
+            </div>
           )}
 
           {/* Timestamp */}

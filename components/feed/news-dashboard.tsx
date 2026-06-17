@@ -3,12 +3,13 @@
 
 
 import { useState, useCallback, useRef } from "react"
+import { AppLayout } from "@/components/ui/app-layout"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StoriesCarousel } from "./stories-carousel"
 import { MainFeed } from "./main-feed"
 import { ProfileExplorer } from "./profile-explorer"
 import type { StoryGroup, Post, UserProfile } from "./types"
-import { Loader2 } from "lucide-react"
+import { Loader2, Newspaper } from "lucide-react"
 
 import {
   useFeed,
@@ -27,6 +28,7 @@ import { useProfile, useUpdateProfile } from "@/src/api/hooks/useProfile"
 
 export function NewsDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [activeTab, setActiveTab] = useState("feed")
   
   const { data: ownProfile, isLoading: isProfileLoading } = useProfile()
   const { data: storiesResponse, isLoading: isStoriesLoading } = useStories()
@@ -174,7 +176,7 @@ export function NewsDashboard() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col pb-24 md:pb-0">
+    <div className="h-full w-full">
       <input
         type="file"
         ref={fileInputRef}
@@ -182,45 +184,61 @@ export function NewsDashboard() {
         accept="image/*,video/*"
         className="hidden"
       />
-      <Tabs defaultValue="feed" className="flex-1 flex flex-col min-h-0">
-        <div className="sticky top-0 z-20 bg-background border-b border-border shrink-0">
-          <TabsList className="w-full h-12 bg-transparent rounded-none justify-start px-4 gap-2">
-            <TabsTrigger
-              value="feed"
-              className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-4"
-            >
-              Feed
-            </TabsTrigger>
-            <TabsTrigger
-              value="explore"
-              className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-4"
-            >
-              Explore
-            </TabsTrigger>
-            <TabsTrigger
-              value="profile"
-              className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-full px-4"
-            >
-              My Profile
-            </TabsTrigger>
-          </TabsList>
-        </div>
+      <AppLayout
+        title="News"
+        icon={Newspaper}
+        filterChips={[
+          { id: "feed", label: "Feed" },
+          { id: "explore", label: "Explore" },
+          { id: "profile", label: "My Profile" },
+        ]}
+        activeFilterId={activeTab}
+        onFilterChange={setActiveTab}
+      >
+        <div className="flex-1 max-w-2xl mx-auto w-full px-4 pb-8 mt-0">
+          {activeTab === "feed" && (
+            <div>
+              {/* Stories */}
+              <div className="py-4 border-b border-border/40 dark:border-white/5">
+                <StoriesCarousel
+                  storyGroups={mappedStoryGroups}
+                  onStoryViewed={handleStoryViewed}
+                  onAddStory={handleAddStoryClick}
+                  currentUserAvatar={mappedProfile.avatar}
+                  currentUserName={mappedProfile.name}
+                />
+              </div>
 
-        <TabsContent value="feed" className="flex-1 overflow-auto mt-0">
-          <div className="max-w-2xl mx-auto">
-            {/* Stories */}
-            <div className="py-4 border-b border-border">
-              <StoriesCarousel
-                storyGroups={mappedStoryGroups}
-                onStoryViewed={handleStoryViewed}
-                onAddStory={handleAddStoryClick}
-                currentUserAvatar={mappedProfile.avatar}
-                currentUserName={mappedProfile.name}
-              />
+              {/* Feed */}
+              <div className="py-4">
+                <MainFeed
+                  initialPosts={mappedPosts}
+                  onLoadMore={handleLoadMore}
+                  onLike={handleLike}
+                  onBookmark={handleBookmark}
+                  onShare={handleShare}
+                  onComment={handleComment}
+                />
+              </div>
             </div>
+          )}
 
-            {/* Feed */}
-            <div className="p-4">
+          {activeTab === "explore" && (
+            <div className="py-4">
+              <h2 className="text-lg font-bold mb-4 text-foreground">Trending Topics</h2>
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {["Technology", "Design", "Travel", "Food"].map((topic) => (
+                  <button
+                    key={topic}
+                    className="p-4 bg-card border border-border/50 rounded-xl hover:border-primary/50 transition-colors text-left cursor-pointer"
+                  >
+                    <p className="font-semibold text-foreground text-sm">{topic}</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">5 posts</p>
+                  </button>
+                ))}
+              </div>
+
+              <h2 className="text-lg font-bold mb-4 text-foreground">Suggested Posts</h2>
               <MainFeed
                 initialPosts={mappedPosts}
                 onLoadMore={handleLoadMore}
@@ -230,47 +248,18 @@ export function NewsDashboard() {
                 onComment={handleComment}
               />
             </div>
-          </div>
-        </TabsContent>
+          )}
 
-        <TabsContent value="explore" className="flex-1 overflow-auto mt-0">
-          <div className="max-w-2xl mx-auto p-4">
-            <h2 className="text-lg font-semibold mb-4">Trending Topics</h2>
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              {["Technology", "Design", "Travel", "Food"].map((topic) => (
-                <button
-                  key={topic}
-                  className="p-4 bg-card border border-border rounded-xl hover:border-primary/50 transition-colors text-left"
-                >
-                  <p className="font-semibold">{topic}</p>
-                  <p className="text-sm text-muted-foreground">
-                    5 posts
-                  </p>
-                </button>
-              ))}
+          {activeTab === "profile" && (
+            <div className="py-4">
+              <ProfileExplorer
+                profile={mappedProfile}
+                onUpdateProfile={handleUpdateProfile}
+              />
             </div>
-
-            <h2 className="text-lg font-semibold mb-4">Suggested Posts</h2>
-            <MainFeed
-              initialPosts={mappedPosts}
-              onLoadMore={handleLoadMore}
-              onLike={handleLike}
-              onBookmark={handleBookmark}
-              onShare={handleShare}
-              onComment={handleComment}
-            />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="profile" className="flex-1 overflow-auto mt-0">
-          <div className="max-w-2xl mx-auto pb-8">
-            <ProfileExplorer
-              profile={mappedProfile}
-              onUpdateProfile={handleUpdateProfile}
-            />
-          </div>
-        </TabsContent>
-      </Tabs>
+          )}
+        </div>
+      </AppLayout>
     </div>
   )
 }

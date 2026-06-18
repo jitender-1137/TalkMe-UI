@@ -54,6 +54,7 @@ export function CallModal({
 }: CallModalProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const remoteAudioRef = useRef<HTMLAudioElement>(null)
 
   // Bind local webcam feed to local video element
   useEffect(() => {
@@ -66,6 +67,18 @@ export function CallModal({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream
+    }
+  }, [remoteStream])
+
+  // Bind the remote stream to a dedicated <audio> element so the peer's voice is
+  // ALWAYS played — the remote <video> only renders during a video call, so on
+  // voice calls (or when video is toggled off) nothing else would play the audio.
+  useEffect(() => {
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream
+      remoteAudioRef.current.play().catch(() => {
+        /* autoplay should be allowed (call started via user gesture) */
+      })
     }
   }, [remoteStream])
 
@@ -100,6 +113,10 @@ export function CallModal({
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[130] bg-[#0b141a] text-white flex flex-col justify-between overflow-hidden"
       >
+        {/* Always-present remote audio — guarantees the peer's voice plays on
+            voice calls and when video is off (the remote <video> isn't rendered then). */}
+        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
         {/* VIDEO CALL SCREEN */}
         {showVideoFeed ? (
           <div className="absolute inset-0 z-0">
@@ -109,6 +126,7 @@ export function CallModal({
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
+                muted
                 className="w-full h-full object-cover"
               />
             ) : (

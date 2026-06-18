@@ -45,6 +45,7 @@ export function MinimizedCallWidget({
 }: MinimizedCallWidgetProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const [hovered, setHovered] = useState(false)
 
   // Bind local webcam feed to local video element
@@ -58,6 +59,16 @@ export function MinimizedCallWidget({
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream
+    }
+  }, [remoteStream])
+
+  // Always play the remote audio via a dedicated element (the remote <video>
+  // only exists in video mode), so the peer's voice keeps playing when the call
+  // is minimized — including voice calls and video-off.
+  useEffect(() => {
+    if (remoteAudioRef.current && remoteStream) {
+      remoteAudioRef.current.srcObject = remoteStream
+      remoteAudioRef.current.play().catch(() => {})
     }
   }, [remoteStream])
 
@@ -96,12 +107,14 @@ export function MinimizedCallWidget({
         onMouseLeave={() => setHovered(false)}
         className="fixed bottom-24 right-4 z-[120] w-48 h-64 bg-[#121b22] border border-white/10 rounded-2xl overflow-hidden shadow-2xl cursor-grab active:cursor-grabbing select-none"
       >
+        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
         {/* Remote Video Stream */}
         {remoteStream ? (
           <video
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            muted
             className="w-full h-full object-cover pointer-events-none"
           />
         ) : (
@@ -192,6 +205,7 @@ export function MinimizedCallWidget({
       exit={{ opacity: 0, scale: 0.9, y: 20 }}
       className="fixed bottom-24 right-4 z-[120] w-72 h-14 bg-[#121b22]/95 backdrop-blur-md border border-white/10 rounded-full flex items-center justify-between px-3 py-1.5 shadow-2xl cursor-grab active:cursor-grabbing select-none"
     >
+      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
       <div className="flex items-center gap-2 min-w-0">
         <div className="w-8 h-8 rounded-full overflow-hidden bg-neutral-800 flex items-center justify-center border border-white/5 shrink-0">
           {contact.avatar ? (

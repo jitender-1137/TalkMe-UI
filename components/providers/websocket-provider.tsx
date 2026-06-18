@@ -13,6 +13,7 @@ import { MessageService } from "@/src/api/services/message.service"
 import { ChatService } from "@/src/api/services/chat.service"
 import type { Chat, Contact } from "@/src/api/types"
 import { formatMediaUrls, checkIsSameJar } from "@/src/api/client"
+import { setBadge } from "@/lib/badge/badge"
 import { X } from "lucide-react"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { db, mapResponseToLocalMessage, mapResponseToLocalChat, normalizeMessageStatus, putChatSafely } from "@/src/api/db"
@@ -812,6 +813,32 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (err) {
           console.error("[STOMP] Match payload parse error:", err)
+        }
+      })
+
+      // Subscribe to live matchmaking online count (replaces 10s polling).
+      // Server broadcasts { count } on every change; write straight to cache.
+      client.subscribe("/topic/match/online", (message) => {
+        try {
+          const payload = JSON.parse(message.body)
+          if (typeof payload?.count === "number") {
+            queryClient.setQueryData(QUERY_KEYS.MATCH.ONLINE_COUNT, payload.count)
+          }
+        } catch (err) {
+          console.error("[STOMP] Online count parse error:", err)
+        }
+      })
+
+      // Subscribe to the server-driven total unread count → drive the app badge.
+      client.subscribe("/user/queue/unread", (message) => {
+        try {
+          const payload = JSON.parse(message.body)
+          if (typeof payload?.totalUnread === "number") {
+            setBadge(payload.totalUnread)
+            handlersRef.current["unread_count"]?.forEach((h) => h(payload))
+          }
+        } catch (err) {
+          console.error("[STOMP] Unread count parse error:", err)
         }
       })
 

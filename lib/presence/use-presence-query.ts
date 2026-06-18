@@ -24,8 +24,12 @@ export function usePresenceQuery(userId: string) {
   return useQuery({
     queryKey: ['presence', userId],
     queryFn: () => fetchPresence(userId),
-    refetchInterval: 30000, // Refetch every 30 seconds
-    staleTime: 10000, // Consider data stale after 10 seconds
+    // No polling — presence updates arrive over WebSocket
+    // (/topic/presence/{username}) and are written into the cache by the
+    // WebSocketProvider.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 

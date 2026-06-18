@@ -13,6 +13,10 @@ export function useFollowUser() {
     onSuccess: (_, userUuid) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.POSTS.FEED })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONTACTS.DETAIL(userUuid) })
+      queryClient.invalidateQueries({ queryKey: ["followers", userUuid] })
+      queryClient.invalidateQueries({ queryKey: ["following", userUuid] })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE.SELF })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE.BY_ID(userUuid) })
       showSuccessToast("Following user!")
     },
     onError: showErrorToast,
@@ -27,6 +31,10 @@ export function useUnfollowUser() {
     onSuccess: (_, userUuid) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.POSTS.FEED })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CONTACTS.DETAIL(userUuid) })
+      queryClient.invalidateQueries({ queryKey: ["followers", userUuid] })
+      queryClient.invalidateQueries({ queryKey: ["following", userUuid] })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE.SELF })
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE.BY_ID(userUuid) })
       showSuccessToast("Unfollowed user")
     },
     onError: showErrorToast,

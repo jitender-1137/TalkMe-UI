@@ -1,19 +1,25 @@
 import apiClient from "../client"
 import { ENDPOINTS } from "../endpoints"
-import { unwrapResponse } from "../response-handler"
+import { unwrapResponse, unwrapPaginatedResponse } from "../response-handler"
 import type { Post, Comment, CreatePostPayload } from "../types/social.types"
 import type { PaginatedResponse, PaginationParams } from "../types/api.types"
+
+/** Shape returned by the backend PostCommentResponse. */
+export interface PostCommentDTO {
+  id: string
+  userId?: string
+  username: string
+  name: string
+  profileImage?: string | null
+  content: string
+  createdAt: string
+}
 
 export const PostService = {
   /** Fetch paginated posts feed. */
   getFeed: async (params?: PaginationParams): Promise<PaginatedResponse<Post>> => {
-    const response = await apiClient.get<{
-      success: boolean
-      message: string
-      data: PaginatedResponse<Post>
-      timestamp: string
-    }>(ENDPOINTS.POSTS.LIST, { params })
-    return unwrapResponse(response)
+    const response = await apiClient.get<any>(ENDPOINTS.POSTS.LIST, { params })
+    return unwrapPaginatedResponse(response)
   },
 
   /** Create a new post. */
@@ -24,6 +30,17 @@ export const PostService = {
       data: Post
       timestamp: string
     }>(ENDPOINTS.POSTS.CREATE, payload)
+    return unwrapResponse(response)
+  },
+
+  /** Update a post's caption (owner only). */
+  updatePost: async (postId: string, content: string): Promise<Post> => {
+    const response = await apiClient.put<{
+      success: boolean
+      message: string
+      data: Post
+      timestamp: string
+    }>(ENDPOINTS.POSTS.UPDATE(postId), { content })
     return unwrapResponse(response)
   },
 
@@ -60,25 +77,37 @@ export const PostService = {
     await apiClient.post(ENDPOINTS.POSTS.SHARE(postId), payload)
   },
 
-  /** Fetch comments for a post. */
-  getComments: async (postId: string): Promise<Comment[]> => {
-    const response = await apiClient.get<{
-      success: boolean
-      message: string
-      data: Comment[]
-      timestamp: string
-    }>(ENDPOINTS.POSTS.COMMENTS(postId))
-    return unwrapResponse(response)
+  /** Fetch a page of comments for a post (cursor/page-based for infinite scroll). */
+  getComments: async (
+    postId: string,
+    page = 0,
+    size = 15,
+  ): Promise<PaginatedResponse<PostCommentDTO>> => {
+    const response = await apiClient.get<any>(ENDPOINTS.POSTS.COMMENTS(postId), {
+      params: { page, size },
+    })
+    return unwrapPaginatedResponse<PostCommentDTO>(response)
   },
 
   /** Add a comment to a post. */
-  createComment: async (postId: string, content: string): Promise<Comment> => {
+  createComment: async (postId: string, content: string): Promise<PostCommentDTO> => {
     const response = await apiClient.post<{
       success: boolean
       message: string
-      data: Comment
+      data: PostCommentDTO
       timestamp: string
     }>(ENDPOINTS.POSTS.CREATE_COMMENT(postId), { content })
+    return unwrapResponse(response)
+  },
+
+  /** Edit one of the current user's comments. */
+  editComment: async (postId: string, commentId: string, content: string): Promise<PostCommentDTO> => {
+    const response = await apiClient.put<{
+      success: boolean
+      message: string
+      data: PostCommentDTO
+      timestamp: string
+    }>(ENDPOINTS.POSTS.EDIT_COMMENT(postId, commentId), { content })
     return unwrapResponse(response)
   },
 
@@ -89,12 +118,7 @@ export const PostService = {
 
   /** Fetch a specific user's posts. */
   getUserPosts: async (userId: string, params?: PaginationParams): Promise<PaginatedResponse<Post>> => {
-    const response = await apiClient.get<{
-      success: boolean
-      message: string
-      data: PaginatedResponse<Post>
-      timestamp: string
-    }>(ENDPOINTS.POSTS.USER(userId), { params })
-    return unwrapResponse(response)
+    const response = await apiClient.get<any>(ENDPOINTS.POSTS.USER(userId), { params })
+    return unwrapPaginatedResponse(response)
   },
 }

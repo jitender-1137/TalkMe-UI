@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "./auth-context";
+import { Turnstile } from "@/components/security/turnstile";
 import {
   X,
   User,
@@ -40,6 +41,8 @@ export function SignupModal() {
   // const [confirmPassword, setConfirmPassword] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot
   const [error, setError] = useState("");
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -108,7 +111,7 @@ export function SignupModal() {
     if (hasError) return;
 
     try {
-      await signup(name, email, password, username, ageNum, gender);
+      await signup(name, email, password, username, ageNum, gender, captchaToken, website);
     } catch (err: any) {
       if (err?.response?.data?.message) {
         setError(err.response.data.message);
@@ -424,6 +427,21 @@ export function SignupModal() {
                   </div>
                   {agreedError && <p className="text-xs text-destructive mt-1">{agreedError}</p>}
                 </div>
+
+                {/* Honeypot — hidden from real users */}
+                <input
+                  type="text"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  className="hidden"
+                  aria-hidden="true"
+                />
+
+                {/* Bot challenge */}
+                <Turnstile onVerify={setCaptchaToken} onExpire={() => setCaptchaToken("")} className="flex justify-center" />
 
                 <Button type="submit" className="w-full h-11" disabled={isSignupPending}>
                   {isSignupPending ? "Creating account..." : "Create Account"}

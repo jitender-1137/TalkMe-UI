@@ -1,16 +1,16 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Users } from "lucide-react"
-import { AllFriends } from "./all-friends"
-import { FriendRequests } from "./friend-requests"
-import { useContactRequests } from "@/src/api/hooks/useContacts"
-import { AppLayout } from "@/components/ui/app-layout"
+import { useState } from "react";
+import { Users } from "lucide-react";
+import { AllFriends } from "./all-friends";
+import { FriendRequests } from "./friend-requests";
+import { useContactRequests } from "@/src/api/hooks/useContacts";
+import { AppLayout } from "@/components/ui/app-layout";
 
 export function FriendsDashboard() {
-  const { data: requests = [] } = useContactRequests()
-  const requestCount = requests.length
-  const [activeTab, setActiveTab] = useState("all")
+  const { data: requests = [] } = useContactRequests();
+  const requestCount = requests.length;
+  const [activeTab, setActiveTab] = useState("all");
 
   return (
     <div className="h-full w-full">
@@ -25,14 +25,10 @@ export function FriendsDashboard() {
         onFilterChange={setActiveTab}
         collapseFiltersToHeader={true}
       >
-        <div className="flex-1 px-6 pb-6 mt-0">
-          {activeTab === "all" ? (
-            <AllFriends />
-          ) : (
-            <FriendRequests onCountChange={() => {}} />
-          )}
+        <div className="flex-1 px-4 pb-24 mt-0">
+          {activeTab === "all" ? <AllFriends /> : <FriendRequests onCountChange={() => {}} />}
         </div>
       </AppLayout>
     </div>
-  )
+  );
 }

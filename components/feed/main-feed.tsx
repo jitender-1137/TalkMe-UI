@@ -13,6 +13,7 @@ interface MainFeedProps {
   onBookmark: (postId: string) => void
   onShare: (postId: string) => void
   onComment: (postId: string, content: string) => void
+  onAuthorClick?: (authorId: string) => void
 }
 
 export function MainFeed({
@@ -22,6 +23,7 @@ export function MainFeed({
   onBookmark,
   onShare,
   onComment,
+  onAuthorClick,
 }: MainFeedProps) {
   const [posts, setPosts] = useState<Post[]>(initialPosts)
   const [isLoading, setIsLoading] = useState(false)
@@ -139,6 +141,7 @@ export function MainFeed({
               onBookmark={handleBookmark}
               onShare={onShare}
               onComment={handleComment}
+              onAuthorClick={onAuthorClick}
             />
           </motion.div>
         ))}

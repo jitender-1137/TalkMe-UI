@@ -296,8 +296,10 @@ export function ChatArea({
             url: res.url,
             type: pendingAttachment.type,
             fileName: pendingAttachment.file.name,
-            fileSize: `${(pendingAttachment.file.size / (1024 * 1024)).toFixed(2)} MB`,
-            mimeType: pendingAttachment.file.type,
+            // Use the uploaded file's size/mime (images are compressed in
+            // UploadService before upload) so metadata matches what's stored.
+            fileSize: `${((res.size ?? pendingAttachment.file.size) / (1024 * 1024)).toFixed(2)} MB`,
+            mimeType: res.mimeType ?? pendingAttachment.file.type,
           },
         })
         setPendingAttachment(null)
@@ -444,17 +446,19 @@ export function ChatArea({
   }, [fetchNextPage, hasNextPage, isFetchingNextPage])
 
   const handleBack = () => {
-    if (
-      typeof window !== "undefined" &&
-      (window.location.hash === "#messages" || window.location.hash === "#discover-message")
-    ) {
+    // On mobile we pushed a single history entry for the chat screen
+    // (useBackDismiss). Route the in-app back button through history.back() so
+    // it behaves identically to the OS Back button — closing the chat AND
+    // restoring the tab it was opened from. On desktop there is no such entry,
+    // so close via state (history.back() there would leave the app).
+    if (typeof window !== "undefined" && (window.history.state as any)?.__backDismiss) {
       window.history.back()
-    } else {
-      setSelectedConversationId(null)
-      setShowMobileSecondaryPanel(true)
-      if (onBack) {
-        onBack()
-      }
+      return
+    }
+    setSelectedConversationId(null)
+    setShowMobileSecondaryPanel(true)
+    if (onBack) {
+      onBack()
     }
   }
 

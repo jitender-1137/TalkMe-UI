@@ -24,11 +24,13 @@ import { useQueryClient } from "@tanstack/react-query"
 import { QUERY_KEYS } from "@/src/api/query-keys"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { UserProfileModal } from "@/components/chat/user-profile-modal"
-import { useHashSync } from "@/hooks/use-hash-sync"
+import { getTabFromHash } from "@/lib/navigation/url-hash"
+import { useBackDismiss } from "@/hooks/use-back-dismiss"
+import { NotificationSetup } from "@/components/providers/notification-setup"
 
 function AppShellContent() {
   const { activeTab, setActiveTab } = useNavigation()
-  const { showMobileSecondaryPanel, selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, profileModal, setProfileModal } = useChatContext()
+  const { showMobileSecondaryPanel, selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, profileModal, setProfileModal, chatReturnTab, setChatReturnTab } = useChatContext()
   const lobbySelectedUser = useLobbyStore((state) => state.selectedUser)
   const { isAuthenticated, isGuestMatch, isLoading, openLoginModal } = useAuth()
   const queryClient = useQueryClient()
@@ -46,26 +48,32 @@ function AppShellContent() {
 
     const isGuest = isGuestMatch
     const isNotLoggedIn = !isAuthenticated
+    const isFull = isAuthenticated && !isGuest
 
     if (!hasInitializedTab.current) {
-      // On initial load, check if hash is #profile or #discover for deep-linking
-      if (window.location.hash === "#profile" && isAuthenticated && !isGuest) {
-        if (activeTab !== "settings") {
-          setActiveTab("settings")
-        }
-      } else if (window.location.hash === "#discover") {
-        if (activeTab !== "discover") {
-          setActiveTab("discover")
-        }
+      // Resolve the deep-link tab from the hash through the centralized manager.
+      // (NavigationProvider already seeded `activeTab` from the hash; here we
+      // only override it with the auth-aware default when the deep link is
+      // missing or not permitted for the current auth state.)
+      const hashTab = getTabFromHash(window.location.hash)
+      const canUseHashTab =
+        hashTab === "discover"
+          ? isAuthenticated
+          : hashTab === "settings" || hashTab === "friends" || hashTab === "news"
+            ? isFull
+            : hashTab === "chats"
+              ? isFull
+              : hashTab === "match"
+                ? true
+                : false
+
+      if (hashTab && canUseHashTab) {
+        if (activeTab !== hashTab) setActiveTab(hashTab)
       } else if (isNotLoggedIn || isGuest) {
-        if (activeTab !== "match") {
-          setActiveTab("match")
-        }
+        if (activeTab !== "match") setActiveTab("match")
       } else {
-        // Registered user on initial load gets chats tab
-        if (activeTab !== "chats") {
-          setActiveTab("chats")
-        }
+        // Registered user with no usable deep link → chats.
+        if (activeTab !== "chats") setActiveTab("chats")
       }
       hasInitializedTab.current = true
       prevIsAuthenticated.current = isAuthenticated
@@ -78,13 +86,8 @@ function AppShellContent() {
     }
   }, [isLoading, isAuthenticated, isGuestMatch, activeTab, setActiveTab, openLoginModal])
 
-  const activeTabRef = useRef(activeTab)
   const selectedConversationIdRef = useRef(selectedConversationId)
   const lobbySelectedUserRef = useRef(lobbySelectedUser)
-
-  useEffect(() => {
-    activeTabRef.current = activeTab
-  }, [activeTab])
 
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId
@@ -99,126 +102,65 @@ function AppShellContent() {
     profileModalRef.current = profileModal
   }, [profileModal])
 
-  const handleProfileClose = useHashSync(
-    profileModal !== null,
-    () => setProfileModal(null),
-    "#profile",
-    selectedConversationId ? "#messages" : ""
-  )
-
-  // Sync tab state with url hash changes
+  const chatReturnTabRef = useRef(chatReturnTab)
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash
+    chatReturnTabRef.current = chatReturnTab
+  }, [chatReturnTab])
 
-      // If hash changed away from #messages, #profile and #discover, close any open chat rooms and modals
-      if (hash !== "#messages" && hash !== "#profile" && hash !== "#discover" && hash !== "#discover-message") {
-        if (selectedConversationIdRef.current !== null) {
-          setSelectedConversationId(null)
-          setShowMobileSecondaryPanel(true)
-        }
-        if (lobbySelectedUserRef.current !== null) {
-          useLobbyStore.getState().setSelectedUser(null)
-        }
-        if (useMatchStore.getState().status === "matched") {
-          useMatchStore.getState().resetMatch()
-        }
-        if (profileModalRef.current !== null) {
-          setProfileModal(null)
-        }
-      }
+  // ── Native-style Back for the mobile chat screen ───────────────────────────
+  // On mobile, an open conversation (or a lobby/match chat) is a screen pushed
+  // on top of the current tab. `useBackDismiss` pushes ONE history entry when it
+  // opens; pressing Back pops that entry and runs `closeChatScreen`, which
+  // closes the chat and returns to the tab it was opened from (e.g. Discover or
+  // News set `chatReturnTab`; the Chats list sets none → stays on Chats).
+  const isChatScreenOpen =
+    (selectedConversationId !== null && !showMobileSecondaryPanel) ||
+    (activeTab === "match" && lobbySelectedUser !== null)
 
-      if (hash === "#profile") {
-        if (profileModalRef.current !== null) {
-          return
-        }
-        const isViewingChat = selectedConversationIdRef.current !== null || lobbySelectedUserRef.current !== null
-        const isDiscoverOrFriends = activeTabRef.current === "discover" || activeTabRef.current === "friends"
-        if (!isViewingChat && !isDiscoverOrFriends && activeTabRef.current !== "settings") {
-          setActiveTab("settings")
-        }
-      } else if (hash === "#messages") {
-        if (activeTabRef.current !== "chats" && activeTabRef.current !== "match") {
-          setActiveTab("chats")
-        }
-      } else if (hash === "#discover") {
-        if (activeTabRef.current !== "discover") {
-          setActiveTab("discover")
-        }
-        if (selectedConversationIdRef.current !== null) {
-          setSelectedConversationId(null)
-          setShowMobileSecondaryPanel(true)
-        }
-      } else if (hash === "#discover-message") {
-        if (activeTabRef.current !== "chats") {
-          setActiveTab("chats")
-        }
-        setShowMobileSecondaryPanel(false)
-      } else if (activeTabRef.current === "discover") {
-        setActiveTab("chats")
-      }
+  const closeChatScreen = () => {
+    if (lobbySelectedUserRef.current !== null) {
+      useLobbyStore.getState().setSelectedUser(null)
     }
-
-    window.addEventListener("hashchange", handleHashChange)
-    
-    // Check initial hash on mount
-    const hash = window.location.hash
-    if (hash === "#profile") {
-      if (profileModalRef.current === null) {
-        setActiveTab("settings")
-      }
-    } else if (hash === "#messages") {
-      setActiveTab("chats")
-    } else if (hash === "#discover") {
-      setActiveTab("discover")
-    } else if (hash === "#discover-message") {
-      setActiveTab("chats")
-      setShowMobileSecondaryPanel(false)
+    if (selectedConversationIdRef.current !== null) {
+      setSelectedConversationId(null)
+      setShowMobileSecondaryPanel(true)
     }
+    const returnTab = chatReturnTabRef.current
+    if (returnTab) setActiveTab(returnTab) // restore the originating tab
+    setChatReturnTab(null)
+  }
 
-    return () => window.removeEventListener("hashchange", handleHashChange)
-  }, [setSelectedConversationId, setShowMobileSecondaryPanel, setActiveTab])
+  useBackDismiss(isChatScreenOpen, closeChatScreen)
 
-  // Sync url hash based on active chat interfaces
-  const isOneToOneOpen = activeTab === "chats" && selectedConversationId !== null && (!showMobileSecondaryPanel || window.innerWidth >= 768)
-  const isLobbyChatOpen = activeTab === "match" && lobbySelectedUser !== null
+  // Contact profile modal is now driven purely by state (no hash / history).
+  // Closing it never touches the browser history, so it can never add a back
+  // stack entry. (Previously this used a hash + history.back() hack.)
+  const handleProfileClose = () => setProfileModal(null)
 
+  // Cross-view cleanup when the active tab changes.
+  //
+  // The URL hash is owned entirely by NavigationProvider (replaceState only),
+  // so tab switches no longer fire `hashchange`. We therefore react to the
+  // `activeTab` value itself: when the user leaves a tab, tear down any sub-view
+  // that belonged to it (open conversation, lobby chat, matched session, or the
+  // global profile modal). No history is touched here either.
   useEffect(() => {
-    const isMessagingActive = isOneToOneOpen || isLobbyChatOpen
-    const isProfileActive = activeTab === "settings"
-    const isDiscoverActive = activeTab === "discover"
-
-    if (isMessagingActive) {
-      if (
-        window.location.hash !== "#messages" &&
-        window.location.hash !== "#profile" &&
-        window.location.hash !== "#discover-message"
-      ) {
-        window.location.hash = "#messages"
+    if (activeTab !== "chats" && selectedConversationIdRef.current !== null) {
+      setSelectedConversationId(null)
+      setShowMobileSecondaryPanel(true)
+    }
+    if (activeTab !== "match") {
+      if (lobbySelectedUserRef.current !== null) {
+        useLobbyStore.getState().setSelectedUser(null)
       }
-    } else if (isDiscoverActive) {
-      if (window.location.hash !== "#discover" && window.location.hash !== "#discover-message") {
-        window.location.hash = "#discover"
-      }
-    } else if (isProfileActive) {
-      if (
-        window.location.hash === "#messages" ||
-        window.location.hash === "#discover" ||
-        window.location.hash === "#discover-message"
-      ) {
-        window.location.hash = ""
-      }
-    } else {
-      if (
-        window.location.hash === "#messages" ||
-        window.location.hash === "#discover" ||
-        window.location.hash === "#discover-message" ||
-        window.location.hash === "#profile"
-      ) {
-        window.location.hash = ""
+      if (useMatchStore.getState().status === "matched") {
+        useMatchStore.getState().resetMatch()
       }
     }
-  }, [isOneToOneOpen, isLobbyChatOpen, activeTab])
+    if (profileModalRef.current !== null) {
+      setProfileModal(null)
+    }
+  }, [activeTab, setSelectedConversationId, setShowMobileSecondaryPanel, setProfileModal])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -241,13 +183,11 @@ function AppShellContent() {
           queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
         }, 500)
 
-        // 4. Close the conversation panel if currently open
+        // 4. Close the conversation panel if currently open (state only — the
+        // URL hash is managed centrally and stays on the chats tab).
         if (selectedConversationId === deletedChatId) {
           setSelectedConversationId(null)
           setShowMobileSecondaryPanel(true)
-          if (typeof window !== "undefined" && window.location.hash === "#messages") {
-            window.location.hash = ""
-          }
         }
       }
     })
@@ -258,6 +198,7 @@ function AppShellContent() {
     const handleOpenChat = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (detail && detail.chatId) {
+        setChatReturnTab(null) // opened from a notification → Back returns to Chats list
         setSelectedConversationId(detail.chatId)
         setActiveTab("chats")
         setShowMobileSecondaryPanel(false)
@@ -265,7 +206,21 @@ function AppShellContent() {
     }
     window.addEventListener("chat:open", handleOpenChat)
     return () => window.removeEventListener("chat:open", handleOpenChat)
-  }, [setSelectedConversationId, setActiveTab, setShowMobileSecondaryPanel])
+  }, [setSelectedConversationId, setActiveTab, setShowMobileSecondaryPanel, setChatReturnTab])
+
+  // When the refresh-token call returns 401 (session ended / superseded by a
+  // login on another device), the API client dispatches "auth:session-expired".
+  // Auth state is reset in auth-context; here we move the user to the Connect
+  // tab so they land on a valid, unauthenticated entry point instead of a
+  // guarded tab. (auth-context sits above NavigationProvider, so the tab switch
+  // has to happen here where useNavigation is available.)
+  useEffect(() => {
+    const onSessionExpired = () => {
+      setActiveTab("match")
+    }
+    window.addEventListener("auth:session-expired", onSessionExpired)
+    return () => window.removeEventListener("auth:session-expired", onSessionExpired)
+  }, [setActiveTab])
 
   if (mounted && isLoading) {
     return (
@@ -298,6 +253,9 @@ function AppShellContent() {
 
   return (
     <div className="h-dvh overflow-hidden bg-background flex flex-col">
+      {/* Notification setup (install detection, push subscription, badge) */}
+      <NotificationSetup />
+
       {/* Guest Mode Banner */}
       <GuestBanner />
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "./auth-context"
+import { Turnstile } from "@/components/security/turnstile"
 import { X, Mail, Lock, Eye, EyeOff } from "lucide-react"
 
 export function LoginModal() {
@@ -15,6 +16,8 @@ export function LoginModal() {
   const [showPassword, setShowPassword] = useState(false)
   const [emailError, setEmailError] = useState("")
   const [passwordError, setPasswordError] = useState("")
+  const [captchaToken, setCaptchaToken] = useState("")
+  const [website, setWebsite] = useState("") // honeypot
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,7 +40,7 @@ export function LoginModal() {
 
     if (hasError) return
 
-    login(email, password)
+    login(email, password, false, captchaToken, website)
   }
 
   const handleSwitchToSignup = () => {
@@ -163,6 +166,21 @@ export function LoginModal() {
                   Forgot password?
                 </Button>
               </div>
+
+              {/* Honeypot — hidden from real users; bots tend to fill it */}
+              <input
+                type="text"
+                name="website"
+                tabIndex={-1}
+                autoComplete="off"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                className="hidden"
+                aria-hidden="true"
+              />
+
+              {/* Bot challenge */}
+              <Turnstile onVerify={setCaptchaToken} onExpire={() => setCaptchaToken("")} className="flex justify-center" />
 
               <Button
                 type="submit"

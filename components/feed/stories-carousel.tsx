@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -13,16 +13,21 @@ interface StoriesCarouselProps {
   storyGroups: StoryGroup[]
   onStoryViewed: (storyId: string) => void
   onAddStory?: () => void
+  onDeleteStory?: (storyId: string) => void
   currentUserAvatar?: string
   currentUserName?: string
+  /** Current user's id — used to allow deleting one's own stories. */
+  currentUserId?: string
 }
 
 export function StoriesCarousel({
   storyGroups,
   onStoryViewed,
   onAddStory,
+  onDeleteStory,
   currentUserAvatar,
   currentUserName = "Your Story",
+  currentUserId,
 }: StoriesCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showLeftArrow, setShowLeftArrow] = useState(false)
@@ -46,6 +51,22 @@ export function StoriesCarousel({
     })
   }
 
+  // The current user's own story shows only as the first "Your story" circle
+  // (Instagram-style) — never duplicated among the others.
+  const ownGroup = useMemo(
+    () => storyGroups.find((g) => g.userId === currentUserId) || null,
+    [storyGroups, currentUserId],
+  )
+  const otherGroups = useMemo(
+    () => storyGroups.filter((g) => g.userId !== currentUserId),
+    [storyGroups, currentUserId],
+  )
+  // Playlist the viewer steps through: own first (if any), then everyone else.
+  const orderedGroups = useMemo(
+    () => (ownGroup ? [ownGroup, ...otherGroups] : otherGroups),
+    [ownGroup, otherGroups],
+  )
+
   const openStory = (index: number) => {
     setSelectedGroupIndex(index)
     setViewerOpen(true)
@@ -61,55 +82,77 @@ export function StoriesCarousel({
           className="flex gap-4 overflow-x-auto scrollbar-hide py-2 px-4 scroll-smooth"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {/* Add Story button */}
-          <motion.button
-            onClick={onAddStory}
+          {/* "Your story" — always first. Opens own story if one exists; the
+              + badge always adds a new story (Instagram-style). */}
+          <motion.div
+            onClick={ownGroup ? () => openStory(0) : onAddStory}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="flex flex-col items-center gap-1.5 flex-shrink-0"
+            className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer"
           >
             <div className="relative">
-              <Avatar className="h-16 w-16 md:h-18 md:w-18 border-2 border-muted">
-                <AvatarImage src={getAvatarUrl(currentUserAvatar)} />
-                <AvatarFallback className="bg-muted text-muted-foreground">
-                  {currentUserName.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary flex items-center justify-center border-2 border-background">
+              {ownGroup ? (
+                <div
+                  className={cn(
+                    "rounded-full p-[2.5px]",
+                    ownGroup.hasUnviewed
+                      ? "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600"
+                      : "bg-muted",
+                  )}
+                >
+                  <div className="bg-background rounded-full p-0.5">
+                    <Avatar className="h-14 w-14 md:h-16 md:w-16">
+                      <AvatarImage src={getAvatarUrl(currentUserAvatar)} />
+                      <AvatarFallback className="bg-muted text-muted-foreground">
+                        {currentUserName.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                </div>
+              ) : (
+                <Avatar className="h-16 w-16 md:h-18 md:w-18 border-2 border-muted">
+                  <AvatarImage src={getAvatarUrl(currentUserAvatar)} />
+                  <AvatarFallback className="bg-muted text-muted-foreground">
+                    {currentUserName.charAt(0)}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAddStory?.()
+                }}
+                aria-label="Add story"
+                className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary flex items-center justify-center border-2 border-background"
+              >
                 <Plus className="h-3.5 w-3.5 text-primary-foreground" />
-              </div>
+              </button>
             </div>
             <span className="text-xs font-medium text-muted-foreground truncate max-w-16 text-center">
-              Add Story
+              {ownGroup ? "Your story" : "Add Story"}
             </span>
-          </motion.button>
+          </motion.div>
 
-          {/* Story circles */}
-          {storyGroups.map((group, index) => (
+          {/* Everyone else's stories */}
+          {otherGroups.map((group, i) => (
             <motion.button
               key={group.userId}
-              onClick={() => openStory(index)}
+              onClick={() => openStory(ownGroup ? i + 1 : i)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="flex flex-col items-center gap-1.5 flex-shrink-0"
             >
               <div
                 className={cn(
-                  "relative p-0.5 rounded-full",
+                  "relative rounded-full p-[2.5px]",
                   group.hasUnviewed
-                    ? "bg-primary"
-                    : "bg-muted"
+                    ? // Instagram-style gradient ring for UNSEEN stories
+                      "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600"
+                    : // Seen → plain muted ring (no gradient)
+                      "bg-muted"
                 )}
               >
-                {/* Animated gradient ring for unviewed */}
-                {group.hasUnviewed && (
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-primary"
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    style={{ filter: "blur(4px)" }}
-                  />
-                )}
                 <div className="relative bg-background rounded-full p-0.5">
                   <Avatar className="h-14 w-14 md:h-16 md:w-16">
                     <AvatarImage src={getAvatarUrl(group.userAvatar)} />
@@ -179,10 +222,12 @@ export function StoriesCarousel({
       <AnimatePresence>
         {viewerOpen && (
           <StoryViewer
-            storyGroups={storyGroups}
+            storyGroups={orderedGroups}
             initialGroupIndex={selectedGroupIndex}
             onClose={() => setViewerOpen(false)}
             onStoryViewed={onStoryViewed}
+            onDeleteStory={onDeleteStory}
+            currentUserId={currentUserId}
           />
         )}
       </AnimatePresence>

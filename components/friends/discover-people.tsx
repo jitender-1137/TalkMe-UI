@@ -43,7 +43,7 @@ export function DiscoverPeople() {
   const queryClient = useQueryClient();
 
   const createChatMutation = useCreateChat();
-  const { setSelectedConversationId, setShowMobileSecondaryPanel } = useChatContext();
+  const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
   const { setActiveTab } = useNavigation();
 
   // Extract items from paginated response
@@ -138,6 +138,7 @@ export function DiscoverPeople() {
               { participantId: selectedUserId },
               {
                 onSuccess: (chat) => {
+                  setChatReturnTab("friends");
                   setSelectedConversationId(chat.id);
                   setShowMobileSecondaryPanel(false);
                   setActiveTab("chats");

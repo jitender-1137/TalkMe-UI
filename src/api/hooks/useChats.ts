@@ -8,7 +8,13 @@ import type { Chat, CreateChatPayload, MuteChatPayload } from "../types"
 import { getAccessToken } from "../token-store"
 import { useLiveQuery } from "dexie-react-hooks"
 import { db, mapResponseToLocalChat, putChatSafely } from "../db"
+import { shouldSync } from "../sync-throttle"
 import { useEffect, useState } from "react"
+
+// Per-chatId sync guards (module-level, survive re-renders and reconnects)
+const chatSyncInFlight = new Map<string, boolean>()
+const chatSyncLastRan = new Map<string, number>()
+const CHAT_SYNC_COOLDOWN_MS = 30_000
 
 /** Custom hook to reactively track token changes. */
 export function useAuthToken(): string | null {
@@ -65,6 +71,7 @@ export function useChats() {
 
     let active = true;
     const syncChats = async () => {
+      if (!shouldSync("chats:list")) return;
       try {
         const chats = await ChatService.getChats();
         if (!active) return;
@@ -105,14 +112,24 @@ export function useChat(chatId: string) {
   useEffect(() => {
     if (!chatId || !token) return;
 
+    // Guard: skip if already syncing this chat or synced recently
+    if (chatSyncInFlight.get(chatId)) return;
+    const lastRan = chatSyncLastRan.get(chatId) || 0;
+    if (Date.now() - lastRan < CHAT_SYNC_COOLDOWN_MS) return;
+
     let active = true;
     const syncSingleChat = async () => {
+      if (chatSyncInFlight.get(chatId)) return;
+      chatSyncInFlight.set(chatId, true);
+      chatSyncLastRan.set(chatId, Date.now());
       try {
         const c = await ChatService.getChatById(chatId);
         if (!active) return;
         await putChatSafely(c);
       } catch (err: any) {
         console.warn("[Dexie Sync] Error syncing single chat:", err?.message || err, err);
+      } finally {
+        chatSyncInFlight.set(chatId, false);
       }
     };
 

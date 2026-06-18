@@ -121,28 +121,34 @@ export default function PostCard({ post }: PostCardProps) {
             className="flex w-full overflow-x-auto snap-x snap-mandatory scrollbar-hide aspect-square sm:aspect-[4/5]"
             onDoubleClick={handleDoubleTapLike}
           >
-            {post.media.map((url, idx) => (
-              <div key={idx} className="w-full h-full flex-shrink-0 snap-center flex items-center justify-center">
-                {url.endsWith(".mp4") || url.endsWith(".webm") ? (
-                  <video 
-                    src={url} 
-                    className="h-full w-full object-cover"
-                    controls={false}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                  />
-                ) : (
-                  <img 
-                    src={url} 
-                    alt={`Post content ${idx + 1}`} 
-                    className="h-full w-full object-cover" 
-                    draggable={false}
-                  />
-                )}
-              </div>
-            ))}
+            {post.media.map((item, idx) => {
+              const url = typeof item === "string" ? item : item.mediaUrl
+              const isVideo = typeof item === "string"
+                ? (item.endsWith(".mp4") || item.endsWith(".webm"))
+                : (item.mediaType?.toUpperCase() === "VIDEO")
+              return (
+                <div key={idx} className="w-full h-full flex-shrink-0 snap-center flex items-center justify-center">
+                  {isVideo ? (
+                    <video 
+                      src={url} 
+                      className="h-full w-full object-cover"
+                      controls={false}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
+                  ) : (
+                    <img 
+                      src={url} 
+                      alt={`Post content ${idx + 1}`} 
+                      className="h-full w-full object-cover" 
+                      draggable={false}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </div>
         ) : (
           <div className="w-full aspect-square flex items-center justify-center bg-zinc-900" onDoubleClick={handleDoubleTapLike}>

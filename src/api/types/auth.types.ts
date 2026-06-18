@@ -3,6 +3,9 @@ export interface LoginCredentials {
   email: string
   password: string
   rememberMe?: boolean
+  captchaToken?: string
+  /** Honeypot — left empty by real users. */
+  website?: string
 }
 
 export interface SignupCredentials {
@@ -13,6 +16,8 @@ export interface SignupCredentials {
   username: string
   age: number
   gender: string
+  captchaToken?: string
+  website?: string
 }
 
 export interface ForgotPasswordPayload {
@@ -86,6 +91,8 @@ export interface GuestLoginPayload {
   name: string
   age: number
   gender: string
+  captchaToken?: string
+  website?: string
 }
 
 export interface GuestLoginResponse {

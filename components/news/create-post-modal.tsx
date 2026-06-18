@@ -35,7 +35,10 @@ export default function CreatePostModal({ isOpen, onClose }: CreatePostModalProp
         // Create post with media URL
         await PostService.createPost({
           content: caption,
-          media: [uploadRes.url]
+          media: [{
+            mediaUrl: uploadRes.url,
+            mediaType: isVideo ? "VIDEO" : "IMAGE"
+          }]
         })
       } finally {
         setIsUploading(false)

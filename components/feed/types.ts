@@ -55,6 +55,7 @@ export interface Post {
   media: PostMedia[]
   likes: number
   comments: PostComment[]
+  commentsCount?: number
   shares: number
   liked: boolean
   bookmarked: boolean

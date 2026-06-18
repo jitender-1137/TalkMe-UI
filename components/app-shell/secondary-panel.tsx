@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Search, MoreVertical, Plus, Pin, BellOff, ChevronLeft, Archive, MessageCircle } from "lucide-react";
+import {
+  Search,
+  MoreVertical,
+  Plus,
+  Pin,
+  BellOff,
+  ChevronLeft,
+  Archive,
+  MessageCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AvatarStatusBadge } from "@/components/presence";
 import { ConversationContextMenu } from "@/components/chat/conversation-context-menu";
@@ -78,7 +87,7 @@ function ConversationItem({
     conversation.otherUser ?? conversation.participants?.find((p) => p.id !== currentUserId);
   const displayName = isGroup
     ? (conversation.name ?? "Group Chat")
-    : (otherParticipant?.name || otherParticipant?.username || "Unknown User");
+    : otherParticipant?.name || otherParticipant?.username || "Unknown User";
   const displayStatus = isGroup ? "online" : (otherParticipant?.presence ?? "offline");
   const lastMessageText = conversation.lastMessage
     ? conversation.lastMessage.isDeleted
@@ -113,7 +122,9 @@ function ConversationItem({
       onContextMenu={longPressHandlers.onContextMenu}
       className={cn(
         "w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 text-left cursor-pointer select-none border-b border-border/40 dark:border-white/5",
-        isSelected ? "bg-primary/10" : "hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 dark:active:bg-white/10 active:scale-[0.98]",
+        isSelected
+          ? "bg-primary/10"
+          : "hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 dark:active:bg-white/10 active:scale-[0.98]",
       )}
       style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", touchAction: "manipulation" }}
       role="button"
@@ -167,8 +178,13 @@ function ConversationItem({
 export function SecondaryPanel() {
   const { user } = useAuth();
   const { setActiveTab } = useNavigation();
-  const { selectedConversationId, setSelectedConversationId, setShowMobileSecondaryPanel, setProfileModal } =
-    useChatContext();
+  const {
+    selectedConversationId,
+    setSelectedConversationId,
+    setShowMobileSecondaryPanel,
+    setProfileModal,
+    setChatReturnTab,
+  } = useChatContext();
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
@@ -218,7 +234,7 @@ export function SecondaryPanel() {
   const targetName = targetChat
     ? targetIsGroup
       ? (targetChat.name ?? "Group Chat")
-      : (otherParticipant?.name || otherParticipant?.username || "Unknown User")
+      : otherParticipant?.name || otherParticipant?.username || "Unknown User"
     : "";
 
   const contactForModal: ChatContact | undefined = targetChat
@@ -255,7 +271,9 @@ export function SecondaryPanel() {
       if (activeFilter === "groups" && !isGroupChat) return false;
 
       const other = c.otherUser ?? c.participants?.find((p) => p.id !== user?.id);
-      const displayName = isGroupChat ? (c.name ?? "Group Chat") : (other?.name || other?.username || "Unknown User");
+      const displayName = isGroupChat
+        ? (c.name ?? "Group Chat")
+        : other?.name || other?.username || "Unknown User";
       return displayName.toLowerCase().includes(searchQuery.toLowerCase());
     })
     .sort((a, b) => {
@@ -271,6 +289,9 @@ export function SecondaryPanel() {
     });
 
   const handleSelectConversation = (id: string) => {
+    // Opened from the conversation list → Back should return to the list, so
+    // clear any stale "return to other tab" marker.
+    setChatReturnTab(null);
     setSelectedConversationId(id);
     setShowMobileSecondaryPanel(false);
   };
@@ -321,7 +342,7 @@ export function SecondaryPanel() {
                 variant="ghost"
                 size="icon"
                 onClick={() => setActiveTab("discover")}
-                className="h-9 w-9 rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all text-primary cursor-pointer"
+                className="bg-primary text-primary-foreground h-9 w-9 rounded-full hover:bg-primary/80 dark:hover:bg-primary/80 active:scale-95 transition-all cursor-pointer"
               >
                 <Plus className="h-5 w-5" />
               </Button>
@@ -341,14 +362,10 @@ export function SecondaryPanel() {
             <div className="flex flex-col items-center justify-center py-24 text-center">
               <p className="text-sm text-muted-foreground">Loading chats...</p>
             </div>
-          ) : filteredConversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center px-4">
-              <p className="text-sm font-medium text-foreground">
-                {viewArchived ? "No archived chats" : "No chats found"}
-              </p>
-            </div>
           ) : (
-            <div className="px-0 py-0">
+            <div className="px-0 pb-24">
+              {/* Archived entry — always available when archived chats exist,
+                  even if the active list is empty */}
               {!viewArchived && !searchQuery && archivedChatsCount > 0 && (
                 <div
                   className="w-full flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:bg-black/10 dark:active:bg-white/10 transition-colors border-b border-border/40 dark:border-white/5"
@@ -361,17 +378,25 @@ export function SecondaryPanel() {
                   <span className="text-xs font-semibold text-primary">{archivedChatsCount}</span>
                 </div>
               )}
-              {filteredConversations.map((conversation) => (
-                <ConversationItem
-                  key={conversation.id}
-                  conversation={conversation}
-                  isSelected={selectedConversationId === conversation.id}
-                  onSelect={() => handleSelectConversation(conversation.id)}
-                  onContextMenu={openContextMenu}
-                  currentUserId={user?.id}
-                  isTyping={typingChats[conversation.id]}
-                />
-              ))}
+              {filteredConversations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-24 text-center px-4">
+                  <p className="text-sm font-medium text-foreground">
+                    {viewArchived ? "No archived chats" : "No chats found"}
+                  </p>
+                </div>
+              ) : (
+                filteredConversations.map((conversation) => (
+                  <ConversationItem
+                    key={conversation.id}
+                    conversation={conversation}
+                    isSelected={selectedConversationId === conversation.id}
+                    onSelect={() => handleSelectConversation(conversation.id)}
+                    onContextMenu={openContextMenu}
+                    currentUserId={user?.id}
+                    isTyping={typingChats[conversation.id]}
+                  />
+                ))
+              )}
             </div>
           )}
         </div>
@@ -423,7 +448,7 @@ export function SecondaryPanel() {
           if (targetChat && contactForModal) {
             setProfileModal({
               contact: contactForModal,
-              userId: otherParticipant?.id
+              userId: otherParticipant?.id,
             });
           }
         }}

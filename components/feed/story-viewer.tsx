@@ -2,17 +2,27 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, ChevronLeft, ChevronRight, Volume2, VolumeX, Pause, Play } from "lucide-react"
+import { X, ChevronLeft, ChevronRight, Volume2, VolumeX, Pause, Play, Trash2, Send, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn, getAvatarUrl } from "@/lib/utils"
+import { getMediaUrl } from "@/src/api/client"
+import { ChatService } from "@/src/api/services/chat.service"
+import { MessageService } from "@/src/api/services/message.service"
+import { showSuccessToast, showErrorToast } from "@/src/api/error-handler"
 import type { StoryGroup, Story } from "./types"
+
+const STORY_REACTIONS = ["❤️", "🔥", "😂", "😮", "😢", "👏", "🙌"]
 
 interface StoryViewerProps {
   storyGroups: StoryGroup[]
   initialGroupIndex: number
   onClose: () => void
   onStoryViewed: (storyId: string) => void
+  onDeleteStory?: (storyId: string) => void
+  /** Current user's id — a delete button is shown on their own stories. */
+  currentUserId?: string
 }
 
 export function StoryViewer({
@@ -20,33 +30,47 @@ export function StoryViewer({
   initialGroupIndex,
   onClose,
   onStoryViewed,
+  onDeleteStory,
+  currentUserId,
 }: StoryViewerProps) {
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex)
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
   const [progress, setProgress] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const [isMuted, setIsMuted] = useState(true)
-  
+  const [replyText, setReplyText] = useState("")
+  const [isSending, setIsSending] = useState(false)
+
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
   const pausedProgressRef = useRef<number>(0)
 
-  const currentGroup = storyGroups[currentGroupIndex]
+  // Snapshot the groups for this viewing session. Marking a story viewed
+  // invalidates the stories query, which refetches AND re-sorts the groups
+  // (unseen-first). If we read the live prop, the list would reorder mid-view
+  // and `currentStory` identity would change on every render — re-triggering the
+  // "mark viewed" effect in a loop (React error #185). The snapshot keeps the
+  // playlist stable while the viewer is open.
+  const [groups] = useState(() => storyGroups)
+
+  const currentGroup = groups[currentGroupIndex]
   const currentStory = currentGroup?.stories[currentStoryIndex]
-  const storyDuration = (currentStory?.duration || 5) * 1000
+  // Each story is shown for 10s (Instagram-style) unless a specific duration is set.
+  const storyDuration = (currentStory?.duration || 10) * 1000
+  const isOwnStory = !!currentUserId && currentGroup?.userId === currentUserId
 
   const goToNextStory = useCallback(() => {
     if (currentStoryIndex < currentGroup.stories.length - 1) {
       setCurrentStoryIndex((prev) => prev + 1)
       setProgress(0)
-    } else if (currentGroupIndex < storyGroups.length - 1) {
+    } else if (currentGroupIndex < groups.length - 1) {
       setCurrentGroupIndex((prev) => prev + 1)
       setCurrentStoryIndex(0)
       setProgress(0)
     } else {
       onClose()
     }
-  }, [currentStoryIndex, currentGroup?.stories.length, currentGroupIndex, storyGroups.length, onClose])
+  }, [currentStoryIndex, currentGroup?.stories.length, currentGroupIndex, groups.length, onClose])
 
   const goToPrevStory = useCallback(() => {
     if (currentStoryIndex > 0) {
@@ -54,18 +78,56 @@ export function StoryViewer({
       setProgress(0)
     } else if (currentGroupIndex > 0) {
       setCurrentGroupIndex((prev) => prev - 1)
-      const prevGroup = storyGroups[currentGroupIndex - 1]
+      const prevGroup = groups[currentGroupIndex - 1]
       setCurrentStoryIndex(prevGroup.stories.length - 1)
       setProgress(0)
     }
-  }, [currentStoryIndex, currentGroupIndex, storyGroups])
+  }, [currentStoryIndex, currentGroupIndex, groups])
 
-  // Mark story as viewed
+  // Mark story as viewed — once per story id. Dedupe with a ref so we never
+  // re-fire for the same story (which would loop via query invalidation).
+  const viewedIdsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    if (currentStory && !currentStory.viewed) {
-      onStoryViewed(currentStory.id)
+    const id = currentStory?.id
+    if (!id || viewedIdsRef.current.has(id)) return
+    viewedIdsRef.current.add(id)
+    if (!currentStory?.viewed) onStoryViewed(id)
+  }, [currentStory?.id, currentStory?.viewed, onStoryViewed])
+
+  const handleDelete = useCallback(() => {
+    if (!currentStory || !onDeleteStory) return
+    setIsPaused(true)
+    if (typeof window !== "undefined" && !window.confirm("Delete this story?")) {
+      setIsPaused(false)
+      return
     }
-  }, [currentStory, onStoryViewed])
+    onDeleteStory(currentStory.id)
+    // Advance past the deleted story (or close if it was the last one).
+    goToNextStory()
+  }, [currentStory, onDeleteStory, goToNextStory])
+
+  // Reply / react to a story → sent to the owner as a normal chat message.
+  const sendToOwner = useCallback(
+    async (content: string) => {
+      const ownerId = currentGroup?.userId
+      const text = content.trim()
+      if (!ownerId || !text || isSending) return
+      setIsSending(true)
+      setIsPaused(true) // hold the story while we send
+      try {
+        const chat = await ChatService.createChat({ participantId: ownerId })
+        await MessageService.sendMessage(chat.id, { content: text })
+        showSuccessToast(`Sent to ${currentGroup?.userName ?? "user"}`)
+        setReplyText("")
+      } catch (e) {
+        showErrorToast(e)
+      } finally {
+        setIsSending(false)
+        setIsPaused(false)
+      }
+    },
+    [currentGroup?.userId, currentGroup?.userName, isSending],
+  )
 
   // Progress timer
   useEffect(() => {
@@ -208,14 +270,27 @@ export function StoryViewer({
             >
               {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsMuted((m) => !m)}
-              className="text-white hover:bg-white/20 h-8 w-8"
-            >
-              {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-            </Button>
+            {currentStory.mediaType === "video" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsMuted((m) => !m)}
+                className="text-white hover:bg-white/20 h-8 w-8"
+              >
+                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </Button>
+            )}
+            {isOwnStory && onDeleteStory && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDelete}
+                className="text-white hover:bg-white/20 h-8 w-8"
+                aria-label="Delete story"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -258,8 +333,8 @@ export function StoryViewer({
           >
             {currentStory.mediaType === "video" ? (
               <video
-                src={currentStory.mediaUrl}
-                className="w-full h-full object-cover"
+                src={getMediaUrl(currentStory.mediaUrl)}
+                className="w-full h-full object-contain bg-black"
                 autoPlay
                 muted={isMuted}
                 playsInline
@@ -271,16 +346,66 @@ export function StoryViewer({
               />
             ) : (
               <img
-                src={currentStory.mediaUrl}
+                src={getMediaUrl(currentStory.mediaUrl)}
                 alt=""
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain bg-black"
               />
             )}
           </motion.div>
         </AnimatePresence>
 
-        {/* Overlay */}
-        <div className="absolute inset-0 bg-black/50 pointer-events-none" />
+        {/* Subtle top gradient so the progress bars + header stay legible
+            (no full-screen dim — the story itself should be clearly visible). */}
+        <div className="absolute top-0 left-0 right-0 h-28 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
+
+        {/* Reply + quick reactions — only on other people's stories. Both are
+            delivered to the story owner as a normal chat message. */}
+        {!isOwnStory && (
+          <div className="absolute bottom-0 left-0 right-0 z-20 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/60 to-transparent">
+            {/* Emoji reactions */}
+            <div className="flex items-center justify-center gap-3 mb-3">
+              {STORY_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => sendToOwner(emoji)}
+                  disabled={isSending}
+                  className="text-2xl leading-none transition-transform hover:scale-125 disabled:opacity-50"
+                  aria-label={`React ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+
+            {/* Reply input */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                sendToOwner(replyText)
+              }}
+              className="flex items-center gap-2"
+            >
+              <Input
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onFocus={() => setIsPaused(true)}
+                onBlur={() => setIsPaused(false)}
+                placeholder={`Reply to ${currentGroup.userName}…`}
+                className="flex-1 h-11 rounded-full bg-white/10 border-white/30 text-white placeholder:text-white/60 focus-visible:ring-white/40"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                variant="ghost"
+                disabled={!replyText.trim() || isSending}
+                className="h-10 w-10 shrink-0 text-white hover:bg-white/20 disabled:opacity-50"
+              >
+                {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              </Button>
+            </form>
+          </div>
+        )}
       </div>
     </motion.div>
   )

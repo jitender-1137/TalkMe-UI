@@ -1,6 +1,7 @@
 import apiClient from "../client"
 import { ENDPOINTS } from "../endpoints"
 import { unwrapResponse } from "../response-handler"
+import { compressImage } from "@/lib/upload/compress-image"
 import type { UploadResponse } from "../types/api.types"
 
 export const UploadService = {
@@ -14,8 +15,13 @@ export const UploadService = {
     chatId?: string,
     onProgress?: (progress: number) => void
   ): Promise<UploadResponse> => {
+    // WhatsApp-style: compress images in the browser before upload. Non-image
+    // files (video/audio/document) and already-small images pass through
+    // untouched (compressImage is a safe no-op for them).
+    const toUpload = file.type.startsWith("image/") ? await compressImage(file) : file
+
     const formData = new FormData()
-    formData.append("file", file)
+    formData.append("file", toUpload)
     formData.append("type", type)
     if (chatId) {
       formData.append("chatId", chatId)

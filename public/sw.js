@@ -1,4 +1,4 @@
-const CACHE_NAME = 'talkme-cache-v1';
+const CACHE_NAME = 'talkme-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -65,4 +65,83 @@ self.addEventListener('fetch', (event) => {
         return caches.match(event.request);
       })
   );
+});
+
+// ============================================================================
+// Web Push — background notifications (installed PWAs)
+// ============================================================================
+
+// Push received (fires even when the app/browser is closed)
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: 'TalkMe', body: event.data ? event.data.text() : '' };
+  }
+
+  const title = data.title || 'TalkMe';
+  const chatId = data.chatId || '';
+  const options = {
+    body: data.body || '',
+    icon: data.icon || '/icon-192.png',
+    badge: '/icon-192.png',
+    // Same tag for the same message → de-duplicates; renotify re-alerts on updates
+    tag: data.messageId || chatId || 'talkme',
+    renotify: true,
+    timestamp: data.timestamp ? (Date.parse(data.timestamp) || Date.now()) : Date.now(),
+    data: {
+      chatId: chatId,
+      messageId: data.messageId,
+      url: chatId ? ('/?chat=' + encodeURIComponent(chatId) + '#messages') : '/',
+    },
+  };
+
+  event.waitUntil((async () => {
+    // Keep the OS app badge in sync from the push payload
+    if (typeof data.badge === 'number' && 'setAppBadge' in self.navigator) {
+      try {
+        if (data.badge > 0) await self.navigator.setAppBadge(data.badge);
+        else await self.navigator.clearAppBadge();
+      } catch (e) { /* unsupported — ignore */ }
+    }
+    await self.registration.showNotification(title, options);
+  })());
+});
+
+// Notification tapped → focus or open the app and jump to the conversation
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const info = event.notification.data || {};
+  const targetUrl = info.url || '/';
+
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of allClients) {
+      if ('focus' in client) {
+        await client.focus();
+        try {
+          client.postMessage({ type: 'OPEN_CHAT', chatId: info.chatId, url: targetUrl });
+        } catch (e) { /* ignore */ }
+        return;
+      }
+    }
+    if (self.clients.openWindow) {
+      await self.clients.openWindow(targetUrl);
+    }
+  })());
+});
+
+self.addEventListener('notificationclose', () => {
+  // Hook for analytics if needed (no-op for now)
+});
+
+// Browser rotated/expired the subscription → ask the page(s) to re-subscribe
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({ includeUncontrolled: true });
+    allClients.forEach((c) => {
+      try { c.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' }); } catch (e) { /* ignore */ }
+    });
+  })());
 });

@@ -38,7 +38,7 @@ export function AllFriends() {
   const handleProfileClose = useHashSync(!!selectedUserId, () => setSelectedUserId(null), "#profile");
 
   const createChatMutation = useCreateChat();
-  const { setSelectedConversationId, setShowMobileSecondaryPanel } = useChatContext();
+  const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
   const { setActiveTab } = useNavigation();
 
   const filtered = contacts.filter(
@@ -100,6 +100,7 @@ export function AllFriends() {
               { participantId: selectedUserId },
               {
                 onSuccess: (chat) => {
+                  setChatReturnTab("friends");
                   setSelectedConversationId(chat.id);
                   setShowMobileSecondaryPanel(false);
                   setActiveTab("chats");
@@ -122,7 +123,7 @@ function FriendCard({ friend, onProfileClick }: { friend: Contact; onProfileClic
   const unfriendMutation = useRemoveContact();
   const blockMutation = useBlockUser();
   const createChatMutation = useCreateChat();
-  const { setSelectedConversationId, setShowMobileSecondaryPanel } = useChatContext();
+  const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
   const { setActiveTab } = useNavigation();
 
   const handleUnfriend = () => {
@@ -142,6 +143,7 @@ function FriendCard({ friend, onProfileClick }: { friend: Contact; onProfileClic
       { participantId: friend.id },
       {
         onSuccess: (chat) => {
+          setChatReturnTab("friends");
           setSelectedConversationId(chat.id);
           setShowMobileSecondaryPanel(false);
           setActiveTab("chats");

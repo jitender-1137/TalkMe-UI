@@ -10,9 +10,10 @@ import { useInbox } from "@/components/lobby/hooks";
 import { useLobbyStore } from "@/components/lobby/lobby-store";
 import { useAuth } from "./auth-context";
 import { motion } from "framer-motion";
+import { User } from "lucide-react";
 
 export function MobileBottomNav() {
-  const { showLoginModal, showSignupModal } = useAuth();
+  const { showLoginModal, showSignupModal, user } = useAuth();
   const { activeTab, setActiveTab } = useNavigation();
   const { showMobileSecondaryPanel, selectedConversationId } = useChatContext();
   const matchStatus = useMatchStore((state) => state.status);
@@ -78,16 +79,29 @@ export function MobileBottomNav() {
                 )}
 
                 <div className="relative z-10 flex flex-col items-center">
-                  <div className="p-1 rounded-full">
-                    {/* Fill icon and animate scale on tab switch */}
-                    <Icon
-                      className={cn(
-                        "h-5 w-5 transition-transform duration-200",
-                        isActive && "scale-110",
-                      )}
-                      fill={isActive ? "currentColor" : "none"}
-                      strokeWidth={isActive ? 2 : 1.75}
-                    />
+                  <div className="p-1 rounded-full flex items-center justify-center min-h-7 min-w-7">
+                    {item.id === "settings" ? (
+                      /* settings tab shows user avatar image (DP) */
+                      <div className={cn(
+                        "h-5.5 w-5.5 rounded-full overflow-hidden flex items-center justify-center transition-all duration-200 bg-zinc-800",
+                        isActive ? "ring-2 ring-primary scale-110" : "ring-1 ring-muted-foreground/30"
+                      )}>
+                        {user?.avatar ? (
+                          <img src={user.avatar} alt="You" className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="h-3.5 w-3.5 text-zinc-400" />
+                        )}
+                      </div>
+                    ) : (
+                      <Icon
+                        className={cn(
+                          "h-5 w-5 transition-transform duration-200",
+                          isActive && "scale-110",
+                        )}
+                        fill={isActive ? "currentColor" : "none"}
+                        strokeWidth={isActive ? 2 : 1.75}
+                      />
+                    )}
                   </div>
 
                   {/* Badge */}
@@ -103,7 +117,7 @@ export function MobileBottomNav() {
                       isActive ? "font-semibold text-primary" : "font-medium text-muted-foreground",
                     )}
                   >
-                    {item.label}
+                    {item.id === "settings" ? "You" : item.label}
                   </span>
                 </div>
               </button>

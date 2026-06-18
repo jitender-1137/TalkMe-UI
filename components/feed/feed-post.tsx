@@ -1,19 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import {
   Heart,
   MessageCircle,
   Share2,
   Bookmark,
   MoreHorizontal,
-  Send,
   BadgeCheck,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +19,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, getAvatarUrl } from "@/lib/utils"
-import type { Post, PostComment } from "./types"
+import type { Post } from "./types"
+import { useProfile } from "@/src/api/hooks/useProfile"
+import { SharePostSheet } from "./share-post-sheet"
+import { ProfileModal } from "./profile-modal"
+import { CommentsSheet } from "./comments-sheet"
+import { useCreateChat } from "@/src/api/hooks/useChats"
+import { useNavigation } from "@/components/app-shell/navigation-context"
+import { useChatContext } from "@/components/chat/chat-context"
+import { CommentsPanel } from "./comments-panel"
+import { PostDetailModal } from "./post-detail-modal"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface FeedPostProps {
   post: Post
@@ -29,23 +37,57 @@ interface FeedPostProps {
   onBookmark: (postId: string) => void
   onShare: (postId: string) => void
   onComment: (postId: string, content: string) => void
+  onAuthorClick?: (authorId: string) => void
 }
 
-export function FeedPost({ post, onLike, onBookmark, onShare, onComment }: FeedPostProps) {
-  const [showComments, setShowComments] = useState(false)
-  const [commentText, setCommentText] = useState("")
+export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAuthorClick }: FeedPostProps) {
+  const isMobile = useIsMobile()
+  const [commentsOpen, setCommentsOpen] = useState(false) // mobile sheet
+  const [inlineComments, setInlineComments] = useState(false) // desktop inline
   const [imageIndex, setImageIndex] = useState(0)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [profileUserId, setProfileUserId] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false) // view-post modal
+
+  const { data: ownProfile } = useProfile()
+
+  const createChat = useCreateChat()
+  const { setActiveTab } = useNavigation()
+  const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext()
+
+  // Open a user's profile card (from post author or a commenter).
+  const openProfile = (userId?: string | null) => {
+    if (userId) setProfileUserId(userId)
+  }
+
+  // "Message" from the profile card: create/open the chat and jump to Chats.
+  const handleMessageFromProfile = (targetId: string) => {
+    if (!targetId) return
+    createChat.mutate(
+      { participantId: targetId },
+      {
+        onSuccess: (chat) => {
+          // Remember the origin so mobile Back returns to the News tab.
+          setChatReturnTab("news")
+          setSelectedConversationId(chat.id)
+          setShowMobileSecondaryPanel(false)
+          // setActiveTab updates the hash via replaceState (no history entry).
+          setActiveTab("chats")
+          setProfileUserId(null)
+        },
+      },
+    )
+  }
+
+  const commentCount = post.commentsCount ?? post.comments?.length ?? 0
+
+  const handleToggleComments = () => {
+    if (isMobile) setCommentsOpen(true)
+    else setInlineComments((v) => !v)
+  }
 
   const handleLike = () => {
     onLike(post.id)
-  }
-
-  const handleSubmitComment = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (commentText.trim()) {
-      onComment(post.id, commentText)
-      setCommentText("")
-    }
   }
 
   return (
@@ -56,13 +98,13 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment }: FeedP
     >
       {/* Post header */}
       <div className="flex items-center gap-3 p-4">
-        <Avatar className="h-10 w-10">
+        <Avatar className="h-10 w-10 cursor-pointer" onClick={() => openProfile(post.author.id)}>
           <AvatarImage src={getAvatarUrl(post.author.avatar)} />
           <AvatarFallback>{post.author.name.charAt(0)}</AvatarFallback>
         </Avatar>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfile(post.author.id)}>
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-sm truncate">{post.author.name}</span>
+            <span className="font-semibold text-sm truncate hover:underline">{post.author.name}</span>
             {post.author.verified && (
               <BadgeCheck className="h-4 w-4 text-primary fill-primary/20" />
             )}
@@ -85,16 +127,9 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment }: FeedP
         </DropdownMenu>
       </div>
 
-      {/* Post content */}
-      {post.content && (
-        <div className="px-4 pb-3">
-          <p className="text-sm whitespace-pre-wrap">{post.content}</p>
-        </div>
-      )}
-
-      {/* Media grid */}
+      {/* Media grid — click to open the post in the view-post modal */}
       {post.media.length > 0 && (
-        <div className="relative">
+        <div className="relative cursor-pointer" onClick={() => setDetailOpen(true)}>
           {post.media.length === 1 ? (
             <MediaItem media={post.media[0] as any} className="w-full aspect-square md:aspect-video" />
           ) : post.media.length === 2 ? (
@@ -169,17 +204,20 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment }: FeedP
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setShowComments(!showComments)}
+            onClick={handleToggleComments}
             className="gap-1.5 h-9 px-3"
           >
             <MessageCircle className="h-5 w-5" />
-            <span className="text-sm font-medium">{formatCount(post.comments?.length ?? 0)}</span>
+            <span className="text-sm font-medium">{formatCount(commentCount)}</span>
           </Button>
 
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onShare(post.id)}
+            onClick={() => {
+              setShareOpen(true)
+              onShare(post.id)
+            }}
             className="gap-1.5 h-9 px-3"
           >
             <Share2 className="h-5 w-5" />
@@ -197,49 +235,76 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment }: FeedP
         </Button>
       </div>
 
-      {/* Comments section */}
-      <AnimatePresence>
-        {showComments && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="border-t border-border overflow-hidden"
-          >
-            {/* Comment list */}
-            <div className="max-h-60 overflow-y-auto">
-              {post.comments?.slice(0, 5).map((comment) => (
-                <CommentItem key={comment.id} comment={comment} />
-              ))}
-              {post.comments && post.comments.length > 5 && (
-                <button className="w-full py-2 text-sm text-primary hover:underline">
-                  View all {post.comments.length} comments
-                </button>
-              )}
-            </div>
+      {/* Caption shown BELOW the like / comment / share actions.
+          Text-only posts (no media) open the view-post modal on tap. */}
+      {post.content && (
+        <div
+          className={cn("px-4 pb-3", post.media.length === 0 && "cursor-pointer")}
+          onClick={post.media.length === 0 ? () => setDetailOpen(true) : undefined}
+        >
+          <p className="text-sm whitespace-pre-wrap">
+            <span className="font-semibold mr-1.5">{post.author.username}</span>
+            {post.content}
+          </p>
+        </div>
+      )}
 
-            {/* Add comment */}
-            <form onSubmit={handleSubmitComment} className="p-3 border-t border-border">
-              <div className="flex items-center gap-2">
-                <Input
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="Add a comment..."
-                  className="flex-1 h-9 text-sm"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!commentText.trim()}
-                  className="h-9 w-9"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-            </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Desktop: comments shown directly inline */}
+      {!isMobile && inlineComments && (
+        <div className="border-t border-border h-[420px]">
+          <CommentsPanel
+            postId={post.id}
+            authorUsername={post.author.username}
+            onUserClick={openProfile}
+          />
+        </div>
+      )}
+
+      {/* Mobile: bottom sheet */}
+      {isMobile && (
+        <CommentsSheet
+          postId={post.id}
+          authorUsername={post.author.username}
+          open={commentsOpen}
+          onOpenChange={setCommentsOpen}
+          onUserClick={openProfile}
+        />
+      )}
+
+      <SharePostSheet post={post} open={shareOpen} onOpenChange={setShareOpen} />
+
+      <ProfileModal
+        userId={profileUserId}
+        isOpen={!!profileUserId}
+        onClose={() => setProfileUserId(null)}
+        onMessage={handleMessageFromProfile}
+      />
+
+      {detailOpen && (
+        <PostDetailModal
+          post={{
+            id: post.id,
+            content: post.content,
+            mediaUrls: (post.media || []).map((m: any) => ({
+              url: typeof m === "string" ? m : m.url,
+              type: (typeof m === "string" ? "image" : m.type) === "video" ? "video" : "image",
+            })),
+            author: {
+              id: post.author.id,
+              name: post.author.name,
+              avatar: post.author.avatar,
+            },
+            createdAt: post.timestamp ?? new Date(),
+            likesCount: post.likes ?? 0,
+            commentsCount: post.commentsCount ?? post.comments?.length ?? 0,
+            isLiked: post.liked,
+            isBookmarked: post.bookmarked,
+          }}
+          isOwner={!!ownProfile?.id && post.author.id === ownProfile.id}
+          onClose={() => setDetailOpen(false)}
+          onViewProfile={openProfile}
+        />
+      )}
     </motion.article>
   )
 }
@@ -268,34 +333,6 @@ function MediaItem({
       ) : (
         <img src={url} alt="" className="w-full h-full object-cover" />
       )}
-    </div>
-  )
-}
-
-function CommentItem({ comment }: { comment: PostComment }) {
-  return (
-    <div className="flex gap-3 p-3">
-      <Avatar className="h-8 w-8 flex-shrink-0">
-        <AvatarImage src={getAvatarUrl(comment.author.avatar)} />
-        <AvatarFallback>{comment.author.name.charAt(0)}</AvatarFallback>
-      </Avatar>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm">{comment.author.name}</span>
-          <span className="text-xs text-muted-foreground">
-            {formatTimeAgo(comment.timestamp)}
-          </span>
-        </div>
-        <p className="text-sm mt-0.5">{comment.content}</p>
-        <div className="flex items-center gap-3 mt-1">
-          <button className="text-xs text-muted-foreground hover:text-foreground">
-            {comment.likes ?? 0} likes
-          </button>
-          <button className="text-xs text-muted-foreground hover:text-foreground">
-            Reply
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

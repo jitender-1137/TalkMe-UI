@@ -146,6 +146,7 @@ export const ENDPOINTS = {
     LIST: "/posts/feed",
     CREATE: "/posts",
     BY_ID: (postId: string) => `/posts/${postId}`,
+    UPDATE: (postId: string) => `/posts/${postId}`,
     DELETE: (postId: string) => `/posts/${postId}`,
     LIKE: (postId: string) => `/posts/${postId}/like`,
     UNLIKE: (postId: string) => `/posts/${postId}/like`,
@@ -153,6 +154,7 @@ export const ENDPOINTS = {
     SHARE: (postId: string) => `/posts/${postId}`, // fallback
     COMMENTS: (postId: string) => `/posts/${postId}/comments`,
     CREATE_COMMENT: (postId: string) => `/posts/${postId}/comments`,
+    EDIT_COMMENT: (postId: string, commentId: string) => `/posts/${postId}/comments/${commentId}`,
     DELETE_COMMENT: (postId: string, commentId: string) => `/posts/${postId}/comments/${commentId}`,
     USER: (userId: string) => `/posts/user/${userId}`,
   },
@@ -181,5 +183,14 @@ export const ENDPOINTS = {
   // ── Uploads (UploadController) ─────────────────────────────────────────────
   UPLOADS: {
     DIRECT: "/uploads",
+  },
+
+  // ── Web Push (PushController) ──────────────────────────────────────────────
+  PUSH: {
+    VAPID_PUBLIC_KEY: "/push/vapid-public-key",
+    SUBSCRIBE: "/push/subscribe",
+    UNSUBSCRIBE: "/push/subscribe", // DELETE ?endpoint=
+    INSTALLATION: "/push/installation",
+    UNREAD_COUNT: "/push/unread-count",
   },
 } as const

@@ -14,16 +14,27 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 60 * 1000,
-            refetchOnWindowFocus: true,
+            // Realtime freshness comes from STOMP — refetching every query on
+            // each window focus / network reconnect produced request bursts
+            // that drained the backend rate limiter (429s). Disable both.
+            refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
             retry: (failureCount, error) => {
-              // Do not retry on 401/403/404
+              // Do not retry on auth/permission/not-found, and never retry on
+              // 429 — retrying a rate-limited request only deepens the flood.
               if (
                 error &&
                 typeof error === 'object' &&
                 'status' in error
               ) {
                 const status = (error as { status: number }).status
-                if (status === 401 || status === 403 || status === 404) return false
+                if (
+                  status === 401 ||
+                  status === 403 ||
+                  status === 404 ||
+                  status === 429
+                )
+                  return false
               }
               return failureCount < 2
             },

@@ -1,6 +1,6 @@
 "use client"
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { PostService } from "../services/post.service"
 import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
@@ -29,6 +29,21 @@ export function useCreatePost() {
   })
 }
 
+export function useUpdatePost() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ postId, content }: { postId: string; content: string }) =>
+      PostService.updatePost(postId, content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.POSTS.FEED })
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
+      showSuccessToast("Caption updated")
+    },
+    onError: showErrorToast,
+  })
+}
+
 export function useDeletePost() {
   const queryClient = useQueryClient()
 
@@ -36,6 +51,7 @@ export function useDeletePost() {
     mutationFn: (postId: string) => PostService.deletePost(postId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.POSTS.FEED })
+      queryClient.invalidateQueries({ queryKey: ["posts"] })
       showSuccessToast("Post deleted")
     },
     onError: showErrorToast,
@@ -93,9 +109,12 @@ export function useUnbookmarkPost() {
 }
 
 export function useComments(postId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: QUERY_KEYS.POSTS.COMMENTS(postId),
-    queryFn: () => PostService.getComments(postId),
+    queryFn: ({ pageParam }) => PostService.getComments(postId, pageParam as number),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasNextPage ? lastPage.meta.page + 1 : undefined,
     enabled: Boolean(postId),
   })
 }
@@ -109,6 +128,19 @@ export function useCreateComment() {
     onSuccess: (_data, { postId }) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.POSTS.COMMENTS(postId) })
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.POSTS.FEED })
+    },
+    onError: showErrorToast,
+  })
+}
+
+export function useEditComment() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ postId, commentId, content }: { postId: string; commentId: string; content: string }) =>
+      PostService.editComment(postId, commentId, content),
+    onSuccess: (_data, { postId }) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.POSTS.COMMENTS(postId) })
     },
     onError: showErrorToast,
   })

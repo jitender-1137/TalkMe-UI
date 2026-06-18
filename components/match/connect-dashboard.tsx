@@ -256,6 +256,7 @@ export function ConnectDashboard() {
           { id: "lobby", label: "Lobby" },
           { id: "match", label: "Matchmaker" },
         ]}
+        textSize="text-xl"
         activeFilterId={activeSubTab}
         onFilterChange={handleFilterChange}
         collapseFiltersToHeader={true}
@@ -296,7 +297,8 @@ export function ConnectDashboard() {
           </div>
         }
       >
-        <div className="flex-1 w-full px-2 mt-0 flex flex-col min-h-0">
+        {/* Bounded, flexible height so the lobby/match chat areas scroll internally */}
+        <div className="flex-1 min-h-0 flex flex-col w-full">
           {activeSubTab === "lobby" ? <LobbyDashboard /> : <MatchDashboard />}
         </div>
       </AppLayout>

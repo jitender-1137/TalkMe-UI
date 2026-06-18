@@ -16,6 +16,13 @@ export interface ChatContextType {
   setShowMobileSecondaryPanel: (show: boolean) => void
   profileModal: ProfileModalState | null
   setProfileModal: (modal: ProfileModalState | null) => void
+  /**
+   * Tab to return to when the mobile chat screen is dismissed with Back.
+   * Set by whoever opens a chat from another tab (Discover, News, …); null
+   * means "stay on the Chats tab and show the conversation list".
+   */
+  chatReturnTab: string | null
+  setChatReturnTab: (tab: string | null) => void
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
@@ -24,6 +31,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [showMobileSecondaryPanel, setShowMobileSecondaryPanel] = useState(true)
   const [profileModal, setProfileModal] = useState<ProfileModalState | null>(null)
+  const [chatReturnTab, setChatReturnTab] = useState<string | null>(null)
 
   return (
     <ChatContext.Provider
@@ -34,6 +42,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setShowMobileSecondaryPanel,
         profileModal,
         setProfileModal,
+        chatReturnTab,
+        setChatReturnTab,
       }}
     >
       {children}

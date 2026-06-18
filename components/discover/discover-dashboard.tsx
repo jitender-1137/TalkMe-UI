@@ -60,7 +60,7 @@ const COUNTRIES = [
   "Japan",
   "Brazil",
   "Mexico",
-  "Global"
+  "Global",
 ];
 
 export function DiscoverDashboard() {
@@ -73,7 +73,11 @@ export function DiscoverDashboard() {
   const [minAge, setMinAge] = useState<number>(18);
   const [maxAge, setMaxAge] = useState<number>(99);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const handleProfileClose = useHashSync(!!selectedPerson, () => setSelectedPerson(null), "#profile");
+  const handleProfileClose = useHashSync(
+    !!selectedPerson,
+    () => setSelectedPerson(null),
+    "#profile",
+  );
 
   const queryClient = useQueryClient();
   const { data: discoverData, isLoading } = useDiscoverProfiles({
@@ -88,7 +92,7 @@ export function DiscoverDashboard() {
   const createChatMutation = useCreateChat();
   const addFriendMutation = useAddContact();
   const removeFriendMutation = useRemoveContact();
-  const { setSelectedConversationId, setShowMobileSecondaryPanel } = useChatContext();
+  const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
   const { setActiveTab } = useNavigation();
 
   const handleAddFriend = (person: DiscoverProfile) => {
@@ -138,11 +142,12 @@ export function DiscoverDashboard() {
       { participantId: person.id },
       {
         onSuccess: (chat) => {
+          // Remember where we came from so mobile Back returns to Discover.
+          setChatReturnTab("discover");
           setSelectedConversationId(chat.id);
           setShowMobileSecondaryPanel(false);
-          if (typeof window !== "undefined") {
-            window.location.hash = "#discover-message";
-          }
+          // The tab switch updates the URL via replaceState in NavigationProvider.
+          // No manual location.hash assignment (it would push a history entry).
           setActiveTab("chats");
           setSelectedPerson(null);
         },
@@ -167,7 +172,9 @@ export function DiscoverDashboard() {
                 size="icon"
                 className={cn(
                   "h-8 w-8 rounded-md transition-all p-0 cursor-pointer",
-                  viewMode === "grid" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground bg-transparent"
+                  viewMode === "grid"
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground bg-transparent",
                 )}
                 onClick={() => setViewMode("grid")}
               >
@@ -178,7 +185,9 @@ export function DiscoverDashboard() {
                 size="icon"
                 className={cn(
                   "h-8 w-8 rounded-md transition-all p-0 cursor-pointer",
-                  viewMode === "list" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground bg-transparent"
+                  viewMode === "list"
+                    ? "bg-background text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground bg-transparent",
                 )}
                 onClick={() => setViewMode("list")}
               >
@@ -287,7 +296,7 @@ export function DiscoverDashboard() {
         </AnimatePresence>
 
         {/* People List */}
-        <div className="flex-1 px-6 pb-6">
+        <div className="flex-1 px-4 pb-24">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-24 text-center">
               <p className="text-sm text-muted-foreground">Loading people...</p>
@@ -301,13 +310,15 @@ export function DiscoverDashboard() {
               <p className="text-sm text-muted-foreground mt-1">Try adjusting your search</p>
             </div>
           ) : (
-            <div className={cn(
-              "py-4 mx-auto w-full",
-              viewMode === "grid"
-                ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 max-w-[1600px]"
-                : "flex flex-col gap-3 max-w-xl"
-            )}>
-              {people.map((person) => (
+            <div
+              className={cn(
+                "py-1 mx-auto w-full",
+                viewMode === "grid"
+                  ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 max-w-[1600px]"
+                  : "flex flex-col gap-3 max-w-xl",
+              )}
+            >
+              {people.map((person) =>
                 viewMode === "grid" ? (
                   <PersonGridCard
                     key={person.id}
@@ -348,8 +359,8 @@ export function DiscoverDashboard() {
                       removeFriendMutation.isPending && removeFriendMutation.variables === person.id
                     }
                   />
-                )
-              ))}
+                ),
+              )}
             </div>
           )}
         </div>
@@ -444,10 +455,12 @@ function PersonCard({
                 onClick={onProfileClick}
                 className={cn(
                   "text-xs font-semibold text-foreground hover:text-primary transition-colors focus:outline-none",
-                  isFemale && "text-pink-500 hover:text-pink-600 dark:text-pink-400 dark:hover:text-pink-300"
+                  isFemale &&
+                    "text-pink-500 hover:text-pink-600 dark:text-pink-400 dark:hover:text-pink-300",
                 )}
               >
-                {person.name}{age ? `, ${age}` : ""}
+                {person.name}
+                {age ? `, ${age}` : ""}
               </button>
               <span className="text-[11px] text-muted-foreground">@{person.username}</span>
               {(person.isVerified || person.verified) && (
@@ -582,7 +595,8 @@ function PersonCard({
       </div>
     </motion.div>
   );
-}function PersonGridCard({
+}
+function PersonGridCard({
   person,
   isLiked,
   isHovered,
@@ -667,10 +681,11 @@ function PersonCard({
             }}
             className={cn(
               "text-sm font-bold text-white hover:text-primary transition-colors text-left focus:outline-none flex items-center gap-1 flex-wrap drop-shadow-md",
-              isFemale && "text-pink-300 hover:text-pink-400"
+              isFemale && "text-pink-300 hover:text-pink-400",
             )}
           >
-            {person.name}{age ? `, ${age}` : ""}
+            {person.name}
+            {age ? `, ${age}` : ""}
           </button>
           <p className="text-[10px] text-zinc-300 font-medium drop-shadow-xs">@{person.username}</p>
         </div>
@@ -796,10 +811,7 @@ function PersonCard({
             }}
           >
             <Heart
-              className={cn(
-                "h-3.5 w-3.5",
-                isLiked ? "text-pink-500 fill-pink-500" : "text-white",
-              )}
+              className={cn("h-3.5 w-3.5", isLiked ? "text-pink-500 fill-pink-500" : "text-white")}
             />
           </Button>
 

@@ -1,4 +1,5 @@
 import apiClient from "../client"
+import { unwrapPaginatedResponse } from "../response-handler"
 import type { ApiResponse, PaginatedResponse, User as AuthUser } from "../types"
 
 export const FollowService = {
@@ -18,16 +19,17 @@ export const FollowService = {
   },
 
   getFollowers: async (userUuid: string, page = 0, size = 20): Promise<PaginatedResponse<AuthUser>> => {
-    const response = await apiClient.get<ApiResponse<PaginatedResponse<AuthUser>>>(`/follows/${userUuid}/followers`, {
+    // Backend returns a Spring Page ({ content, ... }); normalize to { items, meta }.
+    const response = await apiClient.get<ApiResponse<any>>(`/follows/${userUuid}/followers`, {
       params: { page, size },
     })
-    return response.data.data
+    return unwrapPaginatedResponse<AuthUser>(response)
   },
 
   getFollowing: async (userUuid: string, page = 0, size = 20): Promise<PaginatedResponse<AuthUser>> => {
-    const response = await apiClient.get<ApiResponse<PaginatedResponse<AuthUser>>>(`/follows/${userUuid}/following`, {
+    const response = await apiClient.get<ApiResponse<any>>(`/follows/${userUuid}/following`, {
       params: { page, size },
     })
-    return response.data.data
+    return unwrapPaginatedResponse<AuthUser>(response)
   },
 }

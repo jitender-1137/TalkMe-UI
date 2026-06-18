@@ -10,7 +10,12 @@ export function useMatchOnlineCount() {
   return useQuery({
     queryKey: QUERY_KEYS.MATCH.ONLINE_COUNT,
     queryFn: () => MatchService.getOnlineMatchCount(),
-    refetchInterval: 10 * 1000, // refresh count every 10 seconds
+    // Fetch once for the initial baseline; live updates arrive over WebSocket
+    // (/topic/match/online) and are written straight into this cache by the
+    // WebSocketProvider. No polling → no recurring backend/DB load.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 

@@ -1,29 +1,29 @@
-"use client"
+"use client";
 
-import { useState, useRef, useEffect, useMemo } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { useMatchStore } from "./match-store"
-import { StrangerChatHeader } from "./stranger-chat-header"
-import { StrangerChatBubble } from "./stranger-chat-bubble"
-import { useWebSocket } from "@/components/providers"
-import { UploadService } from "@/src/api/services/upload.service"
-import { toast } from "sonner"
-import { MessageInput } from "@/components/chat/message-input"
-import { CameraModal } from "@/components/chat/camera-modal"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import type { Stranger, StrangerMessage } from "./types"
+import { useState, useRef, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useMatchStore } from "./match-store";
+import { StrangerChatHeader } from "./stranger-chat-header";
+import { StrangerChatBubble } from "./stranger-chat-bubble";
+import { useWebSocket } from "@/components/providers";
+import { UploadService } from "@/src/api/services/upload.service";
+import { toast } from "sonner";
+import { MessageInput } from "@/components/chat/message-input";
+import { CameraModal } from "@/components/chat/camera-modal";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type { Stranger, StrangerMessage } from "./types";
 
 interface StrangerChatScreenProps {
-  stranger: Stranger
-  messages: StrangerMessage[]
-  onSendMessage: (content: string, type?: "text" | "image", media?: any) => void
-  onSkip: () => void
-  onReport: () => void
-  onBlock: () => void
-  onExit: () => void
-  onRevealMedia: (messageId: string) => void
-  onHideMedia: (messageId: string) => void
+  stranger: Stranger;
+  messages: StrangerMessage[];
+  onSendMessage: (content: string, type?: "text" | "image", media?: any) => void;
+  onSkip: () => void;
+  onReport: () => void;
+  onBlock: () => void;
+  onExit: () => void;
+  onRevealMedia: (messageId: string) => void;
+  onHideMedia: (messageId: string) => void;
 }
 
 export function StrangerChatScreen({
@@ -37,169 +37,150 @@ export function StrangerChatScreen({
   onRevealMedia,
   onHideMedia,
 }: StrangerChatScreenProps) {
-  const { status } = useMatchStore()
-  const { sendEvent } = useWebSocket()
-  const isDisconnected = status === "disconnected"
+  const { status } = useMatchStore();
+  const { sendEvent } = useWebSocket();
+  const isDisconnected = status === "disconnected";
 
-  const [isUploading, setIsUploading] = useState(false)
-  const [showCameraModal, setShowCameraModal] = useState(false)
+  const [isUploading, setIsUploading] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
 
-  const [newChatConfirm, setNewChatConfirm] = useState(false)
-  const [endChatConfirm, setEndChatConfirm] = useState(false)
-  const newChatTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const endChatTimerRef = useRef<NodeJS.Timeout | null>(null)
-
-
+  const [newChatConfirm, setNewChatConfirm] = useState(false);
+  const [endChatConfirm, setEndChatConfirm] = useState(false);
+  const newChatTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const endChatTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     return () => {
-      if (newChatTimerRef.current) clearTimeout(newChatTimerRef.current)
-      if (endChatTimerRef.current) clearTimeout(endChatTimerRef.current)
-    }
-  }, [])
+      if (newChatTimerRef.current) clearTimeout(newChatTimerRef.current);
+      if (endChatTimerRef.current) clearTimeout(endChatTimerRef.current);
+    };
+  }, []);
 
   const handleNewChatClick = () => {
     if (newChatConfirm) {
-      if (newChatTimerRef.current) clearTimeout(newChatTimerRef.current)
-      setNewChatConfirm(false)
-      onSkip()
+      if (newChatTimerRef.current) clearTimeout(newChatTimerRef.current);
+      setNewChatConfirm(false);
+      onSkip();
     } else {
-      setNewChatConfirm(true)
+      setNewChatConfirm(true);
       newChatTimerRef.current = setTimeout(() => {
-        setNewChatConfirm(false)
-      }, 3000)
+        setNewChatConfirm(false);
+      }, 3000);
     }
-  }
+  };
 
   const handleEndChatClick = () => {
     if (endChatConfirm) {
-      if (endChatTimerRef.current) clearTimeout(endChatTimerRef.current)
-      setEndChatConfirm(false)
-      onExit()
+      if (endChatTimerRef.current) clearTimeout(endChatTimerRef.current);
+      setEndChatConfirm(false);
+      onExit();
     } else {
-      setEndChatConfirm(true)
+      setEndChatConfirm(true);
       endChatTimerRef.current = setTimeout(() => {
-        setEndChatConfirm(false)
-      }, 3000)
+        setEndChatConfirm(false);
+      }, 3000);
     }
-  }
+  };
 
-
-
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const isTypingRef = useRef(false)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isTypingRef = useRef(false);
 
   // Compute image exchange permission state from message history
   const imageExchangeState = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
-      const content = messages[i].content
-      if (content === "__IMAGE_ACCEPT__") return "approved"
-      if (content === "__IMAGE_REJECT__") return "rejected"
-      if (content === "__IMAGE_REQUEST__") return "requested"
+      const content = messages[i].content;
+      if (content === "__IMAGE_ACCEPT__") return "approved";
+      if (content === "__IMAGE_REJECT__") return "rejected";
+      if (content === "__IMAGE_REQUEST__") return "requested";
     }
-    return "idle"
-  }, [messages])
+    return "idle";
+  }, [messages]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages])
+  }, [messages]);
 
   // Cleanup typing notification on unmount
   useEffect(() => {
     return () => {
       if (isTypingRef.current) {
-        sendEvent("stranger_typing_stopped", {})
+        sendEvent("stranger_typing_stopped", {});
       }
-    }
-  }, [sendEvent])
+    };
+  }, [sendEvent]);
 
   const handleSend = (content: string) => {
-    if (!content.trim() || isDisconnected) return
-    onSendMessage(content.trim(), "text")
-  }
+    if (!content.trim() || isDisconnected) return;
+    onSendMessage(content.trim(), "text");
+  };
 
   const handleTyping = (isTyping: boolean) => {
-    if (isDisconnected) return
+    if (isDisconnected) return;
     if (isTyping) {
-      isTypingRef.current = true
-      sendEvent("stranger_typing_started", {})
+      isTypingRef.current = true;
+      sendEvent("stranger_typing_started", {});
     } else {
-      isTypingRef.current = false
-      sendEvent("stranger_typing_stopped", {})
+      isTypingRef.current = false;
+      sendEvent("stranger_typing_stopped", {});
     }
-  }
+  };
 
   const verifyImagePermission = () => {
-    if (isDisconnected) return false
+    if (isDisconnected) return false;
 
     if (imageExchangeState === "idle" || imageExchangeState === "rejected") {
       // Send image exchange request
-      onSendMessage("__IMAGE_REQUEST__", "text")
-      toast.info("Image exchange request sent to stranger.")
-      return false
+      onSendMessage("__IMAGE_REQUEST__", "text");
+      toast.info("Image exchange request sent to stranger.");
+      return false;
     } else if (imageExchangeState === "requested") {
-      toast.warning("Waiting for stranger to approve image exchange.")
-      return false
+      toast.warning("Waiting for stranger to approve image exchange.");
+      return false;
     }
-    return true
-  }
+    return true;
+  };
 
   const handleAttachClick = (type: "image" | "video" | "audio" | "document" | "camera") => {
     if (type === "image") {
       if (verifyImagePermission()) {
-        fileInputRef.current?.click()
+        fileInputRef.current?.click();
       }
     } else if (type === "camera") {
       if (verifyImagePermission()) {
-        setShowCameraModal(true)
+        setShowCameraModal(true);
       }
     } else {
-      toast.warning("Only image sharing is supported in stranger chat.")
+      toast.warning("Only image sharing is supported in stranger chat.");
     }
-  }
+  };
 
   const handleSendMediaDirectly = (url: string, type: "image" | "sticker") => {
-    if (isDisconnected) return
+    if (isDisconnected) return;
     onSendMessage("", "image", {
       type: "image",
       url: url,
       isBlurred: true,
-    })
-    toast.success(`${type === "image" ? "GIF" : "Sticker"} sent successfully`)
-  }
-
-  const handleSendAudio = async (file: File) => {
-    if (isDisconnected) return
-    setIsUploading(true)
-    try {
-      const response = await UploadService.uploadFile(file, "audio", stranger.id)
-      if (response && response.url) {
-        onSendMessage(response.url, "text")
-      }
-    } catch (err) {
-      toast.error("Failed to send voice recording")
-    } finally {
-      setIsUploading(false)
-    }
-  }
+    });
+    toast.success(`${type === "image" ? "GIF" : "Sticker"} sent successfully`);
+  };
 
   const handleImageClick = () => {
     if (verifyImagePermission()) {
-      fileInputRef.current?.click()
+      fileInputRef.current?.click();
     }
-  }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || isDisconnected) return
+    const file = e.target.files?.[0];
+    if (!file || isDisconnected) return;
 
-    setIsUploading(true)
+    setIsUploading(true);
     try {
-      const response = await UploadService.uploadFile(file, "image", stranger.chatId)
+      const response = await UploadService.uploadFile(file, "image");
       if (response && response.url) {
         // Send image message
         onSendMessage("", "image", {
@@ -209,34 +190,34 @@ export function StrangerChatScreen({
           fileSize: file.size.toString(),
           mimeType: file.type,
           isBlurred: true,
-        })
-        toast.success("Image sent successfully")
+        });
+        toast.success("Image sent successfully");
       }
     } catch (err) {
-      console.error("Failed to upload image:", err)
-      toast.error("Failed to send image")
+      console.error("Failed to upload image:", err);
+      toast.error("Failed to send image");
     } finally {
-      setIsUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ""
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }
+  };
 
   const handleGifSelect = (gifUrl: string) => {
-    if (isDisconnected) return
+    if (isDisconnected) return;
     onSendMessage("", "image", {
       type: "image",
       url: gifUrl,
       isBlurred: true,
-    })
-    toast.success("GIF sent successfully")
-  }
+    });
+    toast.success("GIF sent successfully");
+  };
 
   const handleCameraCapture = async (file: File) => {
-    if (isDisconnected) return
+    if (isDisconnected) return;
 
-    setIsUploading(true)
+    setIsUploading(true);
     try {
-      const response = await UploadService.uploadFile(file, "image", stranger.chatId)
+      const response = await UploadService.uploadFile(file, "image");
       if (response && response.url) {
         onSendMessage("", "image", {
           type: "image",
@@ -245,19 +226,19 @@ export function StrangerChatScreen({
           fileSize: file.size.toString(),
           mimeType: file.type,
           isBlurred: true,
-        })
-        toast.success("Photo sent successfully")
+        });
+        toast.success("Photo sent successfully");
       }
     } catch (err) {
-      console.error("Failed to upload camera capture:", err)
-      toast.error("Failed to send photo")
+      console.error("Failed to upload camera capture:", err);
+      toast.error("Failed to send photo");
     } finally {
-      setIsUploading(false)
+      setIsUploading(false);
     }
-  }
+  };
 
   return (
-    <div className="flex flex-col h-full bg-background relative">
+    <div className="flex flex-col h-full min-h-0 bg-background relative">
       {/* Header */}
       <StrangerChatHeader
         stranger={stranger}
@@ -363,7 +344,7 @@ export function StrangerChatScreen({
       />
 
       {/* Matchmaking controls toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-white/5 bg-card/45 select-none shrink-0">
+      <div className="flex items-center justify-between px-4 py-1 border-t border-white/5 bg-card/45 select-none shrink-0">
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -373,7 +354,7 @@ export function StrangerChatScreen({
               "h-8 text-xs rounded-full px-3.5 font-medium transition-all duration-200 border-transparent",
               newChatConfirm
                 ? "bg-amber-500 hover:bg-amber-600 text-white"
-                : "bg-primary/10 hover:bg-primary/20 text-primary"
+                : "bg-primary/10 hover:bg-primary/20 text-primary",
             )}
           >
             {newChatConfirm ? "Confirm?" : "New Chat"}
@@ -386,13 +367,12 @@ export function StrangerChatScreen({
               "h-8 text-xs rounded-full px-3.5 font-medium transition-all duration-200",
               endChatConfirm
                 ? "bg-destructive hover:bg-destructive/90 text-white border-transparent"
-                : "border-destructive/30 hover:border-destructive/60 hover:bg-destructive/10 text-destructive"
+                : "border-destructive/30 hover:border-destructive/60 hover:bg-destructive/10 text-destructive",
             )}
           >
             {endChatConfirm ? "Confirm?" : "End Chat"}
           </Button>
         </div>
-
       </div>
 
       <MessageInput
@@ -401,7 +381,6 @@ export function StrangerChatScreen({
         onTyping={handleTyping}
         onAttachClick={handleAttachClick}
         onSendMediaDirectly={handleSendMediaDirectly}
-        onRecordComplete={handleSendAudio}
       />
 
       <CameraModal
@@ -410,5 +389,5 @@ export function StrangerChatScreen({
         onCapture={handleCameraCapture}
       />
     </div>
-  )
+  );
 }

@@ -12,8 +12,13 @@ import type {
 } from "../types"
 import { useLiveQuery } from "dexie-react-hooks"
 import { db, mapResponseToLocalMessage } from "../db"
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useAuthToken } from "./useChats"
+
+// Per-chatId sync state tracked outside React to survive re-renders
+const syncInFlight = new Map<string, boolean>()
+const syncLastRan = new Map<string, number>()
+const SYNC_COOLDOWN_MS = 30_000 // don't re-sync the same chat within 30 s
 
 // ── Query: infinite message list (Dexie local cache + background API sync) ──────────
 export function useMessages(chatId: string) {
@@ -90,13 +95,29 @@ export function useMessages(chatId: string) {
   useEffect(() => {
     if (!chatId || !token) return
 
+    // Guard: don't fire if a sync for this chat is already in-flight
+    if (syncInFlight.get(chatId)) return
+
+    // Guard: skip if we synced this chat recently AND already have local messages
+    const lastRan = syncLastRan.get(chatId) || 0
+    const timeSinceSync = Date.now() - lastRan
+
     let active = true
     const syncLatest = async () => {
-      try {
-        // Get last sequence number from sync_state
-        const syncState = await db.sync_state.get(chatId)
-        const lastSeq = syncState?.lastSequenceNumber || 0
+      // Check local state before deciding whether to skip
+      const syncState = await db.sync_state.get(chatId)
+      const lastSeq = syncState?.lastSequenceNumber || 0
 
+      // If we have existing messages and synced recently, skip to avoid burst on reconnect
+      if (lastSeq > 0 && timeSinceSync < SYNC_COOLDOWN_MS) {
+        return
+      }
+
+      if (syncInFlight.get(chatId)) return
+      syncInFlight.set(chatId, true)
+      syncLastRan.set(chatId, Date.now())
+
+      try {
         let newMessages: any[] = []
         if (lastSeq > 0) {
           // Request missing messages after last known sequence
@@ -151,6 +172,8 @@ export function useMessages(chatId: string) {
         }
       } catch (err: any) {
         console.warn("[Dexie Sync] Error syncing latest messages:", err?.message || err, err)
+      } finally {
+        syncInFlight.set(chatId, false)
       }
     }
 

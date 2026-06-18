@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "./auth-context";
+import { Turnstile } from "@/components/security/turnstile";
 import { User, Calendar, Users, Shield, Zap, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,8 @@ export function GuestMatchForm() {
   const [nameError, setNameError] = useState("");
   const [ageError, setAgeError] = useState("");
   const [genderError, setGenderError] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +54,7 @@ export function GuestMatchForm() {
 
     if (hasError) return;
 
-    loginAsGuest(name.trim(), ageNum, gender);
+    loginAsGuest(name.trim(), ageNum, gender, captchaToken, website);
   };
 
   const genderOptions = [
@@ -202,6 +205,21 @@ export function GuestMatchForm() {
                   <p className="text-xs text-destructive mt-1">{genderError}</p>
                 )}
               </div>
+
+              {/* Honeypot — hidden from real users */}
+              <input
+                type="text"
+                name="website"
+                tabIndex={-1}
+                autoComplete="off"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                className="hidden"
+                aria-hidden="true"
+              />
+
+              {/* Bot challenge */}
+              <Turnstile onVerify={setCaptchaToken} onExpire={() => setCaptchaToken("")} className="flex justify-center" />
 
               <Button type="submit" className="w-full h-11 mt-2">
                 <Zap className="h-4 w-4 mr-2" />

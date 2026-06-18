@@ -683,26 +683,84 @@ export function MessageInput({
 
   const commonEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "🎉"];
 
+  // WhatsApp-style: close the emoji/GIF/sticker picker when clicking anywhere
+  // outside it (the picker, the toggle button, and any selected emoji are
+  // marked with data-emoji-keep so those clicks don't dismiss it).
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (target && target.closest("[data-emoji-keep]")) return;
+      setShowEmojiPicker(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [showEmojiPicker]);
+
+  // Same WhatsApp-style behaviour for the attachment (+) menu: clicking outside
+  // it (or its toggle) closes it.
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (target && target.closest("[data-attach-keep]")) return;
+      setShowAttachMenu(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [showAttachMenu]);
+
   const renderPicker = () => {
     return (
       <div className="w-full h-full flex flex-col overflow-hidden">
+        {/* Category bar (WhatsApp-style): emoji / GIF / sticker — on top */}
+        <div className="flex items-center px-3 shrink-0">
+          {(
+            [
+              { id: "emoji", icon: Smile },
+              { id: "gif", icon: Film },
+              { id: "sticker", icon: Sticker },
+            ] as const
+          ).map(({ id, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActivePickerTab(id)}
+              type="button"
+              className={cn(
+                "flex-1 h-9 flex items-center justify-center rounded-full transition-all active:scale-95",
+                activePickerTab === id
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-muted",
+              )}
+            >
+              <Icon
+                className="h-5.5 w-5.5"
+                fill={activePickerTab === id ? "currentColor" : "none"}
+                fillOpacity={activePickerTab === id ? 0.15 : 0}
+              />
+            </button>
+          ))}
+        </div>
+
         {/* Header search bar */}
         {activePickerTab !== "sticker" ? (
-          <div className="p-2 border-b border-border flex items-center gap-2 bg-muted/30 shrink-0">
-            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-            <input
-              type="text"
-              placeholder={activePickerTab === "emoji" ? "Search Emojis..." : "Search GIFs..."}
-              value={activePickerTab === "emoji" ? emojiSearch : gifQuery}
-              onChange={(e) => {
-                if (activePickerTab === "emoji") {
-                  setEmojiSearch(e.target.value);
-                } else {
-                  setGifQuery(e.target.value);
-                }
-              }}
-              className="w-full bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground"
-            />
+          <div className="p-2.5 shrink-0">
+            <div className="flex items-center gap-2 bg-black/10 dark:bg-white/6 rounded-full px-3.5 h-9">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <input
+                type="text"
+                placeholder={activePickerTab === "emoji" ? "Search Emojis" : "Search GIFs"}
+                value={activePickerTab === "emoji" ? emojiSearch : gifQuery}
+                onChange={(e) => {
+                  if (activePickerTab === "emoji") {
+                    setEmojiSearch(e.target.value);
+                  } else {
+                    setGifQuery(e.target.value);
+                  }
+                }}
+                className="w-full bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground"
+              />
+            </div>
           </div>
         ) : (
           <div className="p-2 border-b border-border flex gap-2 bg-muted/30 overflow-x-auto shrink-0 scrollbar-none">
@@ -865,52 +923,12 @@ export function MessageInput({
             </div>
           )}
         </div>
-
-        {/* Bottom tabs navigation */}
-        <div className="flex border-t border-border bg-muted/40 py-1.5 px-4 justify-around shrink-0 gap-2">
-          <button
-            onClick={() => setActivePickerTab("emoji")}
-            type="button"
-            className={cn(
-              "flex-1 py-1.5 flex justify-center rounded-lg transition-all",
-              activePickerTab === "emoji"
-                ? "text-primary bg-primary/10 font-bold"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            <Smile className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => setActivePickerTab("gif")}
-            type="button"
-            className={cn(
-              "flex-1 py-1.5 flex justify-center rounded-lg transition-all",
-              activePickerTab === "gif"
-                ? "text-primary bg-primary/10 font-bold"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            <Film className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => setActivePickerTab("sticker")}
-            type="button"
-            className={cn(
-              "flex-1 py-1.5 flex justify-center rounded-lg transition-all",
-              activePickerTab === "sticker"
-                ? "text-primary bg-primary/10 font-bold"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            <Sticker className="h-5 w-5" />
-          </button>
-        </div>
       </div>
     );
   };
 
   return (
-    <div className="border-t border-white/10 bg-card shrink-0 flex flex-col">
+    <div className="bg-card shrink-0 flex flex-col">
       <div className="px-1 py-3 max-w-3xl mx-auto space-y-2 w-full">
         {/* Reply preview */}
         <AnimatePresence>
@@ -950,7 +968,7 @@ export function MessageInput({
             >
               <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
                 <div className="flex-1 min-w-0 border-l-4 border-primary pl-2">
-                  <p className="text-xs font-semibold text-primary text-primary/90">
+                  <p className="text-xs font-semibold text-primary">
                     Attachment ({pendingAttachment.type})
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
@@ -1024,13 +1042,14 @@ export function MessageInput({
         </AnimatePresence>
 
         {!isRecording && (
-          <div className="flex items-end gap-1.5 bg-muted/65 border border-white/10 rounded-3xl px-2 py-0.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+          <div className="flex items-end gap-0.5 bg-black/10 dark:bg-white/6 border border-card/50 rounded-3xl px-2 py-0.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
             {/* Emoji button */}
             <div className="relative shrink-0">
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
+                data-emoji-keep
                 className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center"
                 onClick={() => {
                   setShowEmojiPicker(!showEmojiPicker);
@@ -1044,10 +1063,11 @@ export function MessageInput({
               <AnimatePresence>
                 {showEmojiPicker && (
                   <motion.div
+                    data-emoji-keep
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="hidden sm:flex sm:absolute sm:bottom-full sm:left-0 sm:right-auto sm:mb-3 bg-popover border border-border rounded-2xl shadow-xl w-[350px] h-[400px] flex-col overflow-hidden z-50"
+                    className="hidden sm:flex sm:absolute sm:bottom-full sm:left-0 sm:right-auto sm:mb-3 bg-popover border border-border rounded-2xl shadow-xl w-87.5 h-100 flex-col overflow-hidden z-50"
                   >
                     {renderPicker()}
                   </motion.div>
@@ -1082,6 +1102,7 @@ export function MessageInput({
                 type="button"
                 variant="ghost"
                 size="icon"
+                data-attach-keep
                 className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center"
                 onClick={() => {
                   setShowAttachMenu(!showAttachMenu);
@@ -1095,6 +1116,7 @@ export function MessageInput({
               <AnimatePresence>
                 {showAttachMenu && (
                   <motion.div
+                    data-attach-keep
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -1161,10 +1183,11 @@ export function MessageInput({
       <AnimatePresence>
         {showEmojiPicker && (
           <motion.div
+            data-emoji-keep
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 320, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="flex sm:hidden w-full bg-popover border-t border-border flex-col overflow-hidden"
+            className="flex sm:hidden w-full bg-popover flex-col overflow-hidden"
           >
             {renderPicker()}
           </motion.div>

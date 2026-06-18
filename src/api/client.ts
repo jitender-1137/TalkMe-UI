@@ -114,6 +114,32 @@ export function formatMediaUrls(obj: any) {
   });
 }
 
+export function formatPostCompat(obj: any) {
+  if (!obj || typeof obj !== "object") return;
+
+  if (obj.id && obj.user && obj.createdAt && ("likesCount" in obj)) {
+    // It's a post!
+    obj.userId = obj.user.id;
+    obj.userName = obj.user.name || obj.user.username;
+    obj.userAvatar = obj.user.avatar;
+    obj.isLiked = obj.likedByMe;
+    obj.isBookmarked = obj.bookmarkedByMe;
+  }
+
+  if (obj.id && obj.content && obj.createdAt && ("username" in obj) && ("name" in obj)) {
+    // It's a comment!
+    obj.userName = obj.name || obj.username;
+    obj.userAvatar = null;
+  }
+
+  Object.keys(obj).forEach((key) => {
+    const value = obj[key];
+    if (value && typeof value === "object") {
+      formatPostCompat(value);
+    }
+  });
+}
+
 const TIMEOUT = 15_000;
 
 // Methods that modify state and require CSRF protection
@@ -163,6 +189,7 @@ apiClient.interceptors.response.use(
     // Automatically intercept and format any absolute paths from the backend
     if (response.data) {
       formatMediaUrls(response.data);
+      formatPostCompat(response.data);
     }
     // Cookies (refresh token + CSRF token) are automatically handled by the browser
     return response;
@@ -243,6 +270,19 @@ apiClient.interceptors.response.use(
         const apiError = handleApiError(refreshError);
         return Promise.reject(apiError);
       }
+    }
+
+    // Handle 429 Too Many Requests – log and propagate (do NOT auto-retry to avoid storm)
+    if (error.response?.status === 429) {
+      const retryAfter = error.response.headers?.["retry-after"];
+      const waitSec = retryAfter ? parseInt(retryAfter, 10) : 60;
+      console.warn(
+        `[API] Rate limited (429). Retry-After: ${waitSec}s.`,
+        originalRequest?.url
+      );
+      // Surface a clean error; callers should back off based on this
+      const apiError = handleApiError(error);
+      return Promise.reject(apiError);
     }
 
     // Handle 403 Forbidden - likely CSRF token mismatch

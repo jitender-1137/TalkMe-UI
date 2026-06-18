@@ -30,18 +30,30 @@ export interface StoryViewer {
 }
 
 // ── Feed / Posts ────────────────────────────────────────────────────────────
+export interface PostMediaResponse {
+  id: string
+  mediaUrl: string
+  mediaType: "IMAGE" | "VIDEO"
+}
+
 export interface Post {
   id: string
+  user: User
+  content: string
+  media: PostMediaResponse[]
+  likesCount: number
+  commentsCount: number
+  likedByMe: boolean
+  bookmarkedByMe: boolean
+  createdAt: string
+  comments?: Comment[]
+
+  // Compatibility properties populated dynamically by response interceptor
   userId: string
   userName: string
   userAvatar: string | null
-  content: string
-  media: string[]
-  likesCount: number
-  commentsCount: number
   isLiked: boolean
   isBookmarked: boolean
-  createdAt: string
 }
 
 export interface Comment {
@@ -54,9 +66,14 @@ export interface Comment {
   createdAt: string
 }
 
+export interface PostMediaRequest {
+  mediaUrl: string
+  mediaType: "IMAGE" | "VIDEO"
+}
+
 export interface CreatePostPayload {
   content: string
-  media?: string[]
+  media?: PostMediaRequest[]
 }
 
 // ── Discover ────────────────────────────────────────────────────────────────

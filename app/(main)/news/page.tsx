@@ -1,4 +1,4 @@
-import NewsDashboard from "@/components/news/news-dashboard"
+import { NewsDashboard } from "@/components/feed"
 import { Metadata } from "next"
 
 export const metadata: Metadata = {

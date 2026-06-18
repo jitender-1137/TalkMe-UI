@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,9 @@ export interface AppLayoutProps {
   isLoading?: boolean;
   collapseFiltersToHeader?: boolean;
   disableBottomPadding?: boolean;
+  textSize?: string;
+  /** When provided, enables pull-to-refresh on the scroll container (mobile). */
+  onRefresh?: () => Promise<void> | void;
 }
 
 export function SearchSection({
@@ -65,10 +68,12 @@ export function FilterChipBar({
   chips = [],
   activeId = "",
   onChange,
+  textSize = "text-xs",
 }: {
   chips?: FilterChip[];
   activeId?: string;
   onChange?: (id: string) => void;
+  textSize?: string;
 }) {
   return (
     <div className="w-full overflow-x-auto flex items-center gap-2 px-4 py-2 select-none shrink-0 scrollbar-none">
@@ -79,7 +84,8 @@ export function FilterChipBar({
             key={chip.id}
             onClick={() => onChange?.(chip.id)}
             className={cn(
-              "relative shrink-0 text-xs font-semibold px-4 py-1.5 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1.5 cursor-pointer",
+              "relative shrink-0 text-{textSize} font-semibold px-4 py-1.5 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1.5 cursor-pointer",
+              textSize,
               isActive
                 ? "bg-primary/15 dark:bg-primary/25 text-primary border border-primary/20"
                 : "bg-black/5 dark:bg-white/5 text-muted-foreground border border-transparent hover:text-foreground",
@@ -120,8 +126,70 @@ export function AppLayout({
   isLoading = false,
   collapseFiltersToHeader = false,
   disableBottomPadding = false,
+  textSize = "text-xs",
+  onRefresh,
 }: AppLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // ── Pull-to-refresh (mobile) ───────────────────────────────────────────────
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const pullStartY = useRef<number | null>(null);
+  const pullDistanceRef = useRef(0);
+  const PULL_THRESHOLD = 70;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !onRefresh) return;
+
+    const setDistance = (d: number) => {
+      pullDistanceRef.current = d;
+      setPullDistance(d);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (el.scrollTop <= 0 && !isRefreshing) {
+        pullStartY.current = e.touches[0].clientY;
+      } else {
+        pullStartY.current = null;
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (pullStartY.current == null || isRefreshing) return;
+      const delta = e.touches[0].clientY - pullStartY.current;
+      if (delta > 0 && el.scrollTop <= 0) {
+        // Apply resistance so the pull feels rubber-bandy and capped.
+        setDistance(Math.min(delta * 0.5, 90));
+        if (e.cancelable) e.preventDefault();
+      } else if (pullDistanceRef.current !== 0) {
+        setDistance(0);
+      }
+    };
+    const onTouchEnd = async () => {
+      if (pullStartY.current == null) return;
+      pullStartY.current = null;
+      if (pullDistanceRef.current >= PULL_THRESHOLD && !isRefreshing) {
+        setDistance(0);
+        setIsRefreshing(true);
+        try {
+          await onRefresh();
+        } finally {
+          setIsRefreshing(false);
+        }
+      } else {
+        setDistance(0);
+      }
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [onRefresh, isRefreshing]);
 
   // Continuous scroll tracking using Framer Motion (runs outside React rendering context for 60fps)
   const { scrollY } = useScroll({ container: containerRef });
@@ -142,13 +210,10 @@ export function AppLayout({
 
   return (
     <div
-      className={cn(
-        "relative h-full w-full flex flex-col overflow-hidden bg-background md:pb-0",
-        disableBottomPadding ? "pb-0" : "pb-[calc(env(safe-area-inset-bottom)+76px)]",
-      )}
+      className={cn("relative h-full w-full flex flex-col overflow-hidden bg-background md:pb-0")}
     >
       {/* 1. STICKY COLLAPSED HEADER (Always fixed, background & small title fade in) */}
-      <div className="fixed top-0 left-0 right-0 z-30 pointer-events-none md:left-[72px]">
+      <div className="fixed top-0 left-0 right-0 z-30 pointer-events-none md:left-18">
         {/* Blurred glass overlay */}
         <motion.div
           style={{ opacity: headerBgOpacity }}
@@ -166,7 +231,7 @@ export function AppLayout({
             className="flex items-center gap-2 shrink-0"
           >
             {Icon && <Icon className="h-5 w-5 text-primary shrink-0" />}
-            <span className="font-bold text-base text-foreground tracking-tight select-none truncate max-w-[100px]">
+            <span className="font-bold text-base text-foreground tracking-tight select-none truncate max-w-25">
               {title}
             </span>
           </motion.div>
@@ -177,7 +242,7 @@ export function AppLayout({
             className="flex-1 flex justify-center min-w-0"
           >
             {hasSearch && (
-              <div className="w-full max-w-[180px] sm:max-w-xs">
+              <div className="w-full max-w-45 sm:max-w-xs">
                 <div className="relative flex items-center bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-full px-3 py-1 transition-all focus-within:bg-black/10 dark:focus-within:bg-white/10 h-8">
                   <Search className="h-3.5 w-3.5 text-muted-foreground mr-1.5 shrink-0" />
                   <input
@@ -214,7 +279,7 @@ export function AppLayout({
                       key={chip.id}
                       onClick={() => onFilterChange?.(chip.id)}
                       className={cn(
-                        "relative shrink-0 text-[10px] font-bold px-3 py-1 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1 cursor-pointer",
+                        "relative shrink-0 text-xl font-bold px-3 py-1 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1 cursor-pointer",
                         isActive
                           ? "bg-primary/15 dark:bg-primary/25 text-primary border border-primary/20"
                           : "bg-black/5 dark:bg-white/5 text-muted-foreground border border-transparent hover:text-foreground",
@@ -255,10 +320,28 @@ export function AppLayout({
           paddingTop: "calc(env(safe-area-inset-top) + 0.5rem)",
         }}
       >
+        {/* Pull-to-refresh indicator */}
+        {onRefresh && (pullDistance > 0 || isRefreshing) && (
+          <div
+            className="flex items-center justify-center overflow-hidden shrink-0 transition-[height] duration-150"
+            style={{ height: isRefreshing ? 44 : pullDistance }}
+          >
+            <Loader2
+              className={cn("h-5 w-5 text-primary", isRefreshing && "animate-spin")}
+              style={{
+                opacity: isRefreshing ? 1 : Math.min(pullDistance / PULL_THRESHOLD, 1),
+                transform: isRefreshing
+                  ? undefined
+                  : `rotate(${(pullDistance / PULL_THRESHOLD) * 270}deg)`,
+              }}
+            />
+          </div>
+        )}
+
         {/* Expanded State Header - Scrolls with content, transformations linked to scrollY */}
         <div className="flex flex-col pb-2 shrink-0">
           {/* Large Title Area (Logo + Title on the left, action buttons on the right - SAME ROW) */}
-          <div className="px-6 py-2 flex items-center justify-between min-h-[52px]">
+          <div className="md:px-6 pr-1 pl-4 py-2 flex items-center justify-between min-h-13">
             <motion.div
               style={{
                 opacity: largeTitleOpacity,
@@ -303,12 +386,13 @@ export function AppLayout({
               chips={filterChips}
               activeId={activeFilterId}
               onChange={onFilterChange}
+              textSize={textSize}
             />
           )}
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 min-h-0 flex flex-col relative">
+        <div className="flex-1 min-h-0 flex flex-col relative w-full mx-auto pb-0">
           {isLoading ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />

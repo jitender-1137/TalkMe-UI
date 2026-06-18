@@ -23,6 +23,9 @@ export interface User {
   occupation?: string | null
   education?: string | null
   gender?: string | null
+  followersCount?: number
+  followingCount?: number
+  postsCount?: number
 }
 
 // ── Profile update ────────────────────────────────────────────────────────────

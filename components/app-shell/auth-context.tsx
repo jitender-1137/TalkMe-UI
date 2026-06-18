@@ -8,6 +8,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useLogin, useSignup, useLogout, useGuestLogin, useMe } from "@/src/api/hooks/useLogin"
 import { proactiveTokenRefresh, getAccessToken } from "@/src/api/client"
 
@@ -39,9 +40,9 @@ interface AuthContextType {
   isLoginPending: boolean
   isSignupPending: boolean
   loginError: string | null
-  login: (email: string, password: string, rememberMe?: boolean) => void
-  signup: (name: string, email: string, password: string, username: string, age: number, gender: string) => Promise<any>
-  loginAsGuest: (name: string, age: number, gender: string) => void
+  login: (email: string, password: string, rememberMe?: boolean, captchaToken?: string, website?: string) => void
+  signup: (name: string, email: string, password: string, username: string, age: number, gender: string, captchaToken?: string, website?: string) => Promise<any>
+  loginAsGuest: (name: string, age: number, gender: string, captchaToken?: string, website?: string) => void
   logout: () => void
   openLoginModal: () => void
   closeLoginModal: () => void
@@ -62,13 +63,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showSignupModal, setShowSignupModal] = useState(false)
 
+  const queryClient = useQueryClient()
   const loginMutation = useLogin()
   const signupMutation = useSignup()
   const logoutMutation = useLogout()
   const guestLoginMutation = useGuestLogin()
 
   // Try to restore session on mount using refresh token
-  const { data: meData, isLoading, isError } = useMe()
+  const { data: meData, isLoading: isMeLoading, isError } = useMe()
+
+  // One-shot bootstrap flag. The initial "Restoring session…" screen should only
+  // show during the FIRST session check. Once that resolves (success OR error,
+  // e.g. a 401 from /auth/refresh), we are bootstrapped for good — later
+  // background refetches (or a queryClient.clear() on logout) must NOT bring the
+  // full-screen loader back, otherwise a refresh-401 leaves the UI stuck on
+  // "Restoring session…".
+  const [bootstrapped, setBootstrapped] = useState(false)
+  useEffect(() => {
+    if (!isMeLoading) setBootstrapped(true)
+  }, [isMeLoading])
+  const isLoading = !bootstrapped
 
   // Sync auth state when me query resolves
   useEffect(() => {
@@ -101,9 +115,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Listen for session expiration events from API client
   useEffect(() => {
     const handleSessionExpired = () => {
+      // Superseded by a login on another device (single-device policy) or the
+      // session ended.
       setIsAuthenticated((prev) => {
+        // Only react if we actually HAD a session. On a fresh load with no
+        // valid session, /auth/me → 401 → /auth/refresh → 401 fires this event
+        // too; clearing the cache there would re-trigger the useMe query and
+        // loop forever (the "stuck on Restoring session…" bug). So we only wipe
+        // cached data and prompt re-login when transitioning from authenticated.
         if (prev) {
           setShowLoginModal(true)
+          queryClient.clear()
         }
         return false
       })
@@ -114,12 +136,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("auth:session-expired", handleSessionExpired)
     return () => window.removeEventListener("auth:session-expired", handleSessionExpired)
-  }, [])
+  }, [queryClient])
 
   const login = useCallback(
-    (email: string, password: string, rememberMe?: boolean) => {
+    (email: string, password: string, rememberMe?: boolean, captchaToken?: string, website?: string) => {
       loginMutation.mutate(
-        { email, password, rememberMe },
+        { email, password, rememberMe, captchaToken, website },
         {
           onSuccess: (data) => {
             setIsAuthenticated(true)
@@ -140,9 +162,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const signup = useCallback(
-    (name: string, email: string, password: string, username: string, age: number, gender: string) => {
+    (name: string, email: string, password: string, username: string, age: number, gender: string, captchaToken?: string, website?: string) => {
       return signupMutation.mutateAsync(
-        { name, email, password, username, age, gender },
+        { name, email, password, username, age, gender, captchaToken, website },
         {
           onSuccess: (data) => {
             setIsAuthenticated(true)
@@ -163,12 +185,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const loginAsGuest = useCallback(
-    (name: string, age: number, gender: string) => {
+    (name: string, age: number, gender: string, captchaToken?: string, website?: string) => {
       // Optimistic local update first so UI responds immediately
       setIsGuestMatch(true)
       setGuestUser({ name, age, gender })
 
-      guestLoginMutation.mutate({ name, age, gender })
+      guestLoginMutation.mutate({ name, age, gender, captchaToken, website })
     },
     [guestLoginMutation],
   )

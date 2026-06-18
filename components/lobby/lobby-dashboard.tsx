@@ -17,39 +17,52 @@ import { UploadService } from "@/src/api/services/upload.service";
 import { toast } from "sonner";
 import { MessageMedia } from "@/components/chat/message-media";
 import type { MediaAttachment } from "@/components/chat/types";
-import type { ChatUser} from "./types";
+import type { ChatUser } from "./types";
 
 // Helper to detect if a message content is a media URL (GIF/sticker)
 const isMediaUrl = (content: string) => {
   if (!content) return false;
   const trimmed = content.trim();
-  const isUrl = trimmed.startsWith("https://") || 
-                trimmed.startsWith("http://") || 
-                trimmed.startsWith("/api/") || 
-                trimmed.startsWith("/uploads/");
+  const isUrl =
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("/api/") ||
+    trimmed.startsWith("/uploads/");
   return (
     isUrl &&
     (trimmed.match(/\.(gif|png|jpg|jpeg|webp|svg)(\?.*)?$/i) ||
       trimmed.includes("giphy.com") ||
       trimmed.includes("dicebear.com") ||
       trimmed.includes("robohash.org") ||
-      (trimmed.includes("/uploads/media") && (trimmed.includes(".gif") || trimmed.includes(".png") || trimmed.includes(".jpg") || trimmed.includes(".jpeg") || trimmed.includes(".webp") || trimmed.includes(".svg"))))
+      (trimmed.includes("/uploads/media") &&
+        (trimmed.includes(".gif") ||
+          trimmed.includes(".png") ||
+          trimmed.includes(".jpg") ||
+          trimmed.includes(".jpeg") ||
+          trimmed.includes(".webp") ||
+          trimmed.includes(".svg"))))
   );
 };
 
 const isAudioUrl = (content: string) => {
   if (!content) return false;
   const trimmed = content.trim();
-  const isUrl = trimmed.startsWith("https://") || 
-                trimmed.startsWith("http://") || 
-                trimmed.startsWith("/api/") || 
-                trimmed.startsWith("/uploads/");
+  const isUrl =
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("/api/") ||
+    trimmed.startsWith("/uploads/");
   return (
     isUrl &&
     (trimmed.match(/\.(webm|mp3|wav|ogg|m4a)(\?.*)?$/i) ||
       trimmed.includes("/uploads/voice-message-") ||
       trimmed.includes("/uploads/audio-") ||
-      (trimmed.includes("/uploads/media") && (trimmed.includes(".webm") || trimmed.includes(".mp3") || trimmed.includes(".wav") || trimmed.includes(".ogg") || trimmed.includes(".m4a"))))
+      (trimmed.includes("/uploads/media") &&
+        (trimmed.includes(".webm") ||
+          trimmed.includes(".mp3") ||
+          trimmed.includes(".wav") ||
+          trimmed.includes(".ogg") ||
+          trimmed.includes(".m4a"))))
   );
 };
 
@@ -122,11 +135,14 @@ export function LobbyDashboard() {
   };
 
   const handleCloseChat = () => {
-    if (typeof window !== "undefined" && window.location.hash === "#messages") {
+    // Route through the single history entry pushed for the mobile chat screen
+    // (useBackDismiss) so the in-app back button matches the OS Back button. On
+    // desktop there is no such entry → close via state.
+    if (typeof window !== "undefined" && (window.history.state as any)?.__backDismiss) {
       window.history.back();
-    } else {
-      setSelectedUser(null);
+      return;
     }
+    setSelectedUser(null);
   };
 
   return (
@@ -134,21 +150,21 @@ export function LobbyDashboard() {
       className={cn(
         "flex flex-col bg-background text-foreground relative",
         selectedUser
-          ? "h-full overflow-hidden"
-          : "h-auto md:h-full md:overflow-hidden overflow-visible"
+          ? "h-full min-h-0 overflow-hidden"
+          : "h-auto md:h-full md:overflow-hidden overflow-visible",
       )}
     >
       {/* Main Layout Container */}
       <div
         className={cn(
-          "flex-1 flex md:overflow-hidden",
-          selectedUser ? "overflow-hidden" : "overflow-visible"
+          "flex-1 min-h-0 flex md:overflow-hidden",
+          selectedUser ? "overflow-hidden" : "overflow-visible",
         )}
       >
         {/* LEFT COLUMN: User list and Inbox */}
         <div
           className={cn(
-            "w-full md:w-[350px] lg:w-[400px] shrink-0 flex flex-col border-r border-border bg-background transition-all duration-300",
+            "w-full md:w-87.5 lg:w-100 shrink-0 flex flex-col border-r border-border bg-background transition-all duration-300",
             selectedUser ? "hidden md:flex" : "flex",
           )}
         >
@@ -187,7 +203,7 @@ export function LobbyDashboard() {
               <MessageSquare className="w-4 h-4" />
               <span>Inbox</span>
               {inboxUnreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 px-1.5 py-0.5 min-w-[20px] h-5 rounded-full bg-pink-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-card">
+                <span className="rounded-full min-w-5 bg-pink-500 text-white text-[10px] font-bold flex items-center justify-center">
                   {inboxUnreadCount}
                 </span>
               )}
@@ -368,7 +384,8 @@ export function LobbyDashboard() {
                       </p>
                       {conv.unreadCount > 0 ? (
                         <span className="px-1.5 py-0.5 rounded-full bg-pink-500 text-white text-[9px] font-bold shrink-0">
-                          1 Message
+                          {conv.unreadCount > 99 ? "99+" : conv.unreadCount}{" "}
+                          {conv.unreadCount === 1 ? "Message" : "Messages"}
                         </span>
                       ) : (
                         <span className="text-[10px] text-muted-foreground">
@@ -503,7 +520,7 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
         toast.error("Failed to send audio message");
       }
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const formatMessageTime = (timestamp: number) => {
@@ -511,7 +528,7 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-muted relative">
+    <div className="flex-1 min-h-0 flex flex-col h-full bg-muted relative">
       {/* Chat Header */}
       <header className="flex items-center justify-between p-2 md:p-4 bg-card border-b border-border shrink-0">
         <div className="flex items-center gap-3">

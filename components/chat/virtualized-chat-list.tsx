@@ -94,13 +94,25 @@ export function VirtualizedChatList({
           clearTimeout(timer1)
           clearTimeout(timer2)
         }
-      } else if (uniqueMessages.length > lastMessageCount.current && isNearBottom) {
-        // Smooth scroll for subsequent new messages if user is near bottom
-        virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end", behavior: "smooth" })
+      } else if (uniqueMessages.length > lastMessageCount.current) {
+        // A new message arrived. Always smooth-scroll to the bottom for the
+        // user's OWN message (they just sent it); for incoming messages, only
+        // follow if they're already near the bottom (don't yank them off history).
+        const lastMessage = uniqueMessages[uniqueMessages.length - 1]
+        const isOwnMessage = lastMessage?.isSent === true
+        if (isOwnMessage || isNearBottom) {
+          virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end", behavior: "smooth" })
+          // Re-assert after the new item measures, so it lands fully at the bottom.
+          const t = setTimeout(() => {
+            virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end", behavior: "smooth" })
+          }, 60)
+          lastMessageCount.current = uniqueMessages.length
+          return () => clearTimeout(t)
+        }
       }
     }
     lastMessageCount.current = uniqueMessages.length
-  }, [uniqueMessages.length, isNearBottom, virtualizer])
+  }, [uniqueMessages.length, isNearBottom, virtualizer, uniqueMessages])
 
   // Handle scroll events
   const handleScroll = useCallback(() => {

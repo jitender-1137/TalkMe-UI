@@ -1,96 +1,99 @@
-"use client"
+"use client";
 
-import { forwardRef, useState, useCallback, useRef } from "react"
-import { motion, useMotionValue, useTransform } from "framer-motion"
-import { cn } from "@/lib/utils"
-import { Reply } from "lucide-react"
-import { MessageStatusIcon } from "./message-status"
-import { MessageReactions } from "./message-reactions"
-import { MessageReply } from "./message-reply"
-import { MessageMedia } from "./message-media"
-import { EmojiPicker } from "./emoji-picker"
-import { useLongPress } from "@/hooks/use-long-press"
-import { useIsMobile } from "@/hooks/use-mobile"
-import type { Message } from "./types"
+import { forwardRef, useState, useCallback, useRef } from "react";
+import { motion, useMotionValue, useTransform } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { Reply } from "lucide-react";
+import { MessageStatusIcon } from "./message-status";
+import { MessageReactions } from "./message-reactions";
+import { MessageReply } from "./message-reply";
+import { MessageMedia } from "./message-media";
+import { EmojiPicker } from "./emoji-picker";
+import { useLongPress } from "@/hooks/use-long-press";
+import { useIsMobile } from "@/hooks/use-mobile";
+import type { Message } from "./types";
 
 interface ChatBubbleProps {
-  message: Message
-  onReactionClick?: (messageId: string, emoji: string) => void
-  onReply?: (message: Message) => void
-  onOpenMessageMenu?: (e: PointerEvent | MouseEvent, message: Message) => void
+  message: Message;
+  onReactionClick?: (messageId: string, emoji: string) => void;
+  onReply?: (message: Message) => void;
+  onOpenMessageMenu?: (e: PointerEvent | MouseEvent, message: Message) => void;
 }
 
 export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
   ({ message, onReactionClick, onReply, onOpenMessageMenu }, ref) => {
-    const isMobile = useIsMobile()
-    const [isPressed, setIsPressed] = useState(false)
-    const [isHovered, setIsHovered] = useState(false)
-    
-    const { isSent, media, replyTo, reactions, isDeleted, type, content, time, status } = message
+    const isMobile = useIsMobile();
+    const [isPressed, setIsPressed] = useState(false);
+    const [isHovered, setIsHovered] = useState(false);
 
-    const openMenu = useCallback((e: PointerEvent | MouseEvent) => {
-      setIsPressed(false)
-      // Call the parent callback to open the menu at the top level
-      onOpenMessageMenu?.(e, message)
-    }, [onOpenMessageMenu, message])
+    const { isSent, media, replyTo, reactions, isDeleted, type, content, time, status } = message;
+
+    const openMenu = useCallback(
+      (e: PointerEvent | MouseEvent) => {
+        setIsPressed(false);
+        // Call the parent callback to open the menu at the top level
+        onOpenMessageMenu?.(e, message);
+      },
+      [onOpenMessageMenu, message],
+    );
 
     const longPressHandlers = useLongPress({
       onLongPress: (e) => {
-        setIsPressed(false)
-        openMenu(e)
+        setIsPressed(false);
+        openMenu(e);
       },
       onPointerDown: () => setIsPressed(true),
-    } as Parameters<typeof useLongPress>[0])
+    } as Parameters<typeof useLongPress>[0]);
 
-    const x = useMotionValue(0)
-    const replyIconOpacity = useTransform(x, [0, 50], [0, 1])
-    const replyIconScale = useTransform(x, [0, 50], [0.6, 1])
-    const replyIconX = useTransform(x, [0, 60], [-15, 5])
+    const x = useMotionValue(0);
+    const replyIconOpacity = useTransform(x, [0, 50], [0, 1]);
+    const replyIconScale = useTransform(x, [0, 50], [0.6, 1]);
+    const replyIconX = useTransform(x, [0, 60], [-15, 5]);
 
-    const hasTriggeredHapticRef = useRef(false)
+    const hasTriggeredHapticRef = useRef(false);
 
     const handleDrag = useCallback((event: any, info: any) => {
       if (info.offset.x > 50) {
         if (!hasTriggeredHapticRef.current) {
-          hasTriggeredHapticRef.current = true
+          hasTriggeredHapticRef.current = true;
           if (typeof window !== "undefined" && window.navigator?.vibrate) {
             try {
-              window.navigator.vibrate(10)
+              window.navigator.vibrate(10);
             } catch (e) {}
           }
         }
       } else {
         if (hasTriggeredHapticRef.current) {
-          hasTriggeredHapticRef.current = false
+          hasTriggeredHapticRef.current = false;
         }
       }
-    }, [])
+    }, []);
 
-    const handleDragEnd = useCallback((event: any, info: any) => {
-      hasTriggeredHapticRef.current = false
-      if (info.offset.x > 50) {
-        onReply?.(message)
-      }
-    }, [onReply, message])
+    const handleDragEnd = useCallback(
+      (event: any, info: any) => {
+        hasTriggeredHapticRef.current = false;
+        if (info.offset.x > 50) {
+          onReply?.(message);
+        }
+      },
+      [onReply, message],
+    );
 
     if (isDeleted) {
       return (
-        <div
-          ref={ref}
-          className={cn("flex py-1", isSent ? "justify-end" : "justify-start")}
-        >
+        <div ref={ref} className={cn("flex py-1", isSent ? "justify-end" : "justify-start")}>
           <div
             className={cn(
               "max-w-[75%] px-4 py-2.5 rounded-[20px] italic",
               isSent
                 ? "bg-primary/20 text-muted-foreground rounded-br-md"
-                : "bg-card/40 text-muted-foreground rounded-bl-md"
+                : "bg-card/40 text-muted-foreground rounded-bl-md",
             )}
           >
             <p className="text-sm">This message was deleted</p>
           </div>
         </div>
-      )
+      );
     }
 
     return (
@@ -98,19 +101,26 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
         <div
           ref={ref}
           className={cn(
-            "flex py-3 select-none",
+            "flex py-0.5 select-none",
             isSent ? "justify-end" : "justify-start",
-            isMobile ? "flex-col" : "gap-2"
+            isMobile ? "flex-col" : "gap-2",
           )}
           onMouseEnter={() => !isMobile && setIsHovered(true)}
           onMouseLeave={() => !isMobile && setIsHovered(false)}
         >
           <div className={cn("flex items-end gap-2", isSent ? "flex-row-reverse" : "flex-row")}>
             <div
-              className={cn("max-w-[75%] flex-shrink-0 relative", isSent ? "items-end" : "items-start")}
+              className={cn(
+                "max-w-[75%] flex-shrink-0 relative",
+                isSent ? "items-end" : "items-start",
+              )}
               {...longPressHandlers}
               onContextMenu={longPressHandlers.onContextMenu}
-              style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none", touchAction: "manipulation" }}
+              style={{
+                WebkitTouchCallout: "none",
+                WebkitUserSelect: "none",
+                touchAction: "manipulation",
+              }}
             >
               {/* Swipe to reply icon indicator */}
               <motion.div
@@ -140,15 +150,28 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
                     type === "sticker"
                       ? "p-0 bg-transparent shadow-none relative overflow-hidden rounded-2xl"
                       : "px-4 py-2.5 rounded-[20px] shadow-sm relative",
-                    type !== "sticker" && (isSent
-                      ? "bg-primary text-primary-foreground rounded-br-md shadow-primary/15"
-                      : "bg-muted text-card-foreground rounded-bl-md")
+                    type !== "sticker" &&
+                      (isSent
+                        ? "bg-primary text-primary-foreground rounded-br-md shadow-primary/15"
+                        : "bg-muted text-card-foreground rounded-bl-md"),
                   )}
                 >
                   {replyTo && <MessageReply reply={replyTo} isSent={isSent} />}
-                  {media && <MessageMedia media={media} isSent={isSent} chatId={(message as any).chatId} messageId={message.id} />}
+                  {media && (
+                    <MessageMedia
+                      media={media}
+                      isSent={isSent}
+                      chatId={(message as any).chatId}
+                      messageId={message.id}
+                    />
+                  )}
                   {content && (
-                    <p className={cn("text-sm leading-relaxed whitespace-pre-wrap break-words", media && "mt-1")}>
+                    <p
+                      className={cn(
+                        "text-sm leading-relaxed whitespace-pre-wrap break-words",
+                        media && "mt-1",
+                      )}
+                    >
                       {content}
                     </p>
                   )}
@@ -156,18 +179,28 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
                     className={cn(
                       "flex items-center gap-1 mt-1",
                       isSent ? "justify-end" : "justify-start",
-                      type === "sticker" && "absolute bottom-1 right-1 mt-0 bg-black/40 backdrop-blur-[2px] rounded-full px-2 py-0.5"
+                      type === "sticker" &&
+                        "absolute bottom-1 right-1 mt-0 bg-black/40 backdrop-blur-[2px] rounded-full px-2 py-0.5",
                     )}
                   >
                     <span
                       className={cn(
                         "text-[10px]",
-                        type === "sticker" ? "text-white/80 font-medium" : (isSent ? "text-primary-foreground/70" : "text-muted-foreground")
+                        type === "sticker"
+                          ? "text-white/80 font-medium"
+                          : isSent
+                            ? "text-primary-foreground/70"
+                            : "text-muted-foreground",
                       )}
                     >
                       {time}
                     </span>
-                    {isSent && <MessageStatusIcon status={status} className={type === "sticker" ? "[&_svg]:text-white/80" : undefined} />}
+                    {isSent && (
+                      <MessageStatusIcon
+                        status={status}
+                        className={type === "sticker" ? "[&_svg]:text-white/80" : undefined}
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -201,6 +234,6 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
           </div>
         </div>
       </>
-    )
-  }
-)
+    );
+  },
+);

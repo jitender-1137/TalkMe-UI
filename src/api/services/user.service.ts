@@ -1,6 +1,7 @@
 import apiClient from "../client"
 import { ENDPOINTS } from "../endpoints"
 import { unwrapResponse } from "../response-handler"
+import { compressImage } from "@/lib/upload/compress-image"
 import type { User, UpdateProfilePayload, PrivacySettings, AppSettings, BlockedUser } from "../types"
 
 export const UserService = {
@@ -23,8 +24,11 @@ export const UserService = {
 
   /** Upload a new avatar. Expects a FormData with a `file` field. */
   uploadAvatar: async (file: File): Promise<{ url: string }> => {
+    // Avatars are images → compress in the browser before upload (no-op if the
+    // file is already small or compression wouldn't help).
+    const compressed = await compressImage(file, { maxEdge: 512 })
     const formData = new FormData()
-    formData.append("file", file)
+    formData.append("file", compressed)
     const response = await apiClient.post<{ success: boolean; message: string; data: { url?: string; avatarUrl?: string }; timestamp: string }>(
       ENDPOINTS.USERS.AVATAR,
       formData,

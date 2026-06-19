@@ -19,6 +19,20 @@ import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { db, mapResponseToLocalMessage, mapResponseToLocalChat, normalizeMessageStatus, putChatSafely } from "@/src/api/db"
 
 
+// Per-chat serialization queue for incoming message handling. WebSocket frames
+// arrive as independent async events; without ordering, two rapid messages for
+// the same chat interleave and their Dexie writes can abort each other, dropping
+// a message. We chain handlers per chatId so they run strictly one-at-a-time.
+const chatHandlerQueues = new Map<string, Promise<void>>()
+function enqueuePerChat(chatId: string, task: () => Promise<void> | void): Promise<void> {
+  const prev = chatHandlerQueues.get(chatId) ?? Promise.resolve()
+  const next = prev.catch(() => {}).then(() => task())
+  // Keep the chain alive even if a handler throws.
+  chatHandlerQueues.set(chatId, next.catch(() => {}))
+  return next
+}
+
+
 const updateChatPresence = (chat: Chat, userId: string, status: string, lastSeen: string | null): Chat => {
   let updated = false
   let otherUser = chat.otherUser
@@ -367,17 +381,53 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
 
       const mappedMsg = mapResponseToLocalMessage(chatId, payload)
-      await db.messages.put(mappedMsg)
 
-      // Advance sync state
-      const syncState = await db.sync_state.get(chatId)
-      const currentSeq = syncState?.lastSequenceNumber || 0
-      if (mappedMsg.sequenceNumber > currentSeq) {
-        await db.sync_state.put({
-          chatId,
-          lastSequenceNumber: mappedMsg.sequenceNumber,
-          lastSyncTimestamp: Date.now(),
-        })
+      // Preserve the stable clientId if we already have this message locally
+      // (e.g. our own message that was sent optimistically). The server echo has
+      // no clientId, so without this the put would wipe it — changing the UI key
+      // and remounting the bubble (replaying its slide-in).
+      if (payload?.id && !mappedMsg.clientId) {
+        const existingRow = await db.messages.get(payload.id)
+        if (existingRow?.clientId) mappedMsg.clientId = existingRow.clientId
+      }
+
+      // Persist the message AND advance the watermark in ONE transaction. Doing
+      // these as two separate writes let the watermark move ahead of a message
+      // whose `put` failed — turning that message into a permanent interior hole
+      // (it sits below the max, so the tail sync never re-requests it). Atomic
+      // write means the watermark only advances if the message actually landed.
+      let currentSeq = 0
+      await db.transaction("rw", [db.messages, db.sync_state], async () => {
+        const syncState = await db.sync_state.get(chatId)
+        currentSeq = syncState?.lastSequenceNumber || 0
+
+        await db.messages.put(mappedMsg)
+
+        if (mappedMsg.sequenceNumber > currentSeq) {
+          await db.sync_state.put({
+            chatId,
+            lastSequenceNumber: mappedMsg.sequenceNumber,
+            lastSyncTimestamp: Date.now(),
+          })
+        }
+      })
+
+      // Gap-fill: if this message arrived AHEAD of our known tail (we missed some
+      // in between), pull the gap from the server so no message is silently lost.
+      // Network call MUST be outside the transaction above.
+      if (currentSeq > 0 && mappedMsg.sequenceNumber > currentSeq + 1) {
+        try {
+          const gap = await MessageService.getMessagesAfter(chatId, currentSeq)
+          if (gap.length > 0) {
+            await db.transaction("rw", db.messages, async () => {
+              for (const m of gap) {
+                await db.messages.put(mapResponseToLocalMessage(chatId, m))
+              }
+            })
+          }
+        } catch (e) {
+          console.warn("[WebSocket] gap backfill failed:", e)
+        }
       }
 
       // In-memory update for the chats list
@@ -552,6 +602,22 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const isTyping = payload.typing
     const username = payload.username
     const userId = payload.userId
+    const currentUserId = ownProfileRef.current?.id
+
+    const shouldIgnore = userId && currentUserId && userId === currentUserId
+
+    console.log("[TYPING EVENT] handleChatTyping payload details:", {
+      currentLoggedInUserId: currentUserId,
+      chatId,
+      senderId: userId,
+      senderUsername: username,
+      isTyping,
+      ignored: shouldIgnore ? "YES (Self typing event)" : "NO"
+    })
+
+    if (shouldIgnore) {
+      return
+    }
 
     const data = { chatId, username, userId }
 
@@ -584,7 +650,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       try {
         const payload = JSON.parse(message.body)
         formatMediaUrls(payload)
-        handleChatMessage(chatId, payload)
+        enqueuePerChat(chatId, () => handleChatMessage(chatId, payload))
       } catch (err) {
         console.error("[STOMP] Error parsing message:", err)
       }
@@ -898,7 +964,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           } else if (payload.event === "message_received" && payload.payload) {
             const { chatId, message: msgPayload } = payload.payload
             if (chatId && msgPayload) {
-              handleChatMessage(chatId, msgPayload)
+              enqueuePerChat(chatId, () => handleChatMessage(chatId, msgPayload))
             }
           }
         } catch (err) {

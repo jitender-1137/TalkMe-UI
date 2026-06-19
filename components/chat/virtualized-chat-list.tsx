@@ -1,26 +1,48 @@
-"use client"
+"use client";
 
-import { useRef, useEffect, useCallback, useState, useMemo } from "react"
-import { useVirtualizer } from "@tanstack/react-virtual"
-import { motion, AnimatePresence } from "framer-motion"
-import { ArrowDown } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { ChatBubble } from "./chat-bubble"
-import { cn } from "@/lib/utils"
-import type { Message } from "./types"
+import { memo, useRef, useEffect, useLayoutEffect, useCallback, useState, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChatBubble } from "./chat-bubble";
+import { cn } from "@/lib/utils";
+import type { Message } from "./types";
 
 interface VirtualizedChatListProps {
-  messages: Message[]
-  onReactionClick?: (messageId: string, emoji: string) => void
-  onReply?: (message: Message) => void
-  onLoadMore?: () => void
-  hasMore?: boolean
-  isLoadingMore?: boolean
-  onOpenMessageMenu?: (e: PointerEvent | MouseEvent, message: Message) => void
+  messages: Message[];
+  /** Active conversation id — used to reset first-load scroll per chat. */
+  chatId?: string | null;
+  onReactionClick?: (messageId: string, emoji: string) => void;
+  onReply?: (message: Message) => void;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onOpenMessageMenu?: (e: PointerEvent | MouseEvent, message: Message) => void;
 }
 
-export function VirtualizedChatList({
+function formatDateSeparator(date: Date) {
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+/**
+ * Chat message list.
+ *
+ * Renders the (already-windowed) message set in NORMAL document flow — not a
+ * virtualizer. The list is capped by `useMessages`' `limit`, so the DOM stays
+ * small, and normal flow scrolls natively-smooth with zero measurement reflow.
+ * (The previous TanStack-Virtual version used absolute positioning + a fixed
+ * `estimateSize` that mismatched real bubble height, so every measurement during
+ * scroll shifted offsets and made scrolling jump — especially when older
+ * messages loaded in.)
+ */
+function VirtualizedChatListImpl({
   messages,
+  chatId,
   onReactionClick,
   onReply,
   onLoadMore,
@@ -28,116 +50,128 @@ export function VirtualizedChatList({
   isLoadingMore = false,
   onOpenMessageMenu,
 }: VirtualizedChatListProps) {
-  const parentRef = useRef<HTMLDivElement>(null)
-  const [showScrollButton, setShowScrollButton] = useState(false)
-  const [isNearBottom, setIsNearBottom] = useState(true)
-  const isFirstLoad = useRef(true)
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
-  // Deduplicate messages by ID to avoid duplicate keys in the virtualizer
+  // Stable per-message key: clientId survives the optimistic→real swap, so the
+  // bubble is reused (not remounted) and its slide-in animation plays once.
+  const keyOf = (m: Message) => String(m.clientId ?? m.id).trim();
+
+  // Dedupe by stable key.
   const uniqueMessages = useMemo(() => {
-    const seen = new Set<string>()
+    const seen = new Set<string>();
     return messages.filter((msg) => {
-      if (!msg || !msg.id) {
-        console.warn("[VirtualizedChatList] Message with missing ID found", msg)
-        return false
-      }
-      const stringId = String(msg.id).trim()
-      if (seen.has(stringId)) {
-        console.warn(`[VirtualizedChatList] Duplicate message ID found: ${stringId}`)
-        return false
-      }
-      seen.add(stringId)
-      return true
-    })
-  }, [messages])
+      if (!msg?.id) return false;
+      const k = keyOf(msg);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [messages]);
 
-  const lastMessageCount = useRef(uniqueMessages.length)
+  const isFirstLoad = useRef(true);
+  const prevFirstIdRef = useRef<string | null>(null);
+  const prevLastIdRef = useRef<string | null>(null);
+  const isNearBottomRef = useRef(true);
+  // scrollHeight captured right before a load-more, used to restore position
+  // after older messages prepend (keep the user anchored on what they were reading).
+  const prependHeightRef = useRef<number | null>(null);
+  // Track the newest message id so only a freshly-appended message animates in.
+  const animatedLastIdRef = useRef<string | null>(null);
 
-  const getItemKey = useCallback((index: number) => {
-    const msg = uniqueMessages[index]
-    return msg?.id ? String(msg.id).trim() : `fallback-key-${index}`
-  }, [uniqueMessages])
+  // Reset first-load scroll only when the conversation changes.
+  useLayoutEffect(() => {
+    isFirstLoad.current = true;
+    prevFirstIdRef.current = null;
+    prevLastIdRef.current = null;
+    prependHeightRef.current = null;
+  }, [chatId]);
 
-  const virtualizer = useVirtualizer({
-    count: uniqueMessages.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: useCallback(() => 100, []),
-    overscan: 5,
-    getItemKey,
-  })
+  // Scroll management (runs synchronously before paint → no flicker).
+  useLayoutEffect(() => {
+    const el = parentRef.current;
+    if (!el || uniqueMessages.length === 0) return;
 
-  const items = virtualizer.getVirtualItems()
+    const firstId = keyOf(uniqueMessages[0]);
+    const lastMsg = uniqueMessages[uniqueMessages.length - 1];
+    const lastId = keyOf(lastMsg);
 
-  // Reset first load when the chat or first message ID changes
-  const firstMessageId = uniqueMessages[0]?.id
-  useEffect(() => {
-    isFirstLoad.current = true
-  }, [firstMessageId])
+    if (isFirstLoad.current) {
+      el.scrollTop = el.scrollHeight; // snap to bottom on first open
+      isFirstLoad.current = false;
+    } else {
+      const lastChanged = lastId !== prevLastIdRef.current;
+      const firstChanged = firstId !== prevFirstIdRef.current;
 
-  // Scroll management
-  useEffect(() => {
-    if (uniqueMessages.length > 0) {
-      if (isFirstLoad.current) {
-        // Snap instantly on first load
-        virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end" })
-        
-        // Schedule secondary scroll snaps to handle items still rendering/measuring
-        const timer1 = setTimeout(() => {
-          virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end" })
-        }, 50)
-        const timer2 = setTimeout(() => {
-          virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end" })
-        }, 150)
-        
-        isFirstLoad.current = false
-        return () => {
-          clearTimeout(timer1)
-          clearTimeout(timer2)
-        }
-      } else if (uniqueMessages.length > lastMessageCount.current) {
-        // A new message arrived. Always smooth-scroll to the bottom for the
-        // user's OWN message (they just sent it); for incoming messages, only
-        // follow if they're already near the bottom (don't yank them off history).
-        const lastMessage = uniqueMessages[uniqueMessages.length - 1]
-        const isOwnMessage = lastMessage?.isSent === true
-        if (isOwnMessage || isNearBottom) {
-          virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end", behavior: "smooth" })
-          // Re-assert after the new item measures, so it lands fully at the bottom.
-          const t = setTimeout(() => {
-            virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end", behavior: "smooth" })
-          }, 60)
-          lastMessageCount.current = uniqueMessages.length
-          return () => clearTimeout(t)
+      if (firstChanged && !lastChanged && prependHeightRef.current != null) {
+        // Older messages prepended → preserve the viewport by the height delta.
+        el.scrollTop = el.scrollTop + (el.scrollHeight - prependHeightRef.current);
+        prependHeightRef.current = null;
+      } else if (lastChanged) {
+        // New message at the bottom: follow for own messages, or if near bottom.
+        // Always smooth so existing messages visibly slide up (native-app feel).
+        const isOwn = lastMsg?.isSent === true;
+        if (isOwn || isNearBottomRef.current) {
+          requestAnimationFrame(() => {
+            el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          });
         }
       }
     }
-    lastMessageCount.current = uniqueMessages.length
-  }, [uniqueMessages.length, isNearBottom, virtualizer, uniqueMessages])
 
-  // Handle scroll events
+    prevFirstIdRef.current = firstId;
+    prevLastIdRef.current = lastId;
+  }, [uniqueMessages]);
+
+  // Auto-scroll to bottom on resize (e.g. mobile keyboard open/close)
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+
+    let prevHeight = el.clientHeight;
+
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        const currentHeight = el.clientHeight;
+        const heightDifference = prevHeight - currentHeight;
+
+        // If height decreased significantly (keyboard opened) OR if user was near the bottom
+        if (heightDifference > 80 || isNearBottomRef.current) {
+          el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        }
+        prevHeight = currentHeight;
+      });
+    });
+
+    resizeObserver.observe(el);
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
   const handleScroll = useCallback(() => {
-    const element = parentRef.current
-    if (!element) return
+    const el = parentRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    const { scrollTop, scrollHeight, clientHeight } = element
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+    setShowScrollButton(distanceFromBottom > 200);
+    isNearBottomRef.current = distanceFromBottom < 120;
 
-    setShowScrollButton(distanceFromBottom > 200)
-    setIsNearBottom(distanceFromBottom < 100)
-
-    // Load more when scrolling to top
-    if (scrollTop < 100 && hasMore && !isLoadingMore) {
-      onLoadMore?.()
+    if (scrollTop < 120 && hasMore && !isLoadingMore) {
+      prependHeightRef.current = scrollHeight; // capture before content grows on top
+      onLoadMore?.();
     }
-  }, [hasMore, isLoadingMore, onLoadMore])
+  }, [hasMore, isLoadingMore, onLoadMore]);
 
   const scrollToBottom = () => {
-    virtualizer.scrollToIndex(uniqueMessages.length - 1, { align: "end", behavior: "smooth" })
-  }
+    parentRef.current?.scrollTo({ top: parentRef.current.scrollHeight, behavior: "smooth" });
+  };
+
+  const lastIndex = uniqueMessages.length - 1;
 
   return (
     <div className="relative flex-1 overflow-hidden">
-      {/* Loading indicator for infinite scroll */}
       <AnimatePresence>
         {isLoadingMore && (
           <motion.div
@@ -158,84 +192,65 @@ export function VirtualizedChatList({
         )}
       </AnimatePresence>
 
-      {/* Chat messages */}
+      {/* Native-flow scroll container (smooth, no virtualization reflow) */}
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="h-full overflow-auto px-4 scrollbar-thin"
+        className="h-full overflow-y-auto overflow-x-hidden px-4 scrollbar-thin [overflow-anchor:none]"
       >
-        <div
-          style={{
-            height: `${virtualizer.getTotalSize()}px`,
-            width: "100%",
-            position: "relative",
-          }}
-        >
-          <div className="max-w-3xl mx-auto">
-            {items.map((virtualItem) => {
-              const message = uniqueMessages[virtualItem.index]
-              const prevMessage = virtualItem.index > 0 ? uniqueMessages[virtualItem.index - 1] : null
-              
-              // Check if we need to show date separator
-              const currentDate = new Date(message.timestamp)
-              const prevDate = prevMessage ? new Date(prevMessage.timestamp) : null
-              const showDateSeparator = !prevDate || 
-                (currentDate.getFullYear() !== prevDate.getFullYear() ||
-                currentDate.getMonth() !== prevDate.getMonth() ||
-                currentDate.getDate() !== prevDate.getDate())
-              
-              const formatDateSeparator = (date: Date) => {
-                const today = new Date()
-                const yesterday = new Date(today)
-                yesterday.setDate(yesterday.getDate() - 1)
-                
-                if (date.toDateString() === today.toDateString()) {
-                  return "Today"
-                } else if (date.toDateString() === yesterday.toDateString()) {
-                  return "Yesterday"
-                } else {
-                  return date.toLocaleDateString("en-US", { 
-                    weekday: "short", 
-                    month: "short", 
-                    day: "numeric" 
-                  })
-                }
-              }
+        <div className="max-w-3xl mx-auto py-2 flex flex-col">
+          {uniqueMessages.map((message, index) => {
+            const prev = index > 0 ? uniqueMessages[index - 1] : null;
+            const currentDate = new Date(message.timestamp);
+            const prevDate = prev ? new Date(prev.timestamp) : null;
+            const showDateSeparator =
+              !prevDate ||
+              currentDate.getFullYear() !== prevDate.getFullYear() ||
+              currentDate.getMonth() !== prevDate.getMonth() ||
+              currentDate.getDate() !== prevDate.getDate();
 
-              return (
-                <div
-                  key={virtualItem.key}
-                  data-index={virtualItem.index}
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${virtualItem.start}px)`,
+            // Slide the newest message in (own AND incoming) so the list feels
+            // like it scrolls up to it. The stable key (clientId) means the
+            // optimistic→real swap reuses the same node, so this plays exactly
+            // once per message — no replay/flicker.
+            const k = keyOf(message);
+            const isNewest = index === lastIndex;
+            const justAppended = isNewest && k !== animatedLastIdRef.current;
+            if (isNewest) animatedLastIdRef.current = k;
+
+            return (
+              <div key={k}>
+                {showDateSeparator && (
+                  <div className="flex items-center justify-center py-3 my-2">
+                    <div className="px-3 py-1 bg-muted/60 rounded-full text-xs text-muted-foreground font-medium">
+                      {formatDateSeparator(currentDate)}
+                    </div>
+                  </div>
+                )}
+                <motion.div
+                  layout="position"
+                  initial={justAppended ? { opacity: 0, y: 20, scale: 0.92 } : false}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{
+                    opacity: { duration: 0.5 },
+                    y: { type: "spring", stiffness: 260, damping: 26, mass: 0.7 },
+                    scale: { type: "spring", stiffness: 260, damping: 26, mass: 0.7 },
+                    layout: { type: "spring", stiffness: 260, damping: 26, mass: 0.7 },
                   }}
                 >
-                  {showDateSeparator && (
-                    <div className="flex items-center justify-center py-3 my-2">
-                      <div className="px-3 py-1 bg-muted/60 rounded-full text-xs text-muted-foreground font-medium">
-                        {formatDateSeparator(currentDate)}
-                      </div>
-                    </div>
-                  )}
                   <ChatBubble
                     message={message}
                     onReactionClick={onReactionClick}
                     onReply={onReply}
                     onOpenMessageMenu={onOpenMessageMenu}
                   />
-                </div>
-              )
-            })}
-          </div>
+                </motion.div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Scroll to bottom button */}
       <AnimatePresence>
         {showScrollButton && (
           <motion.div
@@ -250,7 +265,7 @@ export function VirtualizedChatList({
               onClick={scrollToBottom}
               className={cn(
                 "h-10 w-10 rounded-full shadow-lg",
-                "bg-card border border-border hover:bg-muted"
+                "bg-card border border-border hover:bg-muted",
               )}
             >
               <ArrowDown className="h-5 w-5" />
@@ -259,5 +274,10 @@ export function VirtualizedChatList({
         )}
       </AnimatePresence>
     </div>
-  )
+  );
 }
+
+// Memoized: re-renders only when its own props change (messages, chatId, the
+// memoized callbacks), so typing in the input or other ChatArea state updates
+// no longer re-render the whole message list.
+export const VirtualizedChatList = memo(VirtualizedChatListImpl);

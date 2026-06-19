@@ -10,19 +10,32 @@ import type {
 } from "../types"
 import type { PaginatedResponse, PaginationParams } from "../types/api.types"
 
+/** Cursor-paginated page of messages (older history). */
+export interface MessageCursorPage {
+  items: Message[]
+  nextCursor: number | null
+  hasMore: boolean
+}
+
 export const MessageService = {
-  /** Fetch paginated messages for a chat. */
+  /** Fetch a cursor-paginated page of (older) messages for a chat.
+   *
+   * `cursor` is the sequenceNumber to fetch strictly OLDER than (omit for the
+   * latest page). Returns `{ items, nextCursor, hasMore }` — pass `nextCursor`
+   * back as `cursor` to load the next older page. */
   getMessages: async (
     chatId: string,
-    params?: PaginationParams,
-  ): Promise<PaginatedResponse<Message>> => {
+    params?: { cursor?: number | null; limit?: number },
+  ): Promise<MessageCursorPage> => {
+    const query: Record<string, string | number> = { limit: params?.limit ?? 30 }
+    if (params?.cursor != null) query.cursor = params.cursor
     const response = await apiClient.get<{
       success: boolean
       message: string
-      data: PaginatedResponse<Message>
+      data: MessageCursorPage
       timestamp: string
-    }>(ENDPOINTS.MESSAGES.LIST(chatId), { params })
-    return unwrapPaginatedResponse(response)
+    }>(ENDPOINTS.MESSAGES.LIST(chatId), { params: query })
+    return unwrapResponse(response)
   },
 
   /** Search paginated messages for a chat. */

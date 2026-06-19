@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { buildGiphyUrl } from "@/lib/giphy"
 
 interface GifPickerProps {
   onSelect: (gifUrl: string) => void
@@ -20,9 +21,7 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
     const fetchGifs = async () => {
       setIsLoading(true)
       try {
-        const url = query.trim()
-          ? `https://api.giphy.com/v1/gifs/search?q=${encodeURIComponent(query)}&api_key=dc6zaTOxFJmzC&limit=24`
-          : `https://api.giphy.com/v1/gifs/trending?api_key=dc6zaTOxFJmzC&limit=24`
+        const url = buildGiphyUrl(query, { limit: 24 })
         const res = await fetch(url)
         const json = await res.json()
         if (active) {

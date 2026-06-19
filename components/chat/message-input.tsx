@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { buildGiphyUrl } from "@/lib/giphy";
 import type { ReplyTo, PendingAttachment } from "./types";
 
 interface MessageInputProps {
@@ -455,9 +456,7 @@ export function MessageInput({
       }
 
       try {
-        const url = gifQuery.trim()
-          ? `https://api.giphy.com/v1/gifs/search?api_key=sXpGFDGZs0Dv1mmNFvYaGUvYwKX0PWIh&q=${encodeURIComponent(gifQuery)}&limit=16&offset=${gifOffset}`
-          : `https://api.giphy.com/v1/gifs/trending?api_key=sXpGFDGZs0Dv1mmNFvYaGUvYwKX0PWIh&limit=16&offset=${gifOffset}`;
+        const url = buildGiphyUrl(gifQuery, { limit: 16, offset: gifOffset });
         const res = await fetch(url);
         const data = await res.json();
         if (active && data && data.data) {

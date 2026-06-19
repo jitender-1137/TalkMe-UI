@@ -11,14 +11,39 @@ import type {
   ForwardMessagePayload,
 } from "../types"
 import { useLiveQuery } from "dexie-react-hooks"
+import Dexie from "dexie"
 import { db, mapResponseToLocalMessage } from "../db"
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useAuthToken } from "./useChats"
 
-// Per-chatId sync state tracked outside React to survive re-renders
+// Per-chatId in-flight guard tracked outside React to survive re-renders
 const syncInFlight = new Map<string, boolean>()
-const syncLastRan = new Map<string, number>()
-const SYNC_COOLDOWN_MS = 30_000 // don't re-sync the same chat within 30 s
+
+/**
+ * The highest sequenceNumber actually stored locally for a chat (the true local
+ * tail). We read this from the messages table — NOT from sync_state — so a stale
+ * or drifted sync_state can never make us skip a real gap. `sequenceNumber` maps
+ * to the server message PK (monotonic), so this is the chat's newest local msg.
+ */
+export async function getLocalMaxSequence(chatId: string): Promise<number> {
+  if (!chatId) return 0
+  const newest = await db.messages
+    .where("[chatId+sequenceNumber]")
+    .between([chatId, Dexie.minKey], [chatId, Dexie.maxKey])
+    .reverse()
+    .first()
+  return newest?.sequenceNumber ?? 0
+}
+
+/** The lowest sequenceNumber stored locally — used as the cursor to fetch older. */
+export async function getLocalMinSequence(chatId: string): Promise<number> {
+  if (!chatId) return 0
+  const oldest = await db.messages
+    .where("[chatId+sequenceNumber]")
+    .between([chatId, Dexie.minKey], [chatId, Dexie.maxKey])
+    .first()
+  return oldest?.sequenceNumber ?? 0
+}
 
 // ── Query: infinite message list (Dexie local cache + background API sync) ──────────
 export function useMessages(chatId: string) {
@@ -27,17 +52,27 @@ export function useMessages(chatId: string) {
   const [isFetching, setIsFetching] = useState(false)
   const [hasServerMore, setHasServerMore] = useState(true)
 
-  // 1. Live Query from IndexedDB (sort ascending by sequenceNumber for the UI)
+  // 1. Live Query from IndexedDB — select the LATEST `limit` messages by
+  // sequenceNumber via the [chatId+sequenceNumber] compound index, then return
+  // them ascending for the UI.
+  //
+  // NOTE: a plain `.where("chatId").equals(chatId).reverse().limit(limit)`
+  // orders by the PRIMARY KEY (messageId), so it returns the 30 highest *ids*
+  // (arbitrary/lexicographic) — once a chat has > limit messages the window
+  // becomes an arbitrary slice and newly sent/received messages (already in
+  // Dexie) fall outside it and never render. Windowing by the compound index
+  // guarantees the window is always the most-recent `limit` messages.
   const localMessages = useLiveQuery(async () => {
     if (!chatId) return []
     const msgs = await db.messages
-      .where("chatId")
-      .equals(chatId)
-      .reverse() // latest first
+      .where("[chatId+sequenceNumber]")
+      .between([chatId, Dexie.minKey], [chatId, Dexie.maxKey])
+      .reverse() // highest sequenceNumber (newest) first
       .limit(limit)
       .toArray()
-    
-    // Sort server sequence number ascending, fallback to createdAt
+
+    // Reverse to ascending; keep createdAt as a tiebreaker for equal sequence
+    // numbers (optimistic messages use a huge sequenceNumber so they sit last).
     return msgs.reverse().sort((a, b) => {
       if (a.sequenceNumber !== b.sequenceNumber) {
         return a.sequenceNumber - b.sequenceNumber;
@@ -66,10 +101,11 @@ export function useMessages(chatId: string) {
     setIsFetching(true)
 
     try {
-      // Calculate cursor page parameter based on current local count
-      const nextPage = Math.floor(localCount / 30)
+      // Cursor = the oldest message we currently hold locally. The server
+      // returns the next page of messages strictly OLDER than that.
+      const cursor = await getLocalMinSequence(chatId)
       const response = await MessageService.getMessages(chatId, {
-        cursor: String(nextPage),
+        cursor: cursor || undefined,
         limit: 30,
       })
 
@@ -82,7 +118,8 @@ export function useMessages(chatId: string) {
             await db.messages.put(mapResponseToLocalMessage(chatId, m))
           }
         })
-        setLimit((prev) => prev + 30)
+        setHasServerMore(response.hasMore)
+        setLimit((prev) => prev + response.items.length)
       }
     } catch (err: any) {
       console.warn("[Dexie Sync] Error fetching older messages:", err?.message || err, err)
@@ -91,48 +128,50 @@ export function useMessages(chatId: string) {
     }
   }, [chatId, limit, localCount, isFetching, hasServerMore])
 
-  // 3. Background Sync missing/latest messages on load
+  // 3. Reconcile the local cache with the server on every chat open.
+  //
+  // We re-pull the most-recent window (cursor=null) AND, if we have local
+  // messages, the unbounded tail newer than our local max. The recent-window
+  // refresh is what heals INTERIOR holes: a message whose `put` failed (e.g. a
+  // dropped/aborted WebSocket write) can sit BELOW our current max sequence, and
+  // a tail-only `getMessagesAfter(localMax)` would never re-request it — so it
+  // would stay missing forever. Per-chat sequence numbers are NOT contiguous
+  // (the server PK is global across all chats), so we cannot detect such a hole
+  // by scanning for missing integers; instead we just re-fetch the window and
+  // upsert by primary key (idempotent). The tail fetch still covers large
+  // catch-ups (offline, >window messages missed).
   useEffect(() => {
     if (!chatId || !token) return
-
-    // Guard: don't fire if a sync for this chat is already in-flight
     if (syncInFlight.get(chatId)) return
 
-    // Guard: skip if we synced this chat recently AND already have local messages
-    const lastRan = syncLastRan.get(chatId) || 0
-    const timeSinceSync = Date.now() - lastRan
-
     let active = true
-    const syncLatest = async () => {
-      // Check local state before deciding whether to skip
-      const syncState = await db.sync_state.get(chatId)
-      const lastSeq = syncState?.lastSequenceNumber || 0
-
-      // If we have existing messages and synced recently, skip to avoid burst on reconnect
-      if (lastSeq > 0 && timeSinceSync < SYNC_COOLDOWN_MS) {
-        return
-      }
-
+    const reconcile = async () => {
       if (syncInFlight.get(chatId)) return
       syncInFlight.set(chatId, true)
-      syncLastRan.set(chatId, Date.now())
 
       try {
-        let newMessages: any[] = []
-        if (lastSeq > 0) {
-          // Request missing messages after last known sequence
-          newMessages = await MessageService.getMessagesAfter(chatId, lastSeq)
-        } else {
-          // Load initial page from server to establish baseline
-          const response = await MessageService.getMessages(chatId, { limit: 30 })
-          newMessages = response.items
-        }
+        const localMax = await getLocalMaxSequence(chatId)
+
+        // Always refresh the latest window so any recently-missed message
+        // (interior hole) is re-inserted.
+        const recent = await MessageService.getMessages(chatId, { limit: 50 })
+
+        // If we already had local history, also pull everything strictly newer
+        // than our tail to cover gaps larger than the window.
+        const tail =
+          localMax > 0 ? await MessageService.getMessagesAfter(chatId, localMax) : []
+
+        // Merge both lists, de-duplicating by message id (last write wins).
+        const byId = new Map<string, any>()
+        for (const m of recent.items) byId.set(m.id, m)
+        for (const m of tail) byId.set(m.id, m)
+        const newMessages = Array.from(byId.values())
 
         if (!active) return
 
         if (newMessages.length > 0) {
           await db.transaction("rw", [db.messages, db.sync_state, db.chats], async () => {
-            let maxSeq = lastSeq
+            let maxSeq = localMax
             for (const m of newMessages) {
               const mapped = mapResponseToLocalMessage(chatId, m)
               await db.messages.put(mapped)
@@ -177,7 +216,7 @@ export function useMessages(chatId: string) {
       }
     }
 
-    syncLatest()
+    reconcile()
 
     return () => {
       active = false
@@ -186,11 +225,18 @@ export function useMessages(chatId: string) {
 
   const hasNextPage = localCount > limit || hasServerMore
 
+  // Memoize the returned shape so its identity only changes when the underlying
+  // messages change. `useLiveQuery` returns a stable `localMessages` reference
+  // between unrelated re-renders; without this memo we'd hand `ChatArea` a brand
+  // new object every render, recomputing `allMessages` and re-rendering the whole
+  // message list on every keystroke/typing event → the flicker.
+  const data = useMemo(
+    () => ({ pages: [{ items: localMessages }], pageParams: [undefined] }),
+    [localMessages],
+  )
+
   return {
-    data: {
-      pages: [{ items: localMessages }],
-      pageParams: [undefined],
-    },
+    data,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage: isFetching,
@@ -244,6 +290,7 @@ export function useSendMessage(chatId: string) {
 
       const optimisticMessage = {
         id: tempId,
+        clientId: tempId, // stable key carried onto the real message in onSuccess
         content: payload.content || "",
         type: payload.type || "text",
         messageType: payload.type || "text",
@@ -288,8 +335,11 @@ export function useSendMessage(chatId: string) {
           await db.messages.delete(context.tempId)
         }
         
-        // 2. Put real message into Dexie
+        // 2. Put real message into Dexie, carrying the optimistic clientId so the
+        // UI keeps the SAME bubble (stable key) across the temp→real swap — no
+        // remount, so the slide-in animation isn't replayed.
         const mapped = mapResponseToLocalMessage(chatId, newMessage)
+        if (context?.tempId) mapped.clientId = context.tempId
         await db.messages.put(mapped)
 
         // 3. Advance sync state

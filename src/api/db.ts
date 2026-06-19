@@ -30,6 +30,13 @@ export interface LocalChat {
 export interface LocalMessage {
   messageId: string; // primary key
   id: string; // UI compatibility alias
+  /**
+   * Stable client-generated id that survives the optimistic→confirmed swap.
+   * The optimistic row and the real (server) row share the same clientId so the
+   * UI can use it as a stable React key — the bubble is reused (not remounted)
+   * when the temp message is replaced, so its slide-in animation plays once.
+   */
+  clientId?: string;
   chatId: string;
   senderId: string;
   sequenceNumber: number;
@@ -132,6 +139,7 @@ export function mapResponseToLocalMessage(chatId: string, m: any): LocalMessage 
   return {
     messageId: m.id,
     id: m.id, // alias
+    clientId: m.clientId, // preserved so optimistic↔real share a stable UI key
     chatId: chatId,
     senderId: m.senderId,
     sequenceNumber: m.sequenceNumber || 0,

@@ -199,13 +199,29 @@ export function SecondaryPanel() {
 
   useEffect(() => {
     const cleanupStarted = registerHandler("typing_started", (payload: any) => {
-      if (payload.chatId) {
+      const isSelf = payload.userId === user?.id
+      console.log("[TYPING UI] SecondaryPanel received typing_started event:", {
+        currentLoggedInUserId: user?.id,
+        chatId: payload.chatId,
+        senderId: payload.userId,
+        ignored: isSelf ? "YES" : "NO",
+        reason: isSelf ? "Self typing event" : "None"
+      })
+      if (payload.chatId && !isSelf) {
         setTypingChats((prev) => ({ ...prev, [payload.chatId]: true }));
       }
     });
 
     const cleanupStopped = registerHandler("typing_stopped", (payload: any) => {
-      if (payload.chatId) {
+      const isSelf = payload.userId === user?.id
+      console.log("[TYPING UI] SecondaryPanel received typing_stopped event:", {
+        currentLoggedInUserId: user?.id,
+        chatId: payload.chatId,
+        senderId: payload.userId,
+        ignored: isSelf ? "YES" : "NO",
+        reason: isSelf ? "Self typing event" : "None"
+      })
+      if (payload.chatId && !isSelf) {
         setTypingChats((prev) => ({ ...prev, [payload.chatId]: false }));
       }
     });
@@ -214,7 +230,7 @@ export function SecondaryPanel() {
       cleanupStarted();
       cleanupStopped();
     };
-  }, [registerHandler]);
+  }, [registerHandler, user?.id]);
 
   const { data: conversations = [], isLoading } = useChats();
   const muteMutation = useMuteChat();

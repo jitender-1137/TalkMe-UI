@@ -10,6 +10,8 @@ import { ChatSearchSidebar } from "./chat-search-sidebar"
 import { useChatContext } from "./chat-context"
 import * as ContextMenu from "./message-context-menu"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { motion, AnimatePresence } from "framer-motion"
+import { cn } from "@/lib/utils"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -104,6 +106,30 @@ export function ChatArea({
 
   const { registerHandler, sendEvent } = useWebSocket()
   const [partnerTyping, setPartnerTyping] = useState(false)
+  const [viewportHeight, setViewportHeight] = useState<string>("100dvh")
+
+  // Resizing layout height to keep input field and header in correct position
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return
+
+    const vv = window.visualViewport
+    const updateHeight = () => {
+      setViewportHeight(`${vv.height}px`)
+      // Ensure the browser doesn't offset the page viewport
+      window.scrollTo(0, 0)
+    }
+
+    vv.addEventListener("resize", updateHeight)
+    vv.addEventListener("scroll", updateHeight)
+    
+    // Initial call
+    updateHeight()
+
+    return () => {
+      vv.removeEventListener("resize", updateHeight)
+      vv.removeEventListener("scroll", updateHeight)
+    }
+  }, [])
 
   // Track active chat ID globally for WebSocket message notifications
   useEffect(() => {
@@ -128,12 +154,32 @@ export function ChatArea({
   useEffect(() => {
     if (!selectedConversationId) return
     const cleanup1 = registerHandler("typing_started", (payload: any) => {
-      if (payload.chatId === selectedConversationId && payload.userId !== ownProfile?.id) {
+      const isSelf = payload.userId === ownProfile?.id
+      const isTargetChat = payload.chatId === selectedConversationId
+      console.log("[TYPING UI] ChatArea received typing_started event:", {
+        currentLoggedInUserId: ownProfile?.id,
+        chatId: selectedConversationId,
+        eventChatId: payload.chatId,
+        senderId: payload.userId,
+        ignored: (isSelf || !isTargetChat) ? "YES" : "NO",
+        reason: isSelf ? "Self typing event" : (!isTargetChat ? "Different conversation" : "None")
+      })
+      if (isTargetChat && !isSelf) {
         setPartnerTyping(true)
       }
     })
     const cleanup2 = registerHandler("typing_stopped", (payload: any) => {
-      if (payload.chatId === selectedConversationId && payload.userId !== ownProfile?.id) {
+      const isSelf = payload.userId === ownProfile?.id
+      const isTargetChat = payload.chatId === selectedConversationId
+      console.log("[TYPING UI] ChatArea received typing_stopped event:", {
+        currentLoggedInUserId: ownProfile?.id,
+        chatId: selectedConversationId,
+        eventChatId: payload.chatId,
+        senderId: payload.userId,
+        ignored: (isSelf || !isTargetChat) ? "YES" : "NO",
+        reason: isSelf ? "Self typing event" : (!isTargetChat ? "Different conversation" : "None")
+      })
+      if (isTargetChat && !isSelf) {
         setPartnerTyping(false)
       }
     })
@@ -248,6 +294,7 @@ export function ChatArea({
 
       return {
         id: m.id,
+        clientId: (m as any).clientId,
         content: m.content,
         time,
         timestamp,
@@ -365,11 +412,16 @@ export function ChatArea({
 
   const handleTyping = useCallback((isTyping: boolean) => {
     if (selectedConversationId) {
+      console.log("[TYPING UI] ChatArea dispatching typing event:", {
+        currentLoggedInUserId: ownProfile?.id,
+        chatId: selectedConversationId,
+        status: isTyping ? "STARTED" : "STOPPED"
+      })
       sendEvent(isTyping ? "typing_started" : "typing_stopped", {
         chatId: selectedConversationId,
       })
     }
-  }, [sendEvent, selectedConversationId])
+  }, [sendEvent, selectedConversationId, ownProfile?.id])
 
   const uploadFile = useCallback(async (file: File, type: string) => {
     // Generate local preview URL
@@ -548,224 +600,253 @@ export function ChatArea({
     setMessageMenuOpen(false)
   }, [])
 
-  if (!selectedConversationId) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center h-[100dvh] bg-gradient-to-br from-background via-card/50 to-background">
-        {/* Beautiful Glassmorphic Container */}
-        <div className="max-w-md w-full space-y-6 p-8 rounded-3xl border border-white/5 bg-white/[0.02] backdrop-blur-xl shadow-2xl transition-all duration-300 hover:border-primary/20 hover:shadow-primary/5 group">
-          {/* Animated/Glowing Icon Frame */}
-          <div className="relative mx-auto w-24 h-24 rounded-2xl bg-gradient-to-tr from-primary to-violet-500 p-[1px] shadow-lg shadow-primary/25 transition-transform duration-500 group-hover:scale-105">
-            <div className="w-full h-full rounded-2xl overflow-hidden bg-card flex items-center justify-center">
-              <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover animate-pulse" />
-            </div>
-            {/* Glowing rings */}
-            <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-primary to-violet-500 opacity-20 blur-md -z-10 group-hover:opacity-40 transition-opacity duration-300" />
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-muted-foreground bg-clip-text text-transparent">
-              Welcome to TalkMe Chat
-            </h3>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
-              Select a conversation from the sidebar to start chatting, call friends, or share files securely.
-            </p>
-          </div>
-
-          {/* Quick actions or features list */}
-          <div className="grid grid-cols-2 gap-3 pt-2 text-left">
-            <div className="p-3 rounded-2xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-all duration-300">
-              <div className="flex items-center gap-2 mb-1">
-                <MessageSquare className="h-4 w-4 text-primary" />
-                <div className="text-xs font-semibold text-primary">Chat</div>
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-snug">Secure messaging with file sharing.</p>
-            </div>
-            <div className="p-3 rounded-2xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-all duration-300">
-              <div className="flex items-center gap-2 mb-1">
-                <Video className="h-4 w-4 text-violet-400" />
-                <div className="text-xs font-semibold text-violet-400">Calls</div>
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-snug">High quality audio & video calls.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (isChatLoading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 h-[100dvh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="text-sm text-muted-foreground">Loading chat...</span>
-      </div>
-    )
+  const slideVariants = {
+    initial: isMobile ? { x: "100%" } : { x: 0 },
+    animate: { x: 0 },
+    exit: isMobile ? { x: "100%" } : { x: 0 }
   }
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-background md:pb-0 relative" data-chat-area>
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileChange}
-        accept={
-          uploadType === "image" 
-            ? "image/*" 
-            : uploadType === "video" 
-            ? "video/*" 
-            : uploadType === "audio" 
-            ? "audio/*" 
-            : "*/*"
-        }
-        className="hidden"
-      />
-
-      {uploadProgress !== null && (
-        <div className="absolute top-14 left-0 right-0 z-30 bg-primary/20 h-1">
-          <div 
-            className="bg-primary h-full transition-all duration-300"
-            style={{ width: `${uploadProgress}%` }}
-          />
-        </div>
-      )}
-
-      {!isSecondaryActive && (
-        <ChatHeader 
-          contact={contact} 
-          showBackButton 
-          onBack={handleBack}
-          onProfileClick={() => {
-            if (contact) {
-              setProfileModal({
-                contact,
-                userId: otherParticipant?.id,
-                sharedMedia
-              });
-            }
-          }}
-          onAudioCall={handleAudioCall}
-          onVideoCall={handleVideoCall}
-          onSearchInChat={handleSearchInChat}
-          onViewMedia={handleViewMedia}
-          onMuteNotifications={handleMuteNotifications}
-          onBlockContact={() => otherParticipant?.id && blockUserMutation.mutate(otherParticipant.id)}
-          onUnblockContact={() => otherParticipant?.id && unblockUserMutation.mutate(otherParticipant.id)}
-          onClearChat={() => clearChatMutation.mutate(contact.id)}
-          onAddFriend={() => otherParticipant?.id && addContactMutation.mutate(otherParticipant.id)}
-          onRemoveFriend={() => otherParticipant?.id && removeContactMutation.mutate(otherParticipant.id)}
-          isMuted={isChatMuted}
-        />
-      )}
-      <CameraModal
-        isOpen={showCameraModal}
-        onClose={() => setShowCameraModal(false)}
-        onCapture={handleCameraCapture}
-      />
-      <ChatSearchSidebar
-        chatId={selectedConversationId || ""}
-        isOpen={showSearchSidebar}
-        onClose={() => setShowSearchSidebar(false)}
-        onMessageClick={handleMessageClickFromSearch}
-      />
-      {!isSecondaryActive && (
-        <VirtualizedChatList
-          key={`list-${selectedConversationId || "empty"}`}
-          messages={allMessages}
-          onReactionClick={handleReactionClick}
-          onReply={(msg) => setReplyTo({ id: msg.id, senderName: msg.isSent ? "You" : contact.name, content: msg.content, type: msg.type })}
-          onLoadMore={handleLoadMore}
-          hasMore={hasNextPage}
-          isLoadingMore={isFetchingNextPage}
-          onOpenMessageMenu={handleOpenMessageMenu}
-        />
-      )}
-      {!isSecondaryActive && (
-        contact.isBlockedByMe ? (
-          <div className="p-4 flex justify-center items-center bg-background border-t border-white/5">
-            <Button variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-white/5 rounded-2xl w-full" onClick={() => otherParticipant?.id && unblockUserMutation.mutate(otherParticipant.id)}>
-              You blocked this contact. Tap to unblock.
-            </Button>
-          </div>
-        ) : (
-          <MessageInput
-            key={`input-${selectedConversationId || "empty"}`}
-            onSend={handleSend}
-            replyTo={replyTo}
-            onCancelReply={() => setReplyTo(null)}
-            onTyping={handleTyping}
-            onAttachClick={handleAttachClick}
-            pendingAttachment={pendingAttachment}
-            onCancelAttachment={() => setPendingAttachment(null)}
-            onRecordComplete={handleSendAudio}
-            onSendMediaDirectly={handleSendMediaDirectly}
-          />
-        )
-      )}
-      {selectedMessage && (
-        <ContextMenu.MessageContextMenu
-          isOpen={messageMenuOpen}
-          isSent={selectedMessage.isSent}
-          isMobile={isMobile}
-          position={messageMenuPos}
-          onClose={() => setMessageMenuOpen(false)}
-          onReply={() => handleMessageReply(selectedMessage)}
-          onCopy={() => handleMessageCopy(selectedMessage)}
-          onDelete={() => handleMessageDelete(selectedMessage.id)}
-          onForward={() => toast.info("Forward coming soon")}
-          onReact={(emoji) => {
-            if (emoji) {
-              handleReactionClick(selectedMessage.id, emoji)
-            } else {
-              toast.info("Emoji picker coming soon")
-            }
-          }}
-          onPin={() => toast.info("Pin coming soon")}
-          onInfo={() => toast.info("Message info coming soon")}
-        />
-      )}
-
-      {showCallRestrictionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="max-w-sm w-full bg-[#121b22] border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in duration-200">
-            {/* Call icon with warning shield */}
-            <div className="relative mx-auto w-16 h-16 rounded-full bg-violet-500/10 flex items-center justify-center text-violet-400">
-              <Phone className="h-8 w-8" />
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center text-black border-2 border-[#121b22]">
-                <Shield className="h-3.5 w-3.5" />
+    <AnimatePresence mode="popLayout" initial={false}>
+      {!selectedConversationId ? (
+        <motion.div
+          key="welcome"
+          initial={isMobile ? { opacity: 0 } : { opacity: 1 }}
+          animate={{ opacity: 1 }}
+          exit={isMobile ? { opacity: 0 } : { opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          className="flex-1 flex flex-col items-center justify-center p-8 text-center h-[100dvh] bg-gradient-to-br from-background via-card/50 to-background"
+        >
+          {/* Beautiful Glassmorphic Container */}
+          <div className="max-w-md w-full space-y-6 p-8 rounded-3xl border border-white/5 bg-white/[0.02] backdrop-blur-xl shadow-2xl transition-all duration-300 hover:border-primary/20 hover:shadow-primary/5 group">
+            {/* Animated/Glowing Icon Frame */}
+            <div className="relative mx-auto w-24 h-24 rounded-2xl bg-gradient-to-tr from-primary to-violet-500 p-[1px] shadow-lg shadow-primary/25 transition-transform duration-500 group-hover:scale-105">
+              <div className="w-full h-full rounded-2xl overflow-hidden bg-card flex items-center justify-center">
+                <img src="/apple-icon.png" alt="TalkMe" className="w-full h-full object-cover animate-pulse" />
               </div>
+              {/* Glowing rings */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-primary to-violet-500 opacity-20 blur-md -z-10 group-hover:opacity-40 transition-opacity duration-300" />
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-lg font-bold text-white">Friend Connection Required</h3>
-              <p className="text-sm text-neutral-300 leading-relaxed">
-                You must be friends with <span className="font-semibold text-primary">{contact.name}</span> to make audio or video calls.
+              <h3 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-muted-foreground bg-clip-text text-transparent">
+                Welcome to TalkMe Chat
+              </h3>
+              <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                Select a conversation from the sidebar to start chatting, call friends, or share files securely.
               </p>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Button 
-                onClick={() => {
-                  if (otherParticipant?.id) {
-                    addContactMutation.mutate(otherParticipant.id)
-                    toast.success(`Friend request sent to ${contact.name}`)
-                  }
-                  setShowCallRestrictionModal(false)
-                }}
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2.5 rounded-2xl transition-all"
-              >
-                Add Friend
-              </Button>
-              <Button 
-                variant="ghost"
-                onClick={() => setShowCallRestrictionModal(false)}
-                className="w-full text-muted-foreground hover:text-foreground hover:bg-white/5 py-2.5 rounded-2xl transition-all"
-              >
-                Cancel
-              </Button>
+            {/* Quick actions or features list */}
+            <div className="grid grid-cols-2 gap-3 pt-2 text-left">
+              <div className="p-3 rounded-2xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-all duration-300">
+                <div className="flex items-center gap-2 mb-1">
+                  <MessageSquare className="h-4 w-4 text-primary" />
+                  <div className="text-xs font-semibold text-primary">Chat</div>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">Secure messaging with file sharing.</p>
+              </div>
+              <div className="p-3 rounded-2xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-all duration-300">
+                <div className="flex items-center gap-2 mb-1">
+                  <Video className="h-4 w-4 text-violet-400" />
+                  <div className="text-xs font-semibold text-violet-400">Calls</div>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">High quality audio & video calls.</p>
+              </div>
             </div>
           </div>
-        </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          key={selectedConversationId}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          variants={slideVariants}
+          transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}
+          className={cn(
+            "flex flex-col bg-background md:pb-0 relative overflow-hidden",
+            isMobile
+              ? "fixed top-0 left-0 right-0 z-30"
+              : "md:relative md:top-auto md:left-auto md:right-auto md:z-auto md:h-full"
+          )}
+          style={{ height: isMobile ? viewportHeight : "100%" }}
+          data-chat-area
+        >
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept={
+              uploadType === "image" 
+                ? "image/*" 
+                : uploadType === "video" 
+                ? "video/*" 
+                : uploadType === "audio" 
+                ? "audio/*" 
+                : "*/*"
+            }
+            className="hidden"
+          />
+
+          {uploadProgress !== null && (
+            <div className="absolute top-14 left-0 right-0 z-30 bg-primary/20 h-1">
+              <div 
+                className="bg-primary h-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          )}
+
+          {isChatLoading ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 h-full">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">Loading chat...</span>
+            </div>
+          ) : (
+            <>
+              {!isSecondaryActive && (
+                <ChatHeader 
+                  contact={contact} 
+                  showBackButton 
+                  onBack={handleBack}
+                  onProfileClick={() => {
+                    if (contact) {
+                      setProfileModal({
+                        contact,
+                        userId: otherParticipant?.id,
+                        sharedMedia
+                      });
+                    }
+                  }}
+                  onAudioCall={handleAudioCall}
+                  onVideoCall={handleVideoCall}
+                  onSearchInChat={handleSearchInChat}
+                  onViewMedia={handleViewMedia}
+                  onMuteNotifications={handleMuteNotifications}
+                  onBlockContact={() => otherParticipant?.id && blockUserMutation.mutate(otherParticipant.id)}
+                  onUnblockContact={() => otherParticipant?.id && unblockUserMutation.mutate(otherParticipant.id)}
+                  onClearChat={() => clearChatMutation.mutate(contact.id)}
+                  onAddFriend={() => otherParticipant?.id && addContactMutation.mutate(otherParticipant.id)}
+                  onRemoveFriend={() => otherParticipant?.id && removeContactMutation.mutate(otherParticipant.id)}
+                  isMuted={isChatMuted}
+                />
+              )}
+              <CameraModal
+                isOpen={showCameraModal}
+                onClose={() => setShowCameraModal(false)}
+                onCapture={handleCameraCapture}
+              />
+              <ChatSearchSidebar
+                chatId={selectedConversationId || ""}
+                isOpen={showSearchSidebar}
+                onClose={() => setShowSearchSidebar(false)}
+                onMessageClick={handleMessageClickFromSearch}
+              />
+              {!isSecondaryActive && (
+                <VirtualizedChatList
+                  key={`list-${selectedConversationId || "empty"}`}
+                  chatId={selectedConversationId}
+                  messages={allMessages}
+                  onReactionClick={handleReactionClick}
+                  onReply={handleMessageReply}
+                  onLoadMore={handleLoadMore}
+                  hasMore={hasNextPage}
+                  isLoadingMore={isFetchingNextPage}
+                  onOpenMessageMenu={handleOpenMessageMenu}
+                />
+              )}
+              {!isSecondaryActive && (
+                contact.isBlockedByMe ? (
+                  <div className="p-4 flex justify-center items-center bg-background border-t border-white/5">
+                    <Button variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-white/5 rounded-2xl w-full" onClick={() => otherParticipant?.id && unblockUserMutation.mutate(otherParticipant.id)}>
+                      You blocked this contact. Tap to unblock.
+                    </Button>
+                  </div>
+                ) : (
+                  <MessageInput
+                    key={`input-${selectedConversationId || "empty"}`}
+                    onSend={handleSend}
+                    replyTo={replyTo}
+                    onCancelReply={() => setReplyTo(null)}
+                    onTyping={handleTyping}
+                    onAttachClick={handleAttachClick}
+                    pendingAttachment={pendingAttachment}
+                    onCancelAttachment={() => setPendingAttachment(null)}
+                    onRecordComplete={handleSendAudio}
+                    onSendMediaDirectly={handleSendMediaDirectly}
+                  />
+                )
+              )}
+              {selectedMessage && (
+                <ContextMenu.MessageContextMenu
+                  isOpen={messageMenuOpen}
+                  isSent={selectedMessage.isSent}
+                  isMobile={isMobile}
+                  position={messageMenuPos}
+                  onClose={() => setMessageMenuOpen(false)}
+                  onReply={() => handleMessageReply(selectedMessage)}
+                  onCopy={() => handleMessageCopy(selectedMessage)}
+                  onDelete={() => handleMessageDelete(selectedMessage.id)}
+                  onForward={() => toast.info("Forward coming soon")}
+                  onReact={(emoji) => {
+                    if (emoji) {
+                      handleReactionClick(selectedMessage.id, emoji)
+                    } else {
+                      toast.info("Emoji picker coming soon")
+                    }
+                  }}
+                  onPin={() => toast.info("Pin coming soon")}
+                  onInfo={() => toast.info("Message info coming soon")}
+                />
+              )}
+
+              {showCallRestrictionModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                  <div className="max-w-sm w-full bg-[#121b22] border border-white/10 rounded-3xl p-6 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in duration-200">
+                    {/* Call icon with warning shield */}
+                    <div className="relative mx-auto w-16 h-16 rounded-full bg-violet-500/10 flex items-center justify-center text-violet-400">
+                      <Phone className="h-8 w-8" />
+                      <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center text-black border-2 border-[#121b22]">
+                        <Shield className="h-3.5 w-3.5" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-bold text-white">Friend Connection Required</h3>
+                      <p className="text-sm text-neutral-300 leading-relaxed">
+                        You must be friends with <span className="font-semibold text-primary">{contact.name}</span> to make audio or video calls.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <Button 
+                        onClick={() => {
+                          if (otherParticipant?.id) {
+                            addContactMutation.mutate(otherParticipant.id)
+                            toast.success(`Friend request sent to ${contact.name}`)
+                          }
+                          setShowCallRestrictionModal(false)
+                        }}
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2.5 rounded-2xl transition-all"
+                      >
+                        Add Friend
+                      </Button>
+                      <Button 
+                        variant="ghost"
+                        onClick={() => setShowCallRestrictionModal(false)}
+                        className="w-full text-muted-foreground hover:text-foreground hover:bg-white/5 py-2.5 rounded-2xl transition-all"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </motion.div>
       )}
-    </div>
+    </AnimatePresence>
   )
 }

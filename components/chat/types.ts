@@ -38,6 +38,8 @@ export interface PendingAttachment {
 
 export interface Message {
   id: string
+  /** Stable key that survives the optimistic→real swap (used as the React key). */
+  clientId?: string
   content: string
   time: string
   timestamp: number

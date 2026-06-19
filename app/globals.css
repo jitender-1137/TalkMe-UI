@@ -151,3 +151,117 @@
     font-size: 16px !important;
   }
 }
+
+/* ============================================================
+   Smoothness layer — WhatsApp-like perceived performance.
+   CSS handles *rendering* smoothness only; data pop-in and
+   re-render churn must still be fixed in React/React Query.
+   ============================================================ */
+
+@layer base {
+  /* Crisp text rendering (matches native-app feel) */
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Smooth programmatic scrolls (scrollIntoView, anchor jumps) */
+    scroll-behavior: smooth;
+  }
+
+  /* Momentum scrolling + no scroll-chaining on the main scroll regions.
+     Apply `.smooth-scroll` to any scrollable container (chat list, message
+     pane, feeds) instead of forcing it on every element globally. */
+  .smooth-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scroll-behavior: smooth;
+  }
+
+  /* Keep newest message pinned to the bottom of a chat without JS jank */
+  .chat-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    overflow-anchor: auto;
+  }
+
+  /* Skip rendering work for offscreen rows in long lists (chats, feeds).
+     `contain-intrinsic-size` reserves space so the scrollbar stays stable. */
+  .list-optimize > * {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 72px;
+  }
+}
+
+/* Intentional, GPU-friendly transitions — scoped, NOT `* { transition: all }`.
+   Add `.smooth` to interactive elements you want to ease. */
+@layer components {
+  .smooth {
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease,
+      opacity 0.15s ease,
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  /* Press feedback like native apps */
+  .press {
+    transition: transform 0.1s ease;
+  }
+  .press:active {
+    transform: scale(0.97);
+  }
+
+  /* Fade content in once data arrives — kills the harsh "pop" */
+  .fade-in {
+    animation: fadeIn 0.2s ease both;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Skeleton shimmer for loading states (use while data is fetching) */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--muted);
+    border-radius: var(--radius-md);
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklch, var(--foreground) 6%, transparent),
+      transparent
+    );
+    animation: shimmer 1.4s infinite;
+  }
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+}
+
+/* Native-feeling page/route transitions (Chrome/Edge; degrades gracefully) */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+
+/* Respect users who ask for less motion — disable animations cleanly */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

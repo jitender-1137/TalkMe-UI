@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { db } from "../db";
 import apiClient from "../client";
+import { isExternalGifProvider } from "../media-cache-utils";
 
 /**
  * Strip relative api path prefix (e.g. /api/v1) if present in the URL
@@ -104,6 +105,17 @@ export function useCachedMedia(chatId: string, messageId: string, media: any) {
   useEffect(() => {
     if (!media || !media.url) return;
 
+    // External GIF/CDN providers (Giphy, Tenor, …) respond with a wildcard
+    // CORS header that is incompatible with our credentialed apiClient. Never
+    // download or cache them — render directly from their URL. This avoids
+    // CORS failures, ERR_FAILED network errors, and console spam, and there's
+    // no caching benefit since these are embeddable animated GIFs.
+    if (isExternalGifProvider(media.url)) {
+      setResolvedUrl(media.url);
+      setResolvedThumbnail(media.thumbnail || media.url);
+      return;
+    }
+
     // Use media.id or URL as unique identifier
     const mediaId = media.id || media.url;
     let active = true;
@@ -184,13 +196,21 @@ export function useCachedMedia(chatId: string, messageId: string, media: any) {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       if (thumbObjectUrl) URL.revokeObjectURL(thumbObjectUrl);
     };
-  }, [chatId, messageId, media]);
+    // Depend on stable primitive fields rather than the `media` object
+    // identity. Callers frequently pass a freshly-constructed `media` object
+    // on every render; keying on its identity would re-run the download/cache
+    // (and the network request) on every render. The fields below fully
+    // determine what we resolve and cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, messageId, media?.id, media?.url, media?.type, media?.thumbnail]);
 
   /**
    * Manually download and cache video blob on first playback.
    */
   const cacheVideo = async () => {
     if (!media || media.type !== "video") return;
+    // Never attempt to download external provider media with credentials.
+    if (isExternalGifProvider(media.url)) return;
     const mediaId = media.id || media.url;
     try {
       const existing = await db.media.get(mediaId);

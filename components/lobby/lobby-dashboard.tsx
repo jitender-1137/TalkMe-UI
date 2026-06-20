@@ -16,6 +16,8 @@ import { MessageInput } from "@/components/chat/message-input";
 import { UploadService } from "@/src/api/services/upload.service";
 import { toast } from "sonner";
 import { MessageMedia } from "@/components/chat/message-media";
+import { MessageStatusIcon } from "@/components/chat/message-status";
+import { BubbleBody, BubbleShell } from "@/components/chat/bubble-body";
 import type { MediaAttachment } from "@/components/chat/types";
 import type { ChatUser } from "./types";
 
@@ -637,14 +639,7 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
                   className={cn("flex w-full", isOwn ? "justify-end" : "justify-start")}
                 >
                   {isAudioUrl(msg.content) ? (
-                    <div
-                      className={cn(
-                        "rounded-2xl p-2.5 shadow-sm transition-all duration-300 relative group max-w-[300px]",
-                        isOwn
-                          ? "bg-primary text-primary-foreground rounded-br-none"
-                          : "bg-card border border-border text-foreground rounded-bl-none",
-                      )}
-                    >
+                    <BubbleShell isSent={isOwn} className="max-w-[300px] group">
                       <MessageMedia
                         media={{
                           type: "audio",
@@ -655,22 +650,13 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
                         chatId="lobby"
                         messageId={msg.id}
                       />
-                      <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
-                        <span
-                          className={cn(
-                            "text-[9px]",
-                            isOwn ? "text-primary-foreground/60" : "text-muted-foreground",
-                          )}
-                        >
-                          {formatMessageTime(msg.timestamp || new Date(msg.createdAt).getTime())}
-                        </span>
-                        {isOwn && (
-                          <span className="text-[10px] text-primary-foreground/70">
-                            {msg.read ? "✓✓" : "✓"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                      <BubbleBody
+                        time={formatMessageTime(msg.timestamp || new Date(msg.createdAt).getTime())}
+                        hasMedia
+                        timeClassName={isOwn ? "text-primary-foreground/65" : "text-muted-foreground"}
+                        statusNode={isOwn ? <MessageStatusIcon status={msg.read ? "seen" : "sent"} /> : undefined}
+                      />
+                    </BubbleShell>
                   ) : isMediaUrl(msg.content) ? (
                     <div className="relative">
                       <img
@@ -690,33 +676,14 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
                       </div>
                     </div>
                   ) : (
-                    <div
-                      className={cn(
-                        "max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm transition-all duration-300 relative group select-text",
-                        isOwn
-                          ? "bg-primary text-primary-foreground rounded-br-none"
-                          : "bg-card border border-border text-foreground rounded-bl-none",
-                      )}
-                    >
-                      <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
-                      <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
-                        <span
-                          className={cn(
-                            "text-[9px]",
-                            isOwn ? "text-primary-foreground/60" : "text-muted-foreground",
-                          )}
-                        >
-                          {formatMessageTime(msg.timestamp || new Date(msg.createdAt).getTime())}
-                        </span>
-                        {isOwn && (
-                          <span className="text-[10px] text-primary-foreground/70">
-                            {msg.read ? "✓✓" : "✓"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <BubbleShell isSent={isOwn} className="max-w-[75%] select-text">
+                      <BubbleBody
+                        content={msg.content}
+                        time={formatMessageTime(msg.timestamp || new Date(msg.createdAt).getTime())}
+                        timeClassName={isOwn ? "text-primary-foreground/65" : "text-muted-foreground"}
+                        statusNode={isOwn ? <MessageStatusIcon status={msg.read ? "seen" : "sent"} /> : undefined}
+                      />
+                    </BubbleShell>
                   )}
                 </div>
               );

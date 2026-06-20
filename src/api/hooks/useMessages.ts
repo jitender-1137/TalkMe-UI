@@ -12,7 +12,7 @@ import type {
 } from "../types"
 import { useLiveQuery } from "dexie-react-hooks"
 import Dexie from "dexie"
-import { db, mapResponseToLocalMessage } from "../db"
+import { db, mapResponseToLocalMessage, normalizeMessageStatus } from "../db"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useAuthToken } from "./useChats"
 
@@ -122,7 +122,15 @@ export function useMessages(chatId: string) {
         setLimit((prev) => prev + response.items.length)
       }
     } catch (err: any) {
-      console.warn("[Dexie Sync] Error fetching older messages:", err?.message || err, err)
+      // A 403 means the user is not (or no longer) a member of this chat.
+      // Retrying on every scroll frame just hammers the server, so stop
+      // paginating for this chat.
+      if (err?.status === 403) {
+        setHasServerMore(false)
+        console.warn("[Dexie Sync] Not a member of this chat — stopping pagination.")
+      } else {
+        console.warn("[Dexie Sync] Error fetching older messages:", err?.message || err, err)
+      }
     } finally {
       setIsFetching(false)
     }
@@ -273,7 +281,17 @@ export function useSendMessage(chatId: string) {
     mutationFn: (payload: SendMessagePayload) => MessageService.sendMessage(chatId, payload),
     onMutate: async (payload: SendMessagePayload) => {
       const ownProfile = queryClient.getQueryData<any>(QUERY_KEYS.PROFILE.SELF)
-      const tempId = `temp-${Date.now()}`
+      // Stable idempotency key. Mutating `payload` here is intentional: React
+      // Query keeps the same `variables` reference across retries, so a retried
+      // mutationFn re-sends the SAME clientId and the server dedups it instead
+      // of creating a duplicate. Also doubles as the stable optimistic UI key.
+      const clientId =
+        payload.clientId ??
+        (typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      payload.clientId = clientId
+      const tempId = clientId
       
       let replyToObj = null
       if (payload.replyToId) {
@@ -323,8 +341,13 @@ export function useSendMessage(chatId: string) {
     },
     onError: async (err, payload, context: any) => {
       if (context?.tempId) {
-        // Delete optimistic message from Dexie on error
-        await db.messages.delete(context.tempId)
+        // Keep the message visible but mark it FAILED (after auto-retries are
+        // exhausted) so it isn't silently lost. The user can tap to retry; the
+        // retry reuses the same clientId, so the server dedups it.
+        const existing = await db.messages.get(context.tempId)
+        if (existing) {
+          await db.messages.update(context.tempId, { status: "failed" })
+        }
       }
       showErrorToast(err)
     },
@@ -368,11 +391,21 @@ export function useSendMessage(chatId: string) {
               type: newMessage.type || "TEXT",
               timestamp: newMessage.createdAt || newMessage.timestamp || new Date().toISOString(),
               isDeleted: newMessage.isDeleted || false,
+              status: normalizeMessageStatus(newMessage.status || "sent"),
             },
           })
         }
       })
     },
+    // Automatic retry for transient network failures only (no HTTP status).
+    // Safe because sends are idempotent via clientId — a retry that actually
+    // reached the server the first time will be deduped, not duplicated. Never
+    // retry 4xx/5xx app errors (validation, auth, blocked) — those won't recover.
+    retry: (failureCount, error: any) => {
+      const status = error?.status ?? error?.response?.status
+      return (status === undefined || status === 0) && failureCount < 3
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   })
 }
 

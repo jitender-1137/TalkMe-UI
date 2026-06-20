@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence, useMotionValue, animate } from 'framer-motion'
 import { X, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react'
+import { downloadFile } from '@/lib/download'
 import { Button } from '@/components/ui/button'
 
 interface ImageViewerContextType {
@@ -23,16 +24,84 @@ export function useImageViewer() {
 export function ImageViewerProvider({ children }: { children: React.ReactNode }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [scale, setScale] = useState(1)
+  // True during an active 2-finger pinch — disables framer drag so panning
+  // doesn't fight the zoom gesture.
+  const [isPinching, setIsPinching] = useState(false)
   
   const x = useMotionValue(0)
   const y = useMotionValue(0)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Pinch-to-zoom (touch) state. scaleRef avoids stale closures inside the
+  // native touch listeners; the pinch refs hold the gesture's starting values.
+  const scaleRef = useRef(1)
+  const isPinchingRef = useRef(false)
+  const pinchStartDistRef = useRef(0)
+  const pinchStartScaleRef = useRef(1)
+
+  useEffect(() => {
+    scaleRef.current = scale
+  }, [scale])
 
   // Reset zoom on image change or close
   useEffect(() => {
     setScale(1)
     x.set(0)
     y.set(0)
+  }, [imageUrl, x, y])
+
+  // Pinch-to-zoom on touch devices. Attached natively (not via React props) so
+  // we can preventDefault on touchmove and block the browser's page pinch-zoom.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || !imageUrl) return
+
+    const dist = (touches: TouchList) => {
+      const dx = touches[0].clientX - touches[1].clientX
+      const dy = touches[0].clientY - touches[1].clientY
+      return Math.hypot(dx, dy)
+    }
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        isPinchingRef.current = true
+        setIsPinching(true)
+        pinchStartDistRef.current = dist(e.touches)
+        pinchStartScaleRef.current = scaleRef.current
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isPinchingRef.current || e.touches.length !== 2) return
+      e.preventDefault() // stop the browser zooming the whole page
+      if (pinchStartDistRef.current <= 0) return
+      const ratio = dist(e.touches) / pinchStartDistRef.current
+      const next = Math.min(Math.max(pinchStartScaleRef.current * ratio, 1), 5)
+      setScale(next)
+    }
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        isPinchingRef.current = false
+        setIsPinching(false)
+        // Snap pan back to center when fully zoomed out.
+        if (scaleRef.current <= 1) {
+          animate(x, 0, { type: 'spring', stiffness: 300, damping: 30 })
+          animate(y, 0, { type: 'spring', stiffness: 300, damping: 30 })
+        }
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
   }, [imageUrl, x, y])
 
   // Close on Escape key
@@ -99,10 +168,7 @@ export function ImageViewerProvider({ children }: { children: React.ReactNode })
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!imageUrl) return
-    const link = document.createElement('a')
-    link.href = imageUrl
-    link.download = 'image.jpg'
-    link.click()
+    void downloadFile(imageUrl, 'image')
   }
 
   return (
@@ -182,14 +248,14 @@ export function ImageViewerProvider({ children }: { children: React.ReactNode })
             </div>
 
             {/* Viewport for Drag & Scroll */}
-            <div 
+            <div
               ref={containerRef}
-              className="relative w-full h-full flex items-center justify-center overflow-hidden"
+              className="relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
               onWheel={handleWheel}
               onClick={closeImage}
             >
               <motion.div
-                drag={scale > 1}
+                drag={scale > 1 && !isPinching}
                 dragMomentum={false}
                 dragElastic={0.1}
                 style={{

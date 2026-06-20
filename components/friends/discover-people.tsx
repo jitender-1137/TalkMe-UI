@@ -13,7 +13,7 @@ import type { SuggestedPerson } from "@/src/api/types";
 import { QUERY_KEYS } from "@/src/api/query-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { UserProfileModal } from "@/components/chat/user-profile-modal";
-import { useCreateChat } from "@/src/api/hooks/useChats";
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats";
 import { useChatContext } from "@/components/chat/chat-context";
 import { useNavigation } from "@/components/app-shell/navigation-context";
 import { toast } from "sonner";
@@ -42,7 +42,7 @@ export function DiscoverPeople() {
   const removeContactMutation = useRemoveContact();
   const queryClient = useQueryClient();
 
-  const createChatMutation = useCreateChat();
+  const openOrCreateChat = useOpenOrCreateChat();
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
   const { setActiveTab } = useNavigation();
 
@@ -132,24 +132,19 @@ export function DiscoverPeople() {
         userId={selectedUserId}
         isOpen={!!selectedUserId}
         onClose={handleProfileClose}
-        onMessage={() => {
+        onMessage={async () => {
           if (selectedUserId) {
-            createChatMutation.mutate(
-              { participantId: selectedUserId },
-              {
-                onSuccess: (chat) => {
-                  setChatReturnTab("friends");
-                  setSelectedConversationId(chat.id);
-                  setShowMobileSecondaryPanel(false);
-                  setActiveTab("chats");
-                  const person = filtered.find((p) => p.id === selectedUserId);
-                  // toast.success(`Starting chat with ${person?.name || "user"}`, {
-                  //   icon: <MessageCircle className="h-4 w-4" />,
-                  // })
-                  setSelectedUserId(null);
-                },
-              },
-            );
+            try {
+              // Reuse an existing 1:1 chat instead of creating a duplicate.
+              const chat = await openOrCreateChat(selectedUserId);
+              setChatReturnTab("friends");
+              setSelectedConversationId(chat.id);
+              setShowMobileSecondaryPanel(false);
+              setActiveTab("chats");
+              setSelectedUserId(null);
+            } catch {
+              /* createChat surfaces its own error toast */
+            }
           }
         }}
       />

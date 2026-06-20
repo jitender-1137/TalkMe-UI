@@ -6,7 +6,8 @@ import { Send, ArrowLeft } from "lucide-react"
 import { AvatarStatusBadge } from "@/components/presence"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { MessageStatusIcon } from "@/components/chat/message-status"
+import { BubbleBody, BubbleShell } from "@/components/chat/bubble-body"
 import type { User } from "@/src/api/types"
 
 interface LobbyMessage {
@@ -167,31 +168,14 @@ export function LobbyChatArea({
                   key={msg.id}
                   className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
                 >
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm transition-all duration-300 ${
-                      isOwn
-                        ? "bg-primary text-primary-foreground rounded-br-none"
-                        : "bg-muted border border-border text-foreground rounded-bl-none"
-                    }`}
-                  >
-                    <p className="text-sm leading-relaxed break-words whitespace-pre-wrap select-text">
-                      {msg.content}
-                    </p>
-                    <div className="flex items-center justify-end gap-1 mt-1.5 select-none">
-                      <span className={cn("text-[9px]", isOwn ? "text-primary-foreground/75" : "text-muted-foreground")}>
-                        {formatMessageTime(msg.timestamp)}
-                      </span>
-                      {isOwn && (
-                        <span className="text-[10px] leading-none text-primary-foreground/90">
-                          {msg.read ? (
-                            <span className="font-bold">✓✓</span>
-                          ) : (
-                            <span className="opacity-60">✓✓</span>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <BubbleShell isSent={isOwn} className="max-w-[75%]">
+                    <BubbleBody
+                      content={msg.content}
+                      time={formatMessageTime(msg.timestamp)}
+                      timeClassName={isOwn ? "text-primary-foreground/65" : "text-muted-foreground"}
+                      statusNode={isOwn ? <MessageStatusIcon status={msg.read ? "seen" : "delivered"} /> : undefined}
+                    />
+                  </BubbleShell>
                 </div>
               )
             })}

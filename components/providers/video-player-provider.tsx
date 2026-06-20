@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download } from 'lucide-react'
+import { downloadFile } from '@/lib/download'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 
@@ -222,10 +223,7 @@ export function VideoPlayerProvider({ children }: { children: React.ReactNode })
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!videoUrl) return
-    const link = document.createElement('a')
-    link.href = videoUrl
-    link.download = 'video.mp4'
-    link.click()
+    void downloadFile(videoUrl, 'video')
   }
 
   return (

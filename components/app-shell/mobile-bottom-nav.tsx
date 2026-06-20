@@ -49,7 +49,7 @@ export function MobileBottomNav() {
   return (
     <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+28px)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg md:hidden">
       {/* Floating glassmorphic rounded pill */}
-      <div className="rounded-full bg-white/70 dark:bg-[rgba(30,30,30,0.75)] backdrop-blur-[25px] border border-black/5 dark:border-white/10 shadow-lg shadow-black/10 dark:shadow-black/30 px-2">
+      <div className="rounded-full bg-white/70 dark:bg-[rgb(30,37,43)] backdrop-blur-[25px] border border-black/5 dark:border-white/10 shadow-lg shadow-black/10 dark:shadow-black/30 px-2">
         <div className="flex items-center justify-around h-13 py-1 relative">
           {navigationItems.map((item) => {
             const Icon = item.icon;
@@ -82,10 +82,14 @@ export function MobileBottomNav() {
                   <div className="p-1 rounded-full flex items-center justify-center min-h-7 min-w-7">
                     {item.id === "settings" ? (
                       /* settings tab shows user avatar image (DP) */
-                      <div className={cn(
-                        "h-5.5 w-5.5 rounded-full overflow-hidden flex items-center justify-center transition-all duration-200 bg-zinc-800",
-                        isActive ? "ring-2 ring-primary scale-110" : "ring-1 ring-muted-foreground/30"
-                      )}>
+                      <div
+                        className={cn(
+                          "h-5.5 w-5.5 rounded-full overflow-hidden flex items-center justify-center transition-all duration-200 bg-zinc-800",
+                          isActive
+                            ? "ring-2 ring-primary scale-110"
+                            : "ring-1 ring-muted-foreground/30",
+                        )}
+                      >
                         {user?.avatar ? (
                           <img src={user.avatar} alt="You" className="w-full h-full object-cover" />
                         ) : (

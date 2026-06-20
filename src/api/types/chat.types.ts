@@ -40,6 +40,9 @@ export interface LastMessage {
   type: string
   timestamp: string
   isDeleted: boolean
+  /** Delivery status of the last message (sent/delivered/seen) — used to show a
+   *  tick in the chat list for messages the current user sent. */
+  status?: string
 }
 
 // ── Group ─────────────────────────────────────────────────────────────────────

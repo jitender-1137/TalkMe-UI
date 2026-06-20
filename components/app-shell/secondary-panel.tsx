@@ -13,6 +13,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AvatarStatusBadge } from "@/components/presence";
+import { useLivePresence } from "@/lib/presence/live-status-store";
+import { MessageStatusIcon } from "@/components/chat/message-status";
+import type { MessageStatus } from "@/components/chat/types";
 import { ConversationContextMenu } from "@/components/chat/conversation-context-menu";
 import { useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/src/api/query-keys";
@@ -88,7 +91,12 @@ function ConversationItem({
   const displayName = isGroup
     ? (conversation.name ?? "Group Chat")
     : otherParticipant?.name || otherParticipant?.username || "Unknown User";
-  const displayStatus = isGroup ? "online" : (otherParticipant?.presence ?? "offline");
+  // Real-time presence from the shared global store (falls back to the chat's
+  // stored value until the first live update arrives).
+  const livePresence = useLivePresence(otherParticipant?.id);
+  const displayStatus = isGroup
+    ? "online"
+    : (livePresence?.status ?? otherParticipant?.presence ?? "offline");
   const lastMessageText = conversation.lastMessage
     ? conversation.lastMessage.isDeleted
       ? "This message was deleted"
@@ -97,6 +105,11 @@ function ConversationItem({
   const lastMessageTime = conversation.lastMessage
     ? formatRelativeTime(conversation.lastMessage.timestamp)
     : formatRelativeTime(conversation.updatedAt);
+  // Show a delivery tick (sent/delivered/seen) only for the LAST message that the
+  // current user sent in a 1:1 chat — same as WhatsApp's chat list.
+  const lastMsg = conversation.lastMessage;
+  const showLastMsgStatus =
+    !!lastMsg && !isGroup && !lastMsg.isDeleted && lastMsg.senderId === currentUserId && !!lastMsg.status;
 
   return (
     <motion.div
@@ -154,7 +167,12 @@ function ConversationItem({
           {isTyping ? (
             <p className="text-sm text-emerald-500 font-medium animate-pulse truncate">typing...</p>
           ) : (
-            <p className="text-sm text-muted-foreground truncate">{lastMessageText}</p>
+            <div className="flex items-center gap-1 min-w-0">
+              {showLastMsgStatus && (
+                <MessageStatusIcon status={lastMsg!.status as MessageStatus} className="shrink-0" />
+              )}
+              <p className="text-sm text-muted-foreground truncate">{lastMessageText}</p>
+            </div>
           )}
           <div className="flex items-center gap-1.5 shrink-0">
             {(conversation.muted || conversation.isMuted) && (

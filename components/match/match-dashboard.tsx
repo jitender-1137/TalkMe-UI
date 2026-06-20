@@ -406,7 +406,7 @@ export function MatchDashboard() {
       <div className="flex-1 p-4 md:p-6">
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Radar section */}
-          <div className="flex flex-col items-center gap-6">
+          <div className="flex flex-col items-center gap-1">
             <MatchRadar isSearching={status === "searching"} />
 
             {/* Search status */}

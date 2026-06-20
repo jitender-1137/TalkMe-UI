@@ -14,6 +14,7 @@ interface VirtualizedChatListProps {
   chatId?: string | null;
   onReactionClick?: (messageId: string, emoji: string) => void;
   onReply?: (message: Message) => void;
+  onRetry?: (message: Message) => void;
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
@@ -45,6 +46,7 @@ function VirtualizedChatListImpl({
   chatId,
   onReactionClick,
   onReply,
+  onRetry,
   onLoadMore,
   hasMore = false,
   isLoadingMore = false,
@@ -78,6 +80,9 @@ function VirtualizedChatListImpl({
   const prependHeightRef = useRef<number | null>(null);
   // Track the newest message id so only a freshly-appended message animates in.
   const animatedLastIdRef = useRef<string | null>(null);
+  // Deferred "re-pin to bottom" timers fired right after a chat opens, so async
+  // content (media/images growing the list) can't leave us above the true bottom.
+  const settleTimersRef = useRef<number[]>([]);
 
   // Reset first-load scroll only when the conversation changes.
   useLayoutEffect(() => {
@@ -85,6 +90,8 @@ function VirtualizedChatListImpl({
     prevFirstIdRef.current = null;
     prevLastIdRef.current = null;
     prependHeightRef.current = null;
+    settleTimersRef.current.forEach(clearTimeout);
+    settleTimersRef.current = [];
   }, [chatId]);
 
   // Scroll management (runs synchronously before paint → no flicker).
@@ -99,6 +106,24 @@ function VirtualizedChatListImpl({
     if (isFirstLoad.current) {
       el.scrollTop = el.scrollHeight; // snap to bottom on first open
       isFirstLoad.current = false;
+
+      // ...then re-assert the bottom as async content settles (media/images that
+      // grow the list after first paint, or messages that arrive a tick later).
+      const pinToBottom = () => {
+        const node = parentRef.current;
+        if (node) node.scrollTop = node.scrollHeight;
+      };
+      requestAnimationFrame(pinToBottom);
+      settleTimersRef.current.push(
+        window.setTimeout(pinToBottom, 100),
+        window.setTimeout(pinToBottom, 300),
+        window.setTimeout(pinToBottom, 600),
+      );
+      // Re-pin whenever a not-yet-loaded image inside finishes (media bubbles).
+      el.querySelectorAll("img").forEach((img) => {
+        const im = img as HTMLImageElement;
+        if (!im.complete) im.addEventListener("load", pinToBottom, { once: true });
+      });
     } else {
       const lastChanged = lastId !== prevLastIdRef.current;
       const firstChanged = firstId !== prevFirstIdRef.current;
@@ -196,9 +221,9 @@ function VirtualizedChatListImpl({
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto overflow-x-hidden px-4 scrollbar-thin [overflow-anchor:none]"
+        className="h-full overflow-y-auto overflow-x-hidden px-2 scrollbar-thin [overflow-anchor:none]"
       >
-        <div className="max-w-3xl mx-auto py-2 flex flex-col">
+        <div className="mx-auto py-2 flex flex-col">
           {uniqueMessages.map((message, index) => {
             const prev = index > 0 ? uniqueMessages[index - 1] : null;
             const currentDate = new Date(message.timestamp);
@@ -242,6 +267,7 @@ function VirtualizedChatListImpl({
                     message={message}
                     onReactionClick={onReactionClick}
                     onReply={onReply}
+                    onRetry={onRetry}
                     onOpenMessageMenu={onOpenMessageMenu}
                   />
                 </motion.div>
@@ -257,7 +283,7 @@ function VirtualizedChatListImpl({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="absolute bottom-4 right-4"
+            className="absolute bottom-4 right-4 z-10"
           >
             <Button
               size="icon"

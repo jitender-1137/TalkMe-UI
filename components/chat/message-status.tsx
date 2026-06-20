@@ -1,16 +1,31 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Check, CheckCheck, Clock } from "lucide-react"
+import { Check, CheckCheck, Clock, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { MessageStatus } from "./types"
 
 interface MessageStatusIconProps {
   status: MessageStatus
   className?: string
+  /** When status is "failed", tapping the icon retries the send. */
+  onRetry?: () => void
 }
 
-export function MessageStatusIcon({ status, className }: MessageStatusIconProps) {
+export function MessageStatusIcon({ status, className, onRetry }: MessageStatusIconProps) {
+  if (status === "failed") {
+    return (
+      <button
+        type="button"
+        onClick={onRetry}
+        aria-label="Failed to send — tap to retry"
+        title="Failed to send — tap to retry"
+        className={cn("inline-flex items-center text-red-500 hover:text-red-600", className)}
+      >
+        <AlertCircle className="h-3.5 w-3.5" />
+      </button>
+    )
+  }
   return (
     <motion.span
       initial={{ scale: 0.8, opacity: 0 }}

@@ -41,6 +41,8 @@ function getActivityText(activity: PresenceActivity, lastSeen?: string): string 
       return "typing..."
     case "recording":
       return "recording audio..."
+    case "recording_video":
+      return "recording video..."
     case "online":
       return "Online"
     case "offline":
@@ -52,6 +54,7 @@ function getPresenceStatus(activity: PresenceActivity): "online" | "idle" | "off
   switch (activity) {
     case "typing":
     case "recording":
+    case "recording_video":
     case "online":
       return "online"
     default:
@@ -79,7 +82,7 @@ export function ChatHeader({
   const { setShowMobileSecondaryPanel } = useChatContext()
   const { showImage } = useImageViewer()
   const activityText = getActivityText(contact.activity, contact.lastSeen)
-  const isActive = contact.activity === "typing" || contact.activity === "recording"
+  const isActive = contact.activity === "typing" || contact.activity === "recording" || contact.activity === "recording_video"
 
   return (
     <header className="flex items-center justify-between px-4 h-16 border-b border-white/10 bg-card shrink-0">

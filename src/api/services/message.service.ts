@@ -66,6 +66,7 @@ export const MessageService = {
     // Map SendMessagePayload to what backend SendMessageRequest DTO expects
     const backendPayload: any = {
       content: payload.content,
+      clientId: payload.clientId || null,
       messageType: (payload.type || "TEXT").toUpperCase(),
       parentMessageId: payload.replyToId || null,
     }

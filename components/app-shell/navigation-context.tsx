@@ -9,7 +9,8 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { getHashForTab, getTabFromHash, replaceHash } from "@/lib/navigation/url-hash"
+import { getHashForTab, getTabFromHash, parseHash, buildHash, replaceHash } from "@/lib/navigation/url-hash"
+import { clearOverlays } from "@/lib/navigation/use-url-modal"
 
 interface NavigationContextType {
   activeTab: string
@@ -46,6 +47,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // replaceState ONLY (never pushState / location.hash assignment / Link), so
   // switching tabs does not push a history entry.
   const setActiveTab = useCallback((tab: string) => {
+    // Forget any open modal overlays first: their components unmount on the tab
+    // switch and must not history.back() (which would bounce back to this tab).
+    // The tab switch itself replaceState-s onto the bare tab hash.
+    clearOverlays()
     setActiveTabState((prev) => (prev === tab ? prev : tab))
     replaceHash(getHashForTab(tab))
   }, [])
@@ -56,7 +61,16 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // hash of the resolved tab using replaceState — so no old hash navigation
   // state lingers in the back stack and the URL is always canonical.
   useEffect(() => {
-    replaceHash(getHashForTab(activeTabRef.current))
+    // Canonicalize the URL in place, but PRESERVE nested subtab/modal segments so
+    // a deep link like #news/explore (or #news/feed/post/123) is not stripped to
+    // #news before the tab can read its subtab/modal from the URL. Only a
+    // legacy/unknown hash falls back to the bare resolved tab.
+    const { tab, segments } = parseHash(window.location.hash)
+    if (tab) {
+      replaceHash(buildHash(tab, segments))
+    } else {
+      replaceHash(getHashForTab(activeTabRef.current))
+    }
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

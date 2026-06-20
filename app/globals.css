@@ -1,5 +1,5 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
+@import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -48,39 +48,41 @@
   --card-foreground: oklch(0.92 0.01 240);
   --popover: oklch(0.18 0.012 240);
   --popover-foreground: oklch(0.92 0.01 240);
-  --primary: oklch(0.38 0.20 160);
+  --primary: oklch(35.264% 0.10991 145.069);
   --primary-foreground: oklch(0.95 0.01 0);
   --secondary: oklch(0.22 0.012 240);
   --secondary-foreground: oklch(0.92 0.01 240);
   --muted: oklch(0.25 0.012 240);
   --muted-foreground: oklch(0.55 0.02 240);
-  --accent: oklch(0.38 0.20 160);
+  --accent: oklch(0.38 0.2 160);
   --accent-foreground: oklch(0.95 0.01 0);
   --destructive: oklch(0.55 0.2 27);
   --destructive-foreground: oklch(0.95 0.01 27);
   --border: oklch(0.25 0.01 240);
   --input: oklch(0.25 0.012 240);
-  --ring: oklch(0.38 0.20 160);
-  --chart-1: oklch(0.38 0.20 160);
+  --ring: oklch(0.38 0.2 160);
+  --chart-1: oklch(0.38 0.2 160);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.1 0.01 240);
   --sidebar-foreground: oklch(0.92 0.01 240);
-  --sidebar-primary: oklch(0.38 0.20 160);
+  --sidebar-primary: oklch(0.38 0.2 160);
   --sidebar-primary-foreground: oklch(0.95 0.01 0);
   --sidebar-accent: oklch(1 0 0);
   --sidebar-accent-foreground: oklch(0.92 0.01 240);
   --sidebar-border: oklch(1 0 0);
-  --sidebar-ring: oklch(0.38 0.20 160);
+  --sidebar-ring: oklch(0.38 0.2 160);
   --warning: oklch(0.7 0.15 70);
   --warning-foreground: oklch(0.2 0.05 70);
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback', 'SF Mono', monospace;
+  --font-sans:
+    "Geist", "Geist Fallback", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", "SF Mono", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -218,8 +220,14 @@
     animation: fadeIn 0.2s ease both;
   }
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* Skeleton shimmer for loading states (use while data is fetching) */
@@ -230,7 +238,7 @@
     border-radius: var(--radius-md);
   }
   .skeleton::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
@@ -243,7 +251,9 @@
     animation: shimmer 1.4s infinite;
   }
   @keyframes shimmer {
-    100% { transform: translateX(100%); }
+    100% {
+      transform: translateX(100%);
+    }
   }
 }
 

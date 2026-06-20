@@ -22,14 +22,27 @@ import {
   useUnbookmarkPost,
   useCreateComment,
 } from "@/src/api/hooks/useFeed";
-import { useStories, useCreateStory, useMarkStoryViewed, useDeleteStory } from "@/src/api/hooks/useStories";
+import {
+  useStories,
+  useCreateStory,
+  useMarkStoryViewed,
+  useDeleteStory,
+} from "@/src/api/hooks/useStories";
 import { useProfile, useUpdateProfile, useUserById } from "@/src/api/hooks/useProfile";
+import { useUrlSubtab } from "@/lib/navigation/use-url-subtab";
+import { useUrlModal } from "@/lib/navigation/use-url-modal";
+
+const NEWS_SUBTABS = ["feed", "explore", "profile"] as const;
 
 export function NewsDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState("feed");
+  // Subtab lives in the URL as #news/<subtab> (replaceState — Back doesn't cycle).
+  const [activeTab, setActiveTab] = useUrlSubtab("news", NEWS_SUBTABS, "feed");
   const [viewedProfileId, setViewedProfileId] = useState<string | null>(null);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
+
+  // Create-post modal gets its own URL (#news/<subtab>/create) and Back closes it.
+  useUrlModal(isCreatePostOpen, () => setIsCreatePostOpen(false), "create");
 
   const { data: ownProfile, isLoading: isProfileLoading } = useProfile();
   const { data: targetProfile, isLoading: isTargetProfileLoading } = useUserById(
@@ -150,7 +163,7 @@ export function NewsDashboard() {
     })),
     likes: post.likesCount,
     comments: [], // Comments will be loaded/updated dynamically
-    commentsCount: post.commentsCount ?? (post.comments?.length ?? 0),
+    commentsCount: post.commentsCount ?? post.comments?.length ?? 0,
     shares: 0,
     liked: post.isLiked,
     bookmarked: post.isBookmarked,
@@ -275,13 +288,14 @@ export function NewsDashboard() {
       <AppLayout
         title="News"
         icon={Newspaper}
+        textSize="text-md"
         filterChips={[
           { id: "feed", label: "Feed" },
           { id: "explore", label: "Explore" },
           { id: "profile", label: "Profile" },
         ]}
         activeFilterId={activeTab}
-        onFilterChange={setActiveTab}
+        onFilterChange={(id) => setActiveTab(id as (typeof NEWS_SUBTABS)[number])}
         collapseFiltersToHeader={true}
         onRefresh={activeTab === "feed" ? handleRefreshFeed : undefined}
         headerRight={
@@ -308,7 +322,7 @@ export function NewsDashboard() {
           ) : undefined
         }
       >
-        <div className="flex-1 max-w-2xl mx-auto w-full px-4 pb-4 mt-0">
+        <div className="flex-1 max-w-2xl mx-auto w-full px-1 pb-4 mt-0">
           {activeTab === "feed" && (
             <div>
               {/* Stories */}

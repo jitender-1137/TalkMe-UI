@@ -1,10 +1,11 @@
 "use client";
 
-import { forwardRef, useState, useCallback, useRef } from "react";
+import { forwardRef, useState, useCallback, useRef, memo } from "react";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Reply } from "lucide-react";
 import { MessageStatusIcon } from "./message-status";
+import { BubbleBody, BubbleShell } from "./bubble-body";
 import { MessageReactions } from "./message-reactions";
 import { MessageReply } from "./message-reply";
 import { MessageMedia } from "./message-media";
@@ -17,11 +18,12 @@ interface ChatBubbleProps {
   message: Message;
   onReactionClick?: (messageId: string, emoji: string) => void;
   onReply?: (message: Message) => void;
+  onRetry?: (message: Message) => void;
   onOpenMessageMenu?: (e: PointerEvent | MouseEvent, message: Message) => void;
 }
 
-export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
-  ({ message, onReactionClick, onReply, onOpenMessageMenu }, ref) => {
+const ChatBubbleImpl = forwardRef<HTMLDivElement, ChatBubbleProps>(
+  ({ message, onReactionClick, onReply, onRetry, onOpenMessageMenu }, ref) => {
     const isMobile = useIsMobile();
     const [isPressed, setIsPressed] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
@@ -145,17 +147,7 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
                 onDragEnd={handleDragEnd}
                 className="relative z-10 w-full flex flex-col"
               >
-                <div
-                  className={cn(
-                    type === "sticker"
-                      ? "p-0 bg-transparent shadow-none relative overflow-hidden rounded-2xl"
-                      : "px-4 py-2.5 rounded-[20px] shadow-sm relative",
-                    type !== "sticker" &&
-                      (isSent
-                        ? "bg-primary text-primary-foreground rounded-br-md shadow-primary/15"
-                        : "bg-muted text-card-foreground rounded-bl-md"),
-                  )}
-                >
+                <BubbleShell isSent={isSent} variant={type === "sticker" ? "sticker" : "default"}>
                   {replyTo && <MessageReply reply={replyTo} isSent={isSent} />}
                   {media && (
                     <MessageMedia
@@ -165,44 +157,33 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
                       messageId={message.id}
                     />
                   )}
-                  {content && (
-                    <p
-                      className={cn(
-                        "text-sm leading-relaxed whitespace-pre-wrap break-words",
-                        media && "mt-1",
+                  {type === "sticker" ? (
+                    // Stickers keep the floating time pill overlaid on the image.
+                    <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/40 backdrop-blur-[2px] rounded-full px-2 py-0.5">
+                      <span className="text-[10px] text-white/80 font-medium">{time}</span>
+                      {isSent && (
+                        <MessageStatusIcon
+                          status={status}
+                          onRetry={() => onRetry?.(message)}
+                          className="[&_svg]:text-white/80"
+                        />
                       )}
-                    >
-                      {content}
-                    </p>
+                    </div>
+                  ) : (
+                    <BubbleBody
+                      content={content}
+                      time={time}
+                      hasMedia={!!media}
+                      align={isSent ? "end" : "start"}
+                      timeClassName={isSent ? "text-primary-foreground/65" : "text-muted-foreground"}
+                      statusNode={
+                        isSent ? (
+                          <MessageStatusIcon status={status} onRetry={() => onRetry?.(message)} />
+                        ) : undefined
+                      }
+                    />
                   )}
-                  <div
-                    className={cn(
-                      "flex items-center gap-1 mt-1",
-                      isSent ? "justify-end" : "justify-start",
-                      type === "sticker" &&
-                        "absolute bottom-1 right-1 mt-0 bg-black/40 backdrop-blur-[2px] rounded-full px-2 py-0.5",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "text-[10px]",
-                        type === "sticker"
-                          ? "text-white/80 font-medium"
-                          : isSent
-                            ? "text-primary-foreground/70"
-                            : "text-muted-foreground",
-                      )}
-                    >
-                      {time}
-                    </span>
-                    {isSent && (
-                      <MessageStatusIcon
-                        status={status}
-                        className={type === "sticker" ? "[&_svg]:text-white/80" : undefined}
-                      />
-                    )}
-                  </div>
-                </div>
+                </BubbleShell>
 
                 {reactions && reactions.length > 0 && (
                   <MessageReactions
@@ -237,3 +218,9 @@ export const ChatBubble = forwardRef<HTMLDivElement, ChatBubbleProps>(
     );
   },
 );
+
+ChatBubbleImpl.displayName = "ChatBubble";
+
+// Memoized: with the list's stable useCallback handlers, an individual bubble
+// only re-renders when its own message/props change — not on every list render.
+export const ChatBubble = memo(ChatBubbleImpl);

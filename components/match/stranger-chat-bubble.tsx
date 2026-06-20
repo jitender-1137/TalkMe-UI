@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { SafeModeMedia } from "./safe-mode-media"
 import { MessageMedia } from "@/components/chat/message-media"
+import { BubbleBody, BubbleShell } from "@/components/chat/bubble-body"
 import type { MediaAttachment } from "@/components/chat/types"
 import type { StrangerMessage } from "./types"
 
@@ -119,29 +120,17 @@ export function StrangerChatBubble({
       className={cn("flex w-full mb-3", isFromStranger ? "justify-start" : "justify-end")}
     >
       <div className={cn("max-w-[80%] md:max-w-[70%] flex flex-col", isFromStranger ? "items-start" : "items-end")}>
-        <div
-          className={cn(
-            "rounded-2xl px-4 py-2.5 shadow-sm",
-            isFromStranger
-              ? "bg-[#202c33] border border-white/5 rounded-bl-md text-slate-100"
-              : "bg-primary text-primary-foreground rounded-br-md"
-          )}
-        >
+        <BubbleShell isSent={!isFromStranger}>
           {/* Media content with safe mode */}
           {message.media && (
-            <div className="mb-2">
+            <div className="mb-1">
               <SafeModeMedia message={message} onReveal={onRevealMedia} onHide={onHideMedia} />
             </div>
           )}
 
-          {/* Text content */}
-          {message.content && !isAudioUrl(message.content) && (
-            <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-          )}
-
           {/* Audio content */}
           {message.content && isAudioUrl(message.content) && (
-            <div className="my-1.5">
+            <div className="my-1">
               <MessageMedia
                 media={{
                   type: "audio",
@@ -155,16 +144,14 @@ export function StrangerChatBubble({
             </div>
           )}
 
-          {/* Timestamp */}
-          <div
-            className={cn(
-              "flex items-center justify-end gap-1 mt-1",
-              isFromStranger ? "text-slate-400" : "text-primary-foreground/75"
-            )}
-          >
-            <span className="text-[10px]">{message.time}</span>
-          </div>
-        </div>
+          {/* Shared compact body: text + inline bottom-right time (WhatsApp-style). */}
+          <BubbleBody
+            content={message.content && !isAudioUrl(message.content) ? message.content : undefined}
+            time={message.time}
+            hasMedia={!!message.media || (!!message.content && !!isAudioUrl(message.content))}
+            timeClassName={isFromStranger ? "text-muted-foreground" : "text-primary-foreground/65"}
+          />
+        </BubbleShell>
       </div>
     </motion.div>
   )

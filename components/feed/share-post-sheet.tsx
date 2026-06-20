@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Send, Check, Loader2 } from "lucide-react"
 import { useContacts } from "@/src/api/hooks/useContacts"
-import { ChatService } from "@/src/api/services/chat.service"
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { MessageService } from "@/src/api/services/message.service"
 import { getAvatarUrl } from "@/lib/utils"
 import { showErrorToast, showSuccessToast } from "@/src/api/error-handler"
@@ -22,6 +22,7 @@ interface SharePostSheetProps {
 /** In-app post sharing — send a post to a contact as a chat message. */
 export function SharePostSheet({ post, open, onOpenChange }: SharePostSheetProps) {
   const { data: contacts = [] } = useContacts()
+  const openOrCreateChat = useOpenOrCreateChat()
   const [query, setQuery] = useState("")
   const [sentTo, setSentTo] = useState<Set<string>>(new Set())
   const [sendingId, setSendingId] = useState<string | null>(null)
@@ -51,7 +52,7 @@ export function SharePostSheet({ post, open, onOpenChange }: SharePostSheetProps
     if (sendingId || sentTo.has(contact.id)) return
     setSendingId(contact.id)
     try {
-      const chat = await ChatService.createChat({ participantId: contact.id })
+      const chat = await openOrCreateChat(contact.id)
       await MessageService.sendMessage(chat.id, buildPayload())
       setSentTo((prev) => new Set(prev).add(contact.id))
       showSuccessToast(`Sent to ${contact.name || contact.username}`)

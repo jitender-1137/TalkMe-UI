@@ -122,9 +122,31 @@ interface ActiveCall {
   chatId: string
   contact: ChatContact
   callType: "audio" | "video"
-  status: "ringing" | "connecting" | "connected" | "ended"
+  status: "ringing" | "connecting" | "connected" | "reconnecting" | "ended"
   incoming: boolean
   duration?: number
+}
+
+/**
+ * ICE servers for WebRTC. STUN alone fails on symmetric NAT (~10-15% of calls);
+ * a TURN relay fixes that. Configure via env (comma-separated URLs supported):
+ *   NEXT_PUBLIC_STUN_URLS, NEXT_PUBLIC_TURN_URLS,
+ *   NEXT_PUBLIC_TURN_USERNAME, NEXT_PUBLIC_TURN_CREDENTIAL
+ */
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = []
+  const stun = process.env.NEXT_PUBLIC_STUN_URLS || "stun:stun.l.google.com:19302"
+  servers.push({ urls: stun.split(",").map((s) => s.trim()).filter(Boolean) })
+
+  const turn = process.env.NEXT_PUBLIC_TURN_URLS
+  if (turn) {
+    servers.push({
+      urls: turn.split(",").map((s) => s.trim()).filter(Boolean),
+      username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+      credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
+    })
+  }
+  return servers
 }
 
 interface CallContextType {
@@ -188,6 +210,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const queuedCandidatesRef = useRef<RTCIceCandidateInit[]>([])
   const pendingOfferRef = useRef<any>(null)
   const pendingAnswerRef = useRef<any>(null)
+  const isInitiatorRef = useRef(false)
 
 
   // Sync ref to allow callbacks to read state without stale closures
@@ -268,6 +291,21 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     cleanupWebRTC()
   }, [sendEvent, cleanupWebRTC, ownProfile?.id])
 
+  // Renegotiate ICE with a fresh gathering after a connectivity drop. Reuses the
+  // normal call_offer/call_answer signaling path.
+  const restartIce = useCallback(async (pc: RTCPeerConnection) => {
+    try {
+      const offer = await pc.createOffer({ iceRestart: true })
+      await pc.setLocalDescription(offer)
+      const call = activeCallRef.current
+      if (call) {
+        sendEvent("call_offer", { chatId: call.chatId, callId: call.callId, sdp: offer, senderId: ownProfile?.id })
+      }
+    } catch (e) {
+      console.error("ICE restart failed:", e)
+    }
+  }, [sendEvent, ownProfile?.id])
+
   // Setup WebRTC connection
   const setupWebRTC = useCallback(async (call: ActiveCall, isInitiator: boolean) => {
     try {
@@ -281,10 +319,28 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setLocalStream(stream)
 
       // 2. Create peer connection
+      isInitiatorRef.current = isInitiator
       const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        iceServers: buildIceServers(),
       })
       peerConnectionRef.current = pc
+
+      // ICE restart: if connectivity drops (network switch, WiFi loss), the
+      // initiator renegotiates with a fresh ICE gathering instead of dropping the
+      // call. The remote side's existing call_offer handler answers it.
+      pc.oniceconnectionstatechange = () => {
+        const state = pc.iceConnectionState
+        if (state === "failed" || state === "disconnected") {
+          setActiveCall((prev) =>
+            prev && prev.status === "connected" ? { ...prev, status: "reconnecting" } : prev)
+          if (isInitiatorRef.current) {
+            void restartIce(pc)
+          }
+        } else if (state === "connected" || state === "completed") {
+          setActiveCall((prev) =>
+            prev && prev.status === "reconnecting" ? { ...prev, status: "connected" } : prev)
+        }
+      }
 
       // Add local tracks
       stream.getTracks().forEach((track) => pc.addTrack(track, stream))

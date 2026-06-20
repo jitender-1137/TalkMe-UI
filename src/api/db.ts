@@ -197,7 +197,9 @@ export function mapResponseToLocalChat(c: any): LocalChat {
       senderName: lastMsg.senderName || "",
       type: lastMsg.type || lastMsg.messageType || "TEXT",
       timestamp: lastMsg.timestamp || lastMsg.createdAt || new Date().toISOString(),
-      isDeleted: lastMsg.isDeleted || false
+      isDeleted: lastMsg.isDeleted || false,
+      // Delivery status (own messages render a tick in the chat list).
+      status: lastMsg.status ? normalizeMessageStatus(lastMsg.status) : undefined
     } : null
   };
 }

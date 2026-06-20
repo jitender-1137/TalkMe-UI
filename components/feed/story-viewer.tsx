@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn, getAvatarUrl } from "@/lib/utils"
 import { getMediaUrl } from "@/src/api/client"
-import { ChatService } from "@/src/api/services/chat.service"
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { MessageService } from "@/src/api/services/message.service"
 import { showSuccessToast, showErrorToast } from "@/src/api/error-handler"
 import type { StoryGroup, Story } from "./types"
@@ -40,6 +40,7 @@ export function StoryViewer({
   const [isMuted, setIsMuted] = useState(true)
   const [replyText, setReplyText] = useState("")
   const [isSending, setIsSending] = useState(false)
+  const openOrCreateChat = useOpenOrCreateChat()
 
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
@@ -115,7 +116,7 @@ export function StoryViewer({
       setIsSending(true)
       setIsPaused(true) // hold the story while we send
       try {
-        const chat = await ChatService.createChat({ participantId: ownerId })
+        const chat = await openOrCreateChat(ownerId)
         await MessageService.sendMessage(chat.id, { content: text })
         showSuccessToast(`Sent to ${currentGroup?.userName ?? "user"}`)
         setReplyText("")
@@ -126,7 +127,7 @@ export function StoryViewer({
         setIsPaused(false)
       }
     },
-    [currentGroup?.userId, currentGroup?.userName, isSending],
+    [currentGroup?.userId, currentGroup?.userName, isSending, openOrCreateChat],
   )
 
   // Progress timer

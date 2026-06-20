@@ -59,11 +59,55 @@ export function getHashForTab(tab: string): string {
   return TAB_TO_HASH[tab as TabId] ?? ""
 }
 
-/** Resolve a raw hash (with or without leading "#") to a tab id, or null. */
+/**
+ * Resolve a raw hash to a tab id, or null. Works for both the bare tab hash
+ * (`#news`) and nested hashes (`#news/feed/post/123`) by matching only the
+ * FIRST path segment — so adding subtab/modal segments never breaks tab
+ * detection. Legacy aliases (`#messages`) still resolve.
+ */
 export function getTabFromHash(hash: string | null | undefined): TabId | null {
   if (!hash) return null
-  const normalized = hash.startsWith("#") ? hash : `#${hash}`
-  return HASH_TO_TAB[normalized] ?? null
+  const body = (hash.startsWith("#") ? hash.slice(1) : hash).replace(/^\/+/, "")
+  const first = body.split("/")[0]
+  if (!first) return null
+  return HASH_TO_TAB[`#${first}`] ?? null
+}
+
+/**
+ * Parse a hash into its tab + the remaining path segments (subtab + modal
+ * descriptors). `#news/feed/post/123` → { tab: "news", segments: ["feed","post","123"] }.
+ */
+export function parseHash(hash: string | null | undefined): { tab: TabId | null; segments: string[] } {
+  if (!hash) return { tab: null, segments: [] }
+  const body = (hash.startsWith("#") ? hash.slice(1) : hash).replace(/^\/+|\/+$/g, "")
+  if (!body) return { tab: null, segments: [] }
+  const parts = body.split("/").filter(Boolean)
+  return { tab: getTabFromHash(`#${parts[0]}`), segments: parts.slice(1) }
+}
+
+/**
+ * Build a canonical nested hash from a tab id + path segments.
+ * buildHash("news", ["feed"]) → "#news/feed"; buildHash("news") → "#news".
+ */
+export function buildHash(tab: string, segments: (string | null | undefined)[] = []): string {
+  const base = getHashForTab(tab)
+  if (!base) return ""
+  const clean = segments.filter((s): s is string => !!s && s.length > 0)
+  return clean.length ? `${base}/${clean.join("/")}` : base
+}
+
+/**
+ * Push a NEW history entry for the given hash (used for modals, so Back closes
+ * them). Mirrors replaceHash but uses pushState. Preserves pathname + query.
+ */
+export function pushHash(hash: string): void {
+  if (typeof window === "undefined") return
+  const { pathname, search } = window.location
+  const normalized = hash && !hash.startsWith("#") ? `#${hash}` : hash
+  const nextUrl = `${pathname}${search}${normalized || ""}`
+  const currentUrl = `${pathname}${search}${window.location.hash || ""}`
+  if (nextUrl === currentUrl) return
+  window.history.pushState(window.history.state, "", nextUrl)
 }
 
 export function isKnownTab(tab: string): tab is TabId {

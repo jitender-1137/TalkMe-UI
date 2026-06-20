@@ -27,6 +27,7 @@ import { useUserPosts } from "@/src/api/hooks/useFeed"
 import { useStories } from "@/src/api/hooks/useStories"
 import { useSuggestedFriends } from "@/src/api/hooks/useDiscover"
 import { useFollowers, useFollowing, useFollowUser, useUnfollowUser } from "@/src/api/hooks/useFollow"
+import { PostDetailModal } from "./post-detail-modal"
 
 interface ProfileModalProps {
   userId: string | null
@@ -47,6 +48,7 @@ export function ProfileModal({ userId, isOpen, onClose, onMessage }: ProfileModa
   const [connTab, setConnTab] = useState<ConnTab>("followers")
   // Local optimistic follow overrides (the "me" following query isn't auto-invalidated).
   const [localFollow, setLocalFollow] = useState<Record<string, boolean>>({})
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -54,6 +56,7 @@ export function ProfileModal({ userId, isOpen, onClose, onMessage }: ProfileModa
       setTab("posts")
       setView("profile")
       setLocalFollow({})
+      setSelectedPostId(null)
     }
   }, [isOpen, userId])
 
@@ -292,7 +295,11 @@ export function ProfileModal({ userId, isOpen, onClose, onMessage }: ProfileModa
                         ) : (
                           <div className="grid grid-cols-3 gap-[2px]">
                             {posts.map((post: any) => (
-                              <PostCell key={post.id} post={post} />
+                              <PostCell
+                                key={post.id}
+                                post={post}
+                                onClick={() => setSelectedPostId(post.id)}
+                              />
                             ))}
                           </div>
                         )
@@ -308,6 +315,47 @@ export function ProfileModal({ userId, isOpen, onClose, onMessage }: ProfileModa
               </>
             )}
           </motion.div>
+
+          {/* Post detail. Wrapped in a stacking context above the profile modal
+              (z-260) but below the image viewer (z-300), so opening an image from
+              the post still layers correctly. */}
+          {(() => {
+            const sp = posts.find((p: any) => p.id === selectedPostId)
+            if (!selectedPostId || !sp) return null
+            return (
+              <div className="relative z-[280]">
+                <PostDetailModal
+                  post={{
+                    id: sp.id,
+                    content: sp.content,
+                    mediaUrls: (sp.media || [])
+                      .map((m: any) => {
+                        const raw = typeof m === "string" ? m : m.mediaUrl
+                        const url = getMediaUrl(raw) || ""
+                        const isVideo =
+                          (typeof m === "string" ? "" : (m.mediaType || "")).toLowerCase() === "video" ||
+                          /\.(mp4|webm|mov)$/i.test(raw || "")
+                        return { url, type: (isVideo ? "video" : "image") as "video" | "image" }
+                      })
+                      .filter((x: { url: string }) => x.url),
+                    author: {
+                      id: sp.userId ?? viewUserId ?? "",
+                      name: sp.userName ?? user?.name ?? "User",
+                      avatar: sp.userAvatar ?? user?.avatar,
+                    },
+                    createdAt: sp.createdAt,
+                    likesCount: sp.likesCount || 0,
+                    commentsCount: sp.commentsCount ?? 0,
+                    isLiked: !!sp.isLiked,
+                    isBookmarked: !!sp.isBookmarked,
+                  }}
+                  isOwner={isOwnProfile}
+                  onClose={() => setSelectedPostId(null)}
+                  onViewProfile={(id) => setViewUserId(id)}
+                />
+              </div>
+            )
+          })()}
         </>
       )}
     </AnimatePresence>
@@ -463,7 +511,7 @@ function ConnectionsView({
 }
 
 /* ── Small pieces ──────────────────────────────────────────────────────────── */
-function PostCell({ post }: { post: any }) {
+function PostCell({ post, onClick }: { post: any; onClick?: () => void }) {
   const first = post.media?.[0]
   const url = first
     ? typeof first === "string"
@@ -477,7 +525,11 @@ function PostCell({ post }: { post: any }) {
       : (first.mediaType || "").toLowerCase() === "video")
 
   return (
-    <div className="relative aspect-square bg-muted overflow-hidden group">
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative aspect-square bg-muted overflow-hidden group cursor-pointer text-left"
+    >
       {url ? (
         <img src={url} alt="" className="w-full h-full object-cover" />
       ) : (
@@ -500,7 +552,7 @@ function PostCell({ post }: { post: any }) {
           {post.commentsCount || 0}
         </span>
       </div>
-    </div>
+    </button>
   )
 }
 

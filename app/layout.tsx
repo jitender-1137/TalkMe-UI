@@ -15,6 +15,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Android/Chrome: the on-screen keyboard resizes the layout viewport (so a
+  // fixed, viewport-height chat container shrinks above the keyboard instead of
+  // being overlaid). iOS ignores this — handled via VisualViewport in chat-area.
+  interactiveWidget: 'resizes-content',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f7f8fa' },
     { media: '(prefers-color-scheme: dark)',  color: '#1a1b1e' },

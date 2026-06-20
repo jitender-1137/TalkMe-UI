@@ -38,7 +38,7 @@ export function CommentsSheet({
               e.stopPropagation()
               onOpenChange(false)
             }}
-            className="fixed inset-0 z-[270] bg-black/50"
+            className="fixed inset-0 z-[290] bg-black/50"
           />
           <motion.div
             initial={{ y: "100%" }}
@@ -47,7 +47,7 @@ export function CommentsSheet({
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
             // Clicks inside the sheet must not bubble out to the modal backdrop.
             onClick={(e) => e.stopPropagation()}
-            className="fixed bottom-0 inset-x-0 z-[280] mx-auto w-full sm:max-w-[480px]
+            className="fixed bottom-0 inset-x-0 z-[295] mx-auto w-full sm:max-w-[480px]
                        h-[72vh] bg-card rounded-t-2xl border-t border-border shadow-2xl flex flex-col"
           >
             {/* Handle + title */}

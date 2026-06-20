@@ -40,6 +40,9 @@ export interface ReadReceipt {
 // ── Core message ──────────────────────────────────────────────────────────────
 export interface Message {
   id: string
+  /** Client idempotency key, echoed by the server so the sender's own
+   *  WebSocket broadcast dedups against the optimistic row. */
+  clientId?: string
   chatId: string
   senderId: string
   senderName: string
@@ -63,6 +66,9 @@ export interface Message {
 // ── Send / Edit payloads ──────────────────────────────────────────────────────
 export interface SendMessagePayload {
   content: string
+  /** Client-generated idempotency key (UUID). Set in onMutate so a retried
+   *  send is deduped server-side instead of creating a duplicate. */
+  clientId?: string
   type?: MessageType
   replyToId?: string
   media?: {

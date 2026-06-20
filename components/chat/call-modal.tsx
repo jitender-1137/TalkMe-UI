@@ -23,7 +23,7 @@ interface CallModalProps {
   onClose: () => void
   onHangup: () => void
   callType: "audio" | "video"
-  status: "ringing" | "connecting" | "connected" | "ended"
+  status: "ringing" | "connecting" | "connected" | "reconnecting" | "ended"
   duration: number
   localStream: MediaStream | null
   remoteStream: MediaStream | null
@@ -96,6 +96,8 @@ export function CallModal({
         return "Connecting..."
       case "connected":
         return formatDuration(duration)
+      case "reconnecting":
+        return "Reconnecting..."
       case "ended":
         return "Call ended"
     }

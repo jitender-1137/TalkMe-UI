@@ -76,7 +76,12 @@ export function FilterChipBar({
   textSize?: string;
 }) {
   return (
-    <div className="w-full overflow-x-auto flex items-center gap-2 px-4 py-2 select-none shrink-0 scrollbar-none">
+    <div
+      className={cn(
+        "w-full overflow-x-auto flex items-center gap-2 px-4 py-2 select-none shrink-0 scrollbar-none",
+        textSize !== "text-xs" && "justify-center gap-12",
+      )}
+    >
       {chips.map((chip) => {
         const isActive = activeId === chip.id;
         return (
@@ -87,8 +92,8 @@ export function FilterChipBar({
               "relative shrink-0 text-{textSize} font-semibold px-4 py-1.5 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1.5 cursor-pointer",
               textSize,
               isActive
-                ? "bg-primary/15 dark:bg-primary/25 text-primary border border-primary/20"
-                : "bg-black/5 dark:bg-white/5 text-muted-foreground border border-transparent hover:text-foreground",
+                ? "bg-primary dark:bg-primary text-foreground border border-primary"
+                : "bg-black/25 dark:bg-white/25 text-foreground border border-transparent hover:text-foreground",
             )}
           >
             {chip.label}
@@ -339,7 +344,7 @@ export function AppLayout({
         )}
 
         {/* Expanded State Header - Scrolls with content, transformations linked to scrollY */}
-        <div className="flex flex-col pb-2 shrink-0">
+        <div className="flex flex-col shrink-0">
           {/* Large Title Area (Logo + Title on the left, action buttons on the right - SAME ROW) */}
           <div className="md:px-6 pr-1 pl-4 py-2 flex items-center justify-between min-h-13">
             <motion.div

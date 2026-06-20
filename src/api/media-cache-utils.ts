@@ -24,6 +24,8 @@ const EXTERNAL_MEDIA_HOST_SUFFIXES = [
   "tenor.com",
   "tenor.co",
   "gstatic.com", // tenor media is served from *.gstatic.com
+  "dicebear.com", // avatar/sticker SVGs served with wildcard ACAO
+  "robohash.org", // sticker images served with wildcard ACAO
 ] as const;
 
 /**

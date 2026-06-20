@@ -17,7 +17,7 @@ import type { ChatContact } from "./types"
 interface MinimizedCallWidgetProps {
   contact: ChatContact
   callType: "audio" | "video"
-  status: "ringing" | "connecting" | "connected" | "ended"
+  status: "ringing" | "connecting" | "connected" | "reconnecting" | "ended"
   duration: number
   localStream: MediaStream | null
   remoteStream: MediaStream | null

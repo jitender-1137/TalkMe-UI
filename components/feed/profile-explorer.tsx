@@ -41,7 +41,7 @@ import {
 import { useFollowers, useFollowing, useFollowUser, useUnfollowUser } from "@/src/api/hooks/useFollow"
 import { ProfileModal } from "./profile-modal"
 import { PostDetailModal } from "./post-detail-modal"
-import { useCreateChat } from "@/src/api/hooks/useChats"
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { useChatContext } from "@/components/chat/chat-context"
 import { useProfile } from "@/src/api/hooks/useProfile"
 
@@ -75,25 +75,24 @@ export function ProfileExplorer({
   // Open another user's profile in the Instagram-style modal (followers/following).
   const [modalUserId, setModalUserId] = useState<string | null>(null)
 
-  const createChat = useCreateChat()
+  const openOrCreateChat = useOpenOrCreateChat()
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext()
 
-  const handleModalMessage = (targetId: string) => {
+  const handleModalMessage = async (targetId: string) => {
     if (!targetId) return
-    createChat.mutate(
-      { participantId: targetId },
-      {
-        onSuccess: (chat) => {
-          // Remember the origin so mobile Back returns to the News tab.
-          setChatReturnTab("news")
-          setSelectedConversationId(chat.id)
-          setShowMobileSecondaryPanel(false)
-          // setActiveTab updates the hash via replaceState (no history entry).
-          setActiveTab("chats")
-          setModalUserId(null)
-        },
-      },
-    )
+    try {
+      // Reuse an existing 1:1 chat if these two users already have one.
+      const chat = await openOrCreateChat(targetId)
+      // Remember the origin so mobile Back returns to the News tab.
+      setChatReturnTab("news")
+      setSelectedConversationId(chat.id)
+      setShowMobileSecondaryPanel(false)
+      // setActiveTab updates the hash via replaceState (no history entry).
+      setActiveTab("chats")
+      setModalUserId(null)
+    } catch {
+      /* createChat surfaces its own error toast */
+    }
   }
 
   // API Queries & Mutations

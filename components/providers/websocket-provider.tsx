@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Client } from "@stomp/stompjs"
+import { Client, ReconnectionTimeMode } from "@stomp/stompjs"
 import { toast } from "sonner"
 import { getAccessToken } from "@/src/api/token-store"
 import { QUERY_KEYS } from "@/src/api/query-keys"
@@ -16,6 +16,8 @@ import { formatMediaUrls, checkIsSameJar } from "@/src/api/client"
 import { setBadge } from "@/lib/badge/badge"
 import { X } from "lucide-react"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
+import { useLivePresenceStore } from "@/lib/presence/live-status-store"
+import { getTabFromHash } from "@/lib/navigation/url-hash"
 import { db, mapResponseToLocalMessage, mapResponseToLocalChat, normalizeMessageStatus, putChatSafely } from "@/src/api/db"
 
 
@@ -83,7 +85,7 @@ interface WebSocketContextType {
   isConnected: boolean
   sendEvent: (event: string, payload: any) => void
   registerHandler: (event: string, handler: (payload: any) => void) => () => void
-  subscribeToPresence: (username: string) => void
+  subscribeToPresence: (username: string, sticky?: boolean) => void
   unsubscribeFromPresence: (username: string) => void
 }
 
@@ -123,6 +125,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const handlersRef = useRef<Record<string, Set<(payload: any) => void>>>({})
   const chatSubscriptionsRef = useRef<Map<string, { messages: any; typing: any }>>(new Map())
   const contactSubscriptionsRef = useRef<Map<string, any>>(new Map())
+  // Usernames subscribed explicitly by a view (chat-area partner, discover cards),
+  // not by the contacts sync. The contacts sync must NOT unsubscribe these.
+  const stickyPresenceRef = useRef<Set<string>>(new Set())
   const matchSubscriptionRef = useRef<any>(null)
   const chatsSubscriptionRef = useRef<any>(null)
   const friendsSubscriptionRef = useRef<any>(null)
@@ -132,6 +137,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const lobbyTypingSubscriptionRef = useRef<any>(null)
   const strangerChatIdRef = useRef<string | null>(null)
   const markReadTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const presenceHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const processedMessageIdsRef = useRef<Set<string>>(new Set())
   const queryClient = useQueryClient()
   const connectedTokenRef = useRef<string | null>(null)
@@ -186,6 +192,23 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           destination: `/app/chat/${payload.chatId}/typing`,
           body: JSON.stringify(false)
         })
+      } else if (event === "recording_started" && payload.chatId) {
+        // payload.mode: "audio" | "video"
+        client.publish({
+          destination: `/app/chat/${payload.chatId}/activity`,
+          body: payload.mode === "video" ? "RECORDING_VIDEO" : "RECORDING_AUDIO",
+        })
+      } else if (event === "recording_stopped" && payload.chatId) {
+        client.publish({
+          destination: `/app/chat/${payload.chatId}/activity`,
+          body: "NONE",
+        })
+      } else if (event === "presence_visible") {
+        // Tab foregrounded → server marks us ONLINE and broadcasts.
+        client.publish({ destination: "/app/presence/visibility", body: "true" })
+      } else if (event === "presence_hidden") {
+        // Tab hidden/backgrounded → server marks us OFFLINE and broadcasts.
+        client.publish({ destination: "/app/presence/visibility", body: "false" })
       } else if (event === "stranger_typing_started") {
         if (strangerChatIdRef.current) {
           client.publish({
@@ -338,7 +361,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
         case "messages_delivered": {
           // Update all sent messages to delivered status on the sender's side
-          await db.transaction("rw", db.messages, async () => {
+          await db.transaction("rw", [db.messages, db.chats], async () => {
             const msgs = await db.messages
               .where("chatId")
               .equals(chatId)
@@ -346,6 +369,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
               .toArray();
             for (const m of msgs) {
               await db.messages.update(m.messageId, { status: "delivered" });
+            }
+            // Reflect on the chat-list last-message tick (own message, not yet seen).
+            const chat = await db.chats.get(chatId);
+            const lm = chat?.lastMessage;
+            if (lm && lm.senderId === ownProfileRef.current?.id
+                && (lm.status === "sent" || lm.status === "sending" || !lm.status)) {
+              await db.chats.update(chatId, { lastMessage: { ...lm, status: "delivered" } });
             }
           });
           break
@@ -362,8 +392,18 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
               await db.messages.update(m.messageId, { status: "seen" });
             }
 
+            // Reflect "seen" on the chat-list last-message tick (own message).
+            const chat = await db.chats.get(chatId);
+            const lm = chat?.lastMessage;
+            const patch: any = {};
+            if (lm && lm.senderId === ownProfileRef.current?.id && lm.status !== "seen") {
+              patch.lastMessage = { ...lm, status: "seen" };
+            }
             if (ownProfileRef.current && ownProfileRef.current.id === eventData.readBy) {
-              await db.chats.update(chatId, { unreadCount: 0 });
+              patch.unreadCount = 0;
+            }
+            if (Object.keys(patch).length > 0) {
+              await db.chats.update(chatId, patch);
             }
           });
           break
@@ -619,7 +659,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    const data = { chatId, username, userId }
+    // activity: "TYPING" | "RECORDING_AUDIO" | "RECORDING_VIDEO" | "NONE" | undefined
+    const activity: string | undefined = payload.activity
+    const data = { chatId, username, userId, activity }
+
+    // Dispatch the fine-grained activity (used for "recording audio/video…").
+    if (handlersRef.current["chat_activity"]) {
+      handlersRef.current["chat_activity"].forEach((h) => h(data))
+    }
 
     if (isTyping) {
       if (handlersRef.current["typing_started"]) {
@@ -678,10 +725,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const subscribeToPresence = useCallback((username: string) => {
+  const subscribeToPresence = useCallback((username: string, sticky = false) => {
     const client = stompClientRef.current
     if (!client || !client.connected) return
 
+    if (sticky) stickyPresenceRef.current.add(username)
     if (contactSubscriptionsRef.current.has(username)) return
 
     console.log(`[STOMP] Subscribing to presence for: ${username}`)
@@ -694,6 +742,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
         const statusLower = payload.status ? payload.status.toLowerCase() : "offline"
         const lastSeenVal = payload.lastSeen || null
+
+        // Single global live-presence source of truth — every view (chat list,
+        // chat header, friends, discover) reads this and updates in real time.
+        useLivePresenceStore.getState().setStatus(payload.userId, statusLower, lastSeenVal)
 
         // In-memory update for presence user query
         queryClient.setQueryData(QUERY_KEYS.PRESENCE.USER(payload.userId), {
@@ -772,7 +824,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     })
 
     for (const username of contactSubscriptionsRef.current.keys()) {
-      if (!usernames.has(username)) {
+      if (!usernames.has(username) && !stickyPresenceRef.current.has(username)) {
         unsubscribeFromPresence(username)
       }
     }
@@ -851,14 +903,49 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       debug: (str) => {
         console.log("[STOMP Debug]", str)
       },
-      reconnectDelay: 5000,
-      heartbeatIncoming: 4000,
-      heartbeatOutgoing: 4000,
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s, capped at 30s. Prevents
+      // reconnect storms when the backend is down or the network is flapping
+      // (mobile network switching, WiFi loss, server restart).
+      reconnectDelay: 1000,
+      reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
+      maxReconnectDelay: 30000,
+      // App-level STOMP heartbeats. The server broker is configured with a
+      // matching 25s heartbeat (see WebSocketConfig#configureMessageBroker), so
+      // a dead connection (device sleep, network loss, crashed tab) is detected
+      // within ~2 missed beats (~50s) and the client auto-reconnects.
+      heartbeatIncoming: 25000,
+      heartbeatOutgoing: 25000,
     })
 
     client.onConnect = (frame) => {
       console.log("[STOMP] Connected successfully", frame)
       setIsConnected(true)
+
+      // Application-level presence heartbeat every 30s. The server's watchdog
+      // marks the user OFFLINE if these stop for >60s (tab closed, crash, sleep,
+      // network loss) — server-authoritative, never trusting client state.
+      if (presenceHeartbeatRef.current) clearInterval(presenceHeartbeatRef.current)
+      const beat = () => {
+        try {
+          if (client.connected) client.publish({ destination: "/app/presence/heartbeat" })
+        } catch (err) {
+          console.warn("[Presence] heartbeat publish failed", err)
+        }
+      }
+      beat() // send immediately on connect, then every 30s
+      presenceHeartbeatRef.current = setInterval(beat, 30000)
+
+      // Sync initial visibility: if we (re)connected while the tab is hidden,
+      // immediately tell the server we're offline (otherwise CONNECT just set us
+      // ONLINE). The visibilitychange listener handles subsequent transitions.
+      // Exception: on the Connect (match) tab, presence ignores display state, so
+      // a hidden tab there stays ONLINE.
+      if (typeof document !== "undefined" && document.hidden &&
+          getTabFromHash(window.location.hash) !== "match") {
+        try {
+          client.publish({ destination: "/app/presence/visibility", body: "false" })
+        } catch { /* not connected yet — ignored */ }
+      }
 
       // Subscribe to matchmaking radar
       if (matchSubscriptionRef.current) {
@@ -1113,6 +1200,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     client.onWebSocketClose = () => {
       console.log("[STOMP] WebSocket connection closed")
       setIsConnected(false)
+      if (presenceHeartbeatRef.current) {
+        clearInterval(presenceHeartbeatRef.current)
+        presenceHeartbeatRef.current = null
+      }
       chatSubscriptionsRef.current.clear()
       contactSubscriptionsRef.current.clear()
       processedMessageIdsRef.current.clear()
@@ -1160,6 +1251,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       window.removeEventListener("auth:token-changed", handleTokenChange)
+      // Cancel any pending mark-read / mark-delivered debounce timers so their
+      // network callbacks don't fire after the provider unmounts (leak + work
+      // against a torn-down client).
+      Object.values(markReadTimerRef.current).forEach(clearTimeout)
+      markReadTimerRef.current = {}
+      if (presenceHeartbeatRef.current) {
+        clearInterval(presenceHeartbeatRef.current)
+        presenceHeartbeatRef.current = null
+      }
       if (stompClientRef.current) {
         stompClientRef.current.deactivate()
       }
@@ -1174,6 +1274,23 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       lobbyTypingSubscriptionRef.current = null
     }
   }, [])
+
+  // Tab-visibility presence (WhatsApp-Web style): switching/backgrounding the tab
+  // marks us OFFLINE to others even though the socket stays alive; returning marks
+  // us ONLINE again. sendEvent no-ops when disconnected; on reconnect, onConnect
+  // re-syncs the initial visibility.
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const onVisibility = () => {
+      // On the Connect (match) tab, presence must NOT follow display state:
+      // backgrounding/minimizing keeps the user ONLINE. Suppress only the
+      // "hidden" signal there; every other tab behaves exactly as before.
+      if (document.hidden && getTabFromHash(window.location.hash) === "match") return
+      sendEvent(document.hidden ? "presence_hidden" : "presence_visible", {})
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [sendEvent])
 
   const hasMarkedDeliveredRef = useRef(false)
 

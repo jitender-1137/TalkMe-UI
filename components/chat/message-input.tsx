@@ -30,6 +30,7 @@ interface MessageInputProps {
   onCancelReply?: () => void;
   disabled?: boolean;
   onTyping?: (isTyping: boolean) => void;
+  onRecordingChange?: (recording: "audio" | null) => void;
   onAttachClick?: (type: "image" | "video" | "audio" | "document" | "camera") => void;
   pendingAttachment?: PendingAttachment | null;
   onCancelAttachment?: () => void;
@@ -378,6 +379,7 @@ export function MessageInput({
   onCancelReply,
   disabled = false,
   onTyping,
+  onRecordingChange,
   onAttachClick,
   pendingAttachment,
   onCancelAttachment,
@@ -645,6 +647,7 @@ export function MessageInput({
 
       mediaRecorder.start();
       setIsRecording(true);
+      onRecordingChange?.("audio");
       setRecordingTime(0);
       recordingInterval.current = setInterval(() => {
         setRecordingTime((t) => t + 1);
@@ -656,6 +659,7 @@ export function MessageInput({
 
   const stopRecording = (shouldSend: boolean) => {
     setIsRecording(false);
+    onRecordingChange?.(null);
     if (recordingInterval.current) {
       clearInterval(recordingInterval.current);
     }
@@ -1041,7 +1045,7 @@ export function MessageInput({
         </AnimatePresence>
 
         {!isRecording && (
-          <div className="flex items-end gap-0.5 bg-black/10 dark:bg-white/6 border border-card/50 rounded-3xl px-2 py-0.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
+          <div className="flex items-end gap-0.5 bg-black/10 dark:bg-white/12 border border-card/50 rounded-3xl px-2 py-0.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
             {/* Emoji button */}
             <div className="relative shrink-0">
               <Button

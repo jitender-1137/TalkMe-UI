@@ -10,7 +10,6 @@ import { ChatSearchSidebar } from "./chat-search-sidebar"
 import { useChatContext } from "./chat-context"
 import * as ContextMenu from "./message-context-menu"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
 import { toast } from "sonner"
@@ -28,6 +27,7 @@ import {
   useRemoveReaction,
 } from "@/src/api/hooks/useMessages"
 import { useWebSocket } from "@/components/providers/websocket-provider"
+import { useLivePresence } from "@/lib/presence/live-status-store"
 import { UploadService } from "@/src/api/services/upload.service"
 import { Loader2, MessageSquare, Video, Phone, Shield } from "lucide-react"
 
@@ -104,30 +104,36 @@ export function ChatArea({
 
   const isChatMuted = chatDetail?.muted || chatDetail?.isMuted || false
 
-  const { registerHandler, sendEvent } = useWebSocket()
+  const { registerHandler, sendEvent, subscribeToPresence } = useWebSocket()
   const [partnerTyping, setPartnerTyping] = useState(false)
+  const [partnerRecording, setPartnerRecording] = useState<"recording" | "recording_video" | null>(null)
   const [viewportHeight, setViewportHeight] = useState<string>("100dvh")
+  const [viewportOffsetTop, setViewportOffsetTop] = useState<number>(0)
 
-  // Resizing layout height to keep input field and header in correct position
+  // Keep the chat screen glued to the *visual* viewport (the area not covered by
+  // the on-screen keyboard) — WhatsApp-style. When the keyboard opens, the visual
+  // viewport shrinks (height) and, on iOS, shifts down (offsetTop). We drive the
+  // fixed container's height AND top from those values so the header stays on
+  // top, the messages area shrinks, and the input sits just above the keyboard
+  // instead of being hidden behind it.
   useEffect(() => {
     if (typeof window === "undefined" || !window.visualViewport) return
 
     const vv = window.visualViewport
-    const updateHeight = () => {
+    const update = () => {
       setViewportHeight(`${vv.height}px`)
-      // Ensure the browser doesn't offset the page viewport
-      window.scrollTo(0, 0)
+      setViewportOffsetTop(vv.offsetTop)
     }
 
-    vv.addEventListener("resize", updateHeight)
-    vv.addEventListener("scroll", updateHeight)
-    
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+
     // Initial call
-    updateHeight()
+    update()
 
     return () => {
-      vv.removeEventListener("resize", updateHeight)
-      vv.removeEventListener("scroll", updateHeight)
+      vv.removeEventListener("resize", update)
+      vv.removeEventListener("scroll", update)
     }
   }, [])
 
@@ -183,21 +189,49 @@ export function ChatArea({
         setPartnerTyping(false)
       }
     })
+    const cleanup3 = registerHandler("chat_activity", (payload: any) => {
+      const isSelf = payload.userId === ownProfile?.id
+      const isTargetChat = payload.chatId === selectedConversationId
+      if (!isTargetChat || isSelf) return
+      switch (payload.activity) {
+        case "RECORDING_AUDIO":
+          setPartnerRecording("recording")
+          break
+        case "RECORDING_VIDEO":
+          setPartnerRecording("recording_video")
+          break
+        default:
+          setPartnerRecording(null)
+      }
+    })
     return () => {
       cleanup1()
       cleanup2()
+      cleanup3()
     }
   }, [registerHandler, selectedConversationId, ownProfile?.id])
 
   // Map other participant details
   const isGroup = chatDetail?.chatType === "GROUP" || chatDetail?.type === "group"
   const otherParticipant = chatDetail?.otherUser ?? chatDetail?.participants?.find((p) => p.id !== ownProfile?.id)
-  const contactName = isGroup 
-    ? (chatDetail?.name ?? "Group Chat") 
+  const partnerId = otherParticipant?.id
+  const partnerUsername = (otherParticipant as any)?.username
+  // Global live presence — single source of truth, updated by the WS handler and
+  // shared by the chat list, friends, discover, etc.
+  const livePartner = useLivePresence(partnerId)
+  const contactName = isGroup
+    ? (chatDetail?.name ?? "Group Chat")
     : (otherParticipant?.name || otherParticipant?.username || "Unknown User")
-  const contactPresence = isGroup 
-    ? "online" 
-    : (partnerTyping ? "typing" : (otherParticipant?.presence ?? "offline"))
+  // Live presence overrides the (possibly stale) Dexie value. Normalize to the
+  // header's online/offline vocabulary; idle/offline all read as offline here.
+  const liveStatus = livePartner
+    ? (livePartner.status === "online" ? "online" : "offline")
+    : undefined
+  const contactPresence = isGroup
+    ? "online"
+    : (partnerRecording ? partnerRecording
+       : (partnerTyping ? "typing"
+          : (liveStatus ?? otherParticipant?.presence ?? "offline")))
 
   const contact: ChatContact = {
     id: selectedConversationId || "1",
@@ -205,11 +239,18 @@ export function ChatArea({
     avatar: chatDetail?.avatar || otherParticipant?.avatar || undefined,
     gender: otherParticipant?.gender || undefined,
     activity: contactPresence as any,
-    lastSeen: formatLastSeen(otherParticipant?.lastSeen),
+    lastSeen: formatLastSeen(livePartner?.lastSeen ?? otherParticipant?.lastSeen),
     isFriend: contacts?.some(c => c.id === otherParticipant?.id) || false,
     isBlockedByMe: chatDetail?.isBlockedByMe,
     hasBlockedMe: chatDetail?.hasBlockedMe,
   }
+
+  // Subscribe to the open partner's presence (sticky so the contacts sync won't
+  // drop it for non-contact/stranger chats). Live updates flow through the global
+  // store + useLivePresence above — no per-component event handlers needed.
+  useEffect(() => {
+    if (partnerUsername) subscribeToPresence(partnerUsername, true)
+  }, [partnerUsername, subscribeToPresence])
 
   // Flatten and map query pages to local Message[] interface
   const allMessages: Message[] = useMemo(() => {
@@ -423,6 +464,15 @@ export function ChatArea({
     }
   }, [sendEvent, selectedConversationId, ownProfile?.id])
 
+  const handleRecordingChange = useCallback((recording: "audio" | null) => {
+    if (!selectedConversationId) return
+    if (recording) {
+      sendEvent("recording_started", { chatId: selectedConversationId, mode: recording })
+    } else {
+      sendEvent("recording_stopped", { chatId: selectedConversationId })
+    }
+  }, [sendEvent, selectedConversationId])
+
   const uploadFile = useCallback(async (file: File, type: string) => {
     // Generate local preview URL
     let previewUrl = undefined
@@ -490,6 +540,31 @@ export function ChatArea({
       reactToMessageMutation.mutate({ messageId, payload: { emoji } })
     }
   }, [allMessages, reactToMessageMutation, removeReactionMutation])
+
+  // Retry a failed send. Reuses the message's clientId so the server dedups
+  // (Part B idempotency); onMutate overwrites the failed Dexie row back to
+  // "sending" because its id == clientId.
+  const handleRetry = useCallback((message: Message) => {
+    sendMessageMutation.mutate({
+      content: message.content,
+      clientId: message.clientId,
+      type: message.type,
+      replyToId: message.replyTo?.id,
+      media: message.media
+        ? {
+            url: message.media.url,
+            // The send payload's media union excludes "sticker" (stickers use a
+            // separate send path); narrow it for the retry.
+            type: message.media.type as "image" | "video" | "audio" | "document",
+            fileName: message.media.fileName,
+            fileSize: message.media.fileSize,
+            duration: message.media.duration,
+            width: message.media.width,
+            height: message.media.height,
+          }
+        : undefined,
+    })
+  }, [sendMessageMutation])
 
   const handleLoadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -600,21 +675,9 @@ export function ChatArea({
     setMessageMenuOpen(false)
   }, [])
 
-  const slideVariants = {
-    initial: isMobile ? { x: "100%" } : { x: 0 },
-    animate: { x: 0 },
-    exit: isMobile ? { x: "100%" } : { x: 0 }
-  }
-
   return (
-    <AnimatePresence mode="popLayout" initial={false}>
-      {!selectedConversationId ? (
-        <motion.div
-          key="welcome"
-          initial={isMobile ? { opacity: 0 } : { opacity: 1 }}
-          animate={{ opacity: 1 }}
-          exit={isMobile ? { opacity: 0 } : { opacity: 1 }}
-          transition={{ duration: 0.2 }}
+    !selectedConversationId ? (
+        <div
           className="flex-1 flex flex-col items-center justify-center p-8 text-center h-[100dvh] bg-gradient-to-br from-background via-card/50 to-background"
         >
           {/* Beautiful Glassmorphic Container */}
@@ -655,22 +718,20 @@ export function ChatArea({
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       ) : (
-        <motion.div
-          key={selectedConversationId}
-          initial="initial"
-          animate="animate"
-          exit="exit"
-          variants={slideVariants}
-          transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}
+        <div
           className={cn(
             "flex flex-col bg-background md:pb-0 relative overflow-hidden",
             isMobile
               ? "fixed top-0 left-0 right-0 z-30"
               : "md:relative md:top-auto md:left-auto md:right-auto md:z-auto md:h-full"
           )}
-          style={{ height: isMobile ? viewportHeight : "100%" }}
+          style={
+            isMobile
+              ? { height: viewportHeight, top: viewportOffsetTop }
+              : { height: "100%" }
+          }
           data-chat-area
         >
           <input
@@ -750,6 +811,7 @@ export function ChatArea({
                   messages={allMessages}
                   onReactionClick={handleReactionClick}
                   onReply={handleMessageReply}
+                  onRetry={handleRetry}
                   onLoadMore={handleLoadMore}
                   hasMore={hasNextPage}
                   isLoadingMore={isFetchingNextPage}
@@ -770,6 +832,7 @@ export function ChatArea({
                     replyTo={replyTo}
                     onCancelReply={() => setReplyTo(null)}
                     onTyping={handleTyping}
+                    onRecordingChange={handleRecordingChange}
                     onAttachClick={handleAttachClick}
                     pendingAttachment={pendingAttachment}
                     onCancelAttachment={() => setPendingAttachment(null)}
@@ -845,8 +908,7 @@ export function ChatArea({
               )}
             </>
           )}
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </div>
+      )
   )
 }

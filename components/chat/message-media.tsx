@@ -35,6 +35,8 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
         <img
           src={cachedUrl || media.url}
           alt="Shared sticker"
+          loading="lazy"
+          decoding="async"
           className="w-full h-auto object-contain select-none pointer-events-none"
         />
       </motion.div>
@@ -53,6 +55,8 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
         <img
           src={cachedUrl || media.url}
           alt="Shared image"
+          loading="lazy"
+          decoding="async"
           className="w-full h-auto object-cover"
           style={{
             aspectRatio: media.width && media.height ? `${media.width}/${media.height}` : "4/3",
@@ -78,6 +82,8 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
           <img
             src={cachedThumbnail || media.thumbnail}
             alt="Video thumbnail"
+            loading="lazy"
+            decoding="async"
             className="w-full h-auto object-cover"
             style={{ aspectRatio: "16/9" }}
           />

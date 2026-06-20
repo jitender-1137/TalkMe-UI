@@ -19,12 +19,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, getAvatarUrl } from "@/lib/utils"
+import { useUrlModal } from "@/lib/navigation/use-url-modal"
 import type { Post } from "./types"
 import { useProfile } from "@/src/api/hooks/useProfile"
 import { SharePostSheet } from "./share-post-sheet"
 import { ProfileModal } from "./profile-modal"
 import { CommentsSheet } from "./comments-sheet"
-import { useCreateChat } from "@/src/api/hooks/useChats"
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { useNavigation } from "@/components/app-shell/navigation-context"
 import { useChatContext } from "@/components/chat/chat-context"
 import { CommentsPanel } from "./comments-panel"
@@ -49,9 +50,15 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
   const [profileUserId, setProfileUserId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false) // view-post modal
 
+  // Each overlay gets its own URL segment and is closed by the Back button.
+  useUrlModal(detailOpen, () => setDetailOpen(false), `post/${post.id}`)
+  useUrlModal(commentsOpen, () => setCommentsOpen(false), "comments")
+  useUrlModal(shareOpen, () => setShareOpen(false), "share")
+  useUrlModal(!!profileUserId, () => setProfileUserId(null), `user/${profileUserId ?? ""}`)
+
   const { data: ownProfile } = useProfile()
 
-  const createChat = useCreateChat()
+  const openOrCreateChat = useOpenOrCreateChat()
   const { setActiveTab } = useNavigation()
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext()
 
@@ -61,22 +68,21 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
   }
 
   // "Message" from the profile card: create/open the chat and jump to Chats.
-  const handleMessageFromProfile = (targetId: string) => {
+  const handleMessageFromProfile = async (targetId: string) => {
     if (!targetId) return
-    createChat.mutate(
-      { participantId: targetId },
-      {
-        onSuccess: (chat) => {
-          // Remember the origin so mobile Back returns to the News tab.
-          setChatReturnTab("news")
-          setSelectedConversationId(chat.id)
-          setShowMobileSecondaryPanel(false)
-          // setActiveTab updates the hash via replaceState (no history entry).
-          setActiveTab("chats")
-          setProfileUserId(null)
-        },
-      },
-    )
+    try {
+      // Reuse an existing 1:1 chat if these two users already have one.
+      const chat = await openOrCreateChat(targetId)
+      // Remember the origin so mobile Back returns to the News tab.
+      setChatReturnTab("news")
+      setSelectedConversationId(chat.id)
+      setShowMobileSecondaryPanel(false)
+      // setActiveTab updates the hash via replaceState (no history entry).
+      setActiveTab("chats")
+      setProfileUserId(null)
+    } catch {
+      /* createChat surfaces its own error toast */
+    }
   }
 
   const commentCount = post.commentsCount ?? post.comments?.length ?? 0

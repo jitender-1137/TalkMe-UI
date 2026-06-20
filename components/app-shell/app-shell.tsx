@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
 import { AuthProvider, useAuth } from "./auth-context"
 import { NavigationProvider, useNavigation } from "./navigation-context"
 import { GuestBanner } from "./guest-banner"
@@ -274,20 +273,14 @@ function AppShellContent() {
           <div className="hidden md:block">
             <SecondaryPanel />
           </div>
-          {/* Mobile: overlay when toggled */}
-          <AnimatePresence initial={false}>
-            {showMobileSecondaryPanel && (
-              <motion.div
-                initial={{ x: "-100%" }}
-                animate={{ x: 0 }}
-                exit={{ x: "-100%" }}
-                transition={{ type: "tween", ease: [0.22, 1, 0.36, 1], duration: 0.45 }}
-                className="fixed inset-0 z-40 md:hidden overflow-auto bg-card"
-              >
-                <SecondaryPanel />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Mobile: overlay when toggled — instant show/hide (no slide).
+              The slide was replaying on Back / OS back-gesture, making the list
+              appear to animate twice. */}
+          {showMobileSecondaryPanel && (
+            <div className="fixed inset-0 z-40 md:hidden overflow-auto bg-card">
+              <SecondaryPanel />
+            </div>
+          )}
         </>
       )}
 

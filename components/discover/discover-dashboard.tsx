@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useHashSync } from "@/hooks/use-hash-sync";
+import { useLivePresence } from "@/lib/presence/live-status-store";
+import { useWebSocket } from "@/components/providers/websocket-provider";
 import { motion, AnimatePresence } from "framer-motion";
 import { AppLayout } from "@/components/ui/app-layout";
 
@@ -38,7 +40,7 @@ import {
   useLikeDiscoverProfile,
   useUnlikeDiscoverProfile,
 } from "@/src/api/hooks/useDiscover";
-import { useCreateChat } from "@/src/api/hooks/useChats";
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats";
 import { useAddContact, useRemoveContact } from "@/src/api/hooks/useContacts";
 import { QUERY_KEYS } from "@/src/api/query-keys";
 import { useChatContext } from "@/components/chat/chat-context";
@@ -89,7 +91,7 @@ export function DiscoverDashboard() {
   });
   const likeMutation = useLikeDiscoverProfile();
   const unlikeMutation = useUnlikeDiscoverProfile();
-  const createChatMutation = useCreateChat();
+  const openOrCreateChat = useOpenOrCreateChat();
   const addFriendMutation = useAddContact();
   const removeFriendMutation = useRemoveContact();
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
@@ -112,6 +114,16 @@ export function DiscoverDashboard() {
   };
 
   const people = discoverData?.items ?? [];
+
+  // Subscribe to the displayed people's presence so their online dots update in
+  // real time (sticky so the contacts sync won't drop these non-contacts). The
+  // PersonCard/PersonGridCard read live status from the shared store.
+  const { subscribeToPresence } = useWebSocket();
+  const peopleUsernames = people.map((p: any) => p.username).filter(Boolean).join(",");
+  useEffect(() => {
+    if (!peopleUsernames) return;
+    peopleUsernames.split(",").forEach((u) => subscribeToPresence(u, true));
+  }, [peopleUsernames, subscribeToPresence]);
 
   const handleLike = (person: DiscoverProfile) => {
     if (person.isLiked) {
@@ -137,22 +149,21 @@ export function DiscoverDashboard() {
     }
   };
 
-  const handleMessage = (person: DiscoverProfile) => {
-    createChatMutation.mutate(
-      { participantId: person.id },
-      {
-        onSuccess: (chat) => {
-          // Remember where we came from so mobile Back returns to Discover.
-          setChatReturnTab("discover");
-          setSelectedConversationId(chat.id);
-          setShowMobileSecondaryPanel(false);
-          // The tab switch updates the URL via replaceState in NavigationProvider.
-          // No manual location.hash assignment (it would push a history entry).
-          setActiveTab("chats");
-          setSelectedPerson(null);
-        },
-      },
-    );
+  const handleMessage = async (person: DiscoverProfile) => {
+    try {
+      // Reuse an existing 1:1 chat with this person instead of creating a duplicate.
+      const chat = await openOrCreateChat(person.id);
+      // Remember where we came from so mobile Back returns to Discover.
+      setChatReturnTab("discover");
+      setSelectedConversationId(chat.id);
+      setShowMobileSecondaryPanel(false);
+      // The tab switch updates the URL via replaceState in NavigationProvider.
+      // No manual location.hash assignment (it would push a history entry).
+      setActiveTab("chats");
+      setSelectedPerson(null);
+    } catch {
+      /* createChat surfaces its own error toast */
+    }
   };
 
   return (
@@ -413,6 +424,9 @@ function PersonCard({
 
   const age = person.age;
   const isFemale = person.gender?.toLowerCase() === "female";
+  // Real-time online state from the shared store (falls back to the API value).
+  const live = useLivePresence(person.id);
+  const isOnline = live ? live.status === "online" : !!person.isOnline;
 
   return (
     <motion.div
@@ -439,7 +453,7 @@ function PersonCard({
               {initials}
             </AvatarFallback>
           </Avatar>
-          {(person.isOnline || person.online) && (
+          {isOnline && (
             <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-card rounded-full" />
           )}
         </div>
@@ -626,6 +640,9 @@ function PersonGridCard({
   const age = person.age;
   const avatarUrl = getAvatarUrl(person.avatar || person.images?.[0], person.gender);
   const isFemale = person.gender?.toLowerCase() === "female";
+  // Real-time online state from the shared store (falls back to the API value).
+  const live = useLivePresence(person.id);
+  const isOnline = live ? live.status === "online" : !!person.isOnline;
 
   return (
     <motion.div
@@ -657,7 +674,7 @@ function PersonGridCard({
       {/* Top Badges (Verified & Online) */}
       <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-10">
         <div className="flex items-center gap-1">
-          {(person.isOnline || person.online) && (
+          {isOnline && (
             <span className="flex h-2 w-2 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>

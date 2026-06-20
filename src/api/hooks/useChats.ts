@@ -9,7 +9,7 @@ import { getAccessToken } from "../token-store"
 import { useLiveQuery } from "dexie-react-hooks"
 import { db, mapResponseToLocalChat, putChatSafely } from "../db"
 import { shouldSync } from "../sync-throttle"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 
 // Per-chatId sync guards (module-level, survive re-renders and reconnects)
 const chatSyncInFlight = new Map<string, boolean>()
@@ -168,6 +168,38 @@ export function useCreateChat() {
     },
     onError: showErrorToast,
   })
+}
+
+/**
+ * Get-or-create a 1:1 chat with a user. Reuses an existing private chat (found in
+ * the local Dexie cache) instead of creating a duplicate; only calls createChat
+ * when none exists locally (the backend also dedups as the server-side guarantee).
+ * Use this for "Message" actions (news/feed, discover, profile) so two users never
+ * end up with multiple chat ids.
+ */
+export function useOpenOrCreateChat() {
+  const createChat = useCreateChat()
+  return useCallback(
+    async (targetUserId: string): Promise<Chat> => {
+      if (!targetUserId) throw new Error("targetUserId is required")
+      try {
+        const chats = await db.chats.toArray()
+        const existing = chats.find((c: any) => {
+          const isGroup = c.chatType === "GROUP" || c.type === "group"
+          if (isGroup) return false
+          return (
+            c.otherUser?.id === targetUserId ||
+            (c.participants || []).some((p: any) => p?.id === targetUserId)
+          )
+        })
+        if (existing) return existing as unknown as Chat
+      } catch {
+        /* Dexie read failed — fall back to create (backend dedups anyway). */
+      }
+      return await createChat.mutateAsync({ participantId: targetUserId })
+    },
+    [createChat],
+  )
 }
 
 // ── Mutation: delete chat ─────────────────────────────────────────────────────

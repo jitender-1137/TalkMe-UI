@@ -17,11 +17,12 @@ import { Search, MoreHorizontal, MessageCircle, UserMinus, ShieldX } from "lucid
 import { cn } from "@/lib/utils";
 import { useContacts, useRemoveContact } from "@/src/api/hooks/useContacts";
 import { useBlockUser } from "@/src/api/hooks/useProfile";
-import { useCreateChat } from "@/src/api/hooks/useChats";
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats";
 import { useChatContext } from "@/components/chat/chat-context";
 import { useNavigation } from "@/components/app-shell/navigation-context";
 import type { Contact } from "@/src/api/types";
 import type { PresenceStatus } from "@/lib/presence";
+import { useLivePresence } from "@/lib/presence/live-status-store";
 import { UserProfileModal } from "@/components/chat/user-profile-modal";
 import { toast } from "sonner";
 
@@ -37,7 +38,7 @@ export function AllFriends() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const handleProfileClose = useHashSync(!!selectedUserId, () => setSelectedUserId(null), "#profile");
 
-  const createChatMutation = useCreateChat();
+  const openOrCreateChat = useOpenOrCreateChat();
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
   const { setActiveTab } = useNavigation();
 
@@ -94,24 +95,19 @@ export function AllFriends() {
         userId={selectedUserId}
         isOpen={!!selectedUserId}
         onClose={handleProfileClose}
-        onMessage={() => {
+        onMessage={async () => {
           if (selectedUserId) {
-            createChatMutation.mutate(
-              { participantId: selectedUserId },
-              {
-                onSuccess: (chat) => {
-                  setChatReturnTab("friends");
-                  setSelectedConversationId(chat.id);
-                  setShowMobileSecondaryPanel(false);
-                  setActiveTab("chats");
-                  const friend = filtered.find((f) => f.id === selectedUserId);
-                  // toast.success(`Starting chat with ${friend?.name || "user"}`, {
-                  //   icon: <MessageCircle className="h-4 w-4" />,
-                  // })
-                  setSelectedUserId(null);
-                },
-              },
-            );
+            try {
+              // Reuse an existing 1:1 chat instead of creating a duplicate.
+              const chat = await openOrCreateChat(selectedUserId);
+              setChatReturnTab("friends");
+              setSelectedConversationId(chat.id);
+              setShowMobileSecondaryPanel(false);
+              setActiveTab("chats");
+              setSelectedUserId(null);
+            } catch {
+              /* createChat surfaces its own error toast */
+            }
           }
         }}
       />
@@ -122,7 +118,7 @@ export function AllFriends() {
 function FriendCard({ friend, onProfileClick }: { friend: Contact; onProfileClick: () => void }) {
   const unfriendMutation = useRemoveContact();
   const blockMutation = useBlockUser();
-  const createChatMutation = useCreateChat();
+  const openOrCreateChat = useOpenOrCreateChat();
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
   const { setActiveTab } = useNavigation();
 
@@ -138,27 +134,35 @@ function FriendCard({ friend, onProfileClick }: { friend: Contact; onProfileClic
     });
   };
 
-  const handleMessageClick = () => {
-    createChatMutation.mutate(
-      { participantId: friend.id },
-      {
-        onSuccess: (chat) => {
-          setChatReturnTab("friends");
-          setSelectedConversationId(chat.id);
-          setShowMobileSecondaryPanel(false);
-          setActiveTab("chats");
-          // toast.success(`Starting chat with ${friend.name}`, {
-          //   icon: <MessageCircle className="h-4 w-4" />,
-          // })
-        },
-      },
-    );
+  const [isStartingChat, setIsStartingChat] = useState(false);
+  const handleMessageClick = async () => {
+    if (isStartingChat) return;
+    setIsStartingChat(true);
+    try {
+      // Reuse an existing 1:1 chat instead of creating a duplicate.
+      const chat = await openOrCreateChat(friend.id);
+      setChatReturnTab("friends");
+      setSelectedConversationId(chat.id);
+      setShowMobileSecondaryPanel(false);
+      setActiveTab("chats");
+    } catch {
+      /* createChat surfaces its own error toast */
+    } finally {
+      setIsStartingChat(false);
+    }
   };
 
   const username = friend.username
     ? `@${friend.username}`
     : `@${friend.name.toLowerCase().replace(/\s+/g, "")}`;
-  const status = (friend.presence || "offline") as PresenceStatus;
+  // Real-time presence from the shared global store. The presence payload's
+  // userId is the user UUID — here that's `friend.id` (same value used as the
+  // createChat participantId); `friend.userId` is a different/empty field, so
+  // keying on it silently never matched. Fall back to userId then stored value.
+  const liveById = useLivePresence(friend.id);
+  const liveByUserId = useLivePresence(friend.userId);
+  const livePresence = liveById ?? liveByUserId;
+  const status = (livePresence?.status ?? friend.presence ?? "offline") as PresenceStatus;
 
   return (
     <div className="group relative flex flex-col gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary/30 hover:shadow-sm transition-all duration-200">
@@ -249,7 +253,7 @@ function FriendCard({ friend, onProfileClick }: { friend: Contact; onProfileClic
         size="sm"
         className="w-full h-8 text-xs mt-1 gap-1.5"
         onClick={handleMessageClick}
-        disabled={createChatMutation.isPending}
+        disabled={isStartingChat}
       >
         <MessageCircle className="h-3.5 w-3.5" />
         Message

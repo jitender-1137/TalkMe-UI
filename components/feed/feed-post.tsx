@@ -23,6 +23,7 @@ import { useUrlModal } from "@/lib/navigation/use-url-modal"
 import type { Post } from "./types"
 import { useProfile } from "@/src/api/hooks/useProfile"
 import { SharePostSheet } from "./share-post-sheet"
+import { InstagramVideo } from "./instagram-video"
 import { ProfileModal } from "./profile-modal"
 import { CommentsSheet } from "./comments-sheet"
 import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
@@ -327,15 +328,7 @@ function MediaItem({
   return (
     <div className={cn("overflow-hidden bg-muted", className)}>
       {type === "video" ? (
-        <video
-          src={url}
-          className="w-full h-full object-cover"
-          controls
-          playsInline
-          onError={(e) => {
-            (e.target as HTMLVideoElement).style.display = 'none'
-          }}
-        />
+        <InstagramVideo src={url} className="w-full h-full" />
       ) : (
         <img src={url} alt="" className="w-full h-full object-cover" />
       )}

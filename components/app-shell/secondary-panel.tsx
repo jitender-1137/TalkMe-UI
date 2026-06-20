@@ -21,6 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { QUERY_KEYS } from "@/src/api/query-keys";
 import type { ChatContact } from "@/components/chat/types";
 import { cn } from "@/lib/utils";
+import { displayContent } from "@/lib/shared-post";
 import { useChatContext } from "@/components/chat/chat-context";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -100,7 +101,7 @@ function ConversationItem({
   const lastMessageText = conversation.lastMessage
     ? conversation.lastMessage.isDeleted
       ? "This message was deleted"
-      : conversation.lastMessage.content
+      : displayContent(conversation.lastMessage.content)
     : "No messages yet";
   const lastMessageTime = conversation.lastMessage
     ? formatRelativeTime(conversation.lastMessage.timestamp)

@@ -19,6 +19,9 @@ export const UPLOAD_LIMITS = {
 
 export type UploadKind = keyof typeof UPLOAD_LIMITS
 
+/** Max playable length for uploaded videos (posts & stories), Instagram-style. */
+export const VIDEO_MAX_DURATION_SECONDS = 90
+
 export interface FileValidationResult {
   ok: boolean
   /** Human-readable reason when `ok` is false. */
@@ -68,4 +71,47 @@ export function validateUploadFile(
   }
 
   return { ok: true }
+}
+
+/**
+ * Validate that a video isn't longer than `maxSeconds` (default 90s).
+ * Reads the file's metadata via a detached <video> element — no upload needed.
+ * Non-video files pass through. Fails OPEN (resolves ok) if duration can't be
+ * read, so a metadata quirk never blocks a legitimate upload; the only hard
+ * rejection is a video we can positively measure as too long.
+ */
+export function validateVideoDuration(
+  file: File,
+  maxSeconds: number = VIDEO_MAX_DURATION_SECONDS,
+): Promise<FileValidationResult> {
+  if (!file || !file.type.startsWith("video/")) {
+    return Promise.resolve({ ok: true })
+  }
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const video = document.createElement("video")
+    video.preload = "metadata"
+    const done = (result: FileValidationResult) => {
+      URL.revokeObjectURL(url)
+      resolve(result)
+    }
+    video.onloadedmetadata = () => {
+      const duration = video.duration
+      if (!Number.isFinite(duration)) {
+        done({ ok: true })
+        return
+      }
+      // 0.5s slack for container-reported rounding.
+      if (duration > maxSeconds + 0.5) {
+        done({
+          ok: false,
+          message: `This video is ${Math.round(duration)}s long. Videos can be at most ${maxSeconds} seconds.`,
+        })
+      } else {
+        done({ ok: true })
+      }
+    }
+    video.onerror = () => done({ ok: true })
+    video.src = url
+  })
 }

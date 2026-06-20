@@ -5,6 +5,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { PostService } from "@/src/api/services/post.service"
 import { UploadService } from "@/src/api/services/upload.service"
 import { QUERY_KEYS } from "@/src/api/query-keys"
+import { validateUploadFile, validateVideoDuration } from "@/lib/upload/file-validation"
+import { toast } from "sonner"
 import { X, Image as ImageIcon, ArrowLeft, Loader2 } from "lucide-react"
 
 interface CreatePostModalProps {
@@ -58,13 +60,27 @@ export default function CreatePostModal({ isOpen, onClose }: CreatePostModalProp
     onClose()
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      setPreviewUrl(URL.createObjectURL(file))
-      setStep("details")
+    // Reset the input so picking the same file again re-triggers onChange.
+    e.target.value = ""
+    if (!file) return
+
+    const basic = validateUploadFile(file, ["image", "video"])
+    if (!basic.ok) {
+      toast(basic.message ?? "Unsupported file.")
+      return
     }
+    // Enforce the 90-second video limit before we commit to an upload.
+    const duration = await validateVideoDuration(file)
+    if (!duration.ok) {
+      toast(duration.message ?? "This video is too long.")
+      return
+    }
+
+    setSelectedFile(file)
+    setPreviewUrl(URL.createObjectURL(file))
+    setStep("details")
   }
 
   const handleSubmit = () => {

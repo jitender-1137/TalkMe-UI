@@ -9,6 +9,10 @@ import { BubbleBody, BubbleShell } from "./bubble-body";
 import { MessageReactions } from "./message-reactions";
 import { MessageReply } from "./message-reply";
 import { MessageMedia } from "./message-media";
+import { SharedPostCard } from "./shared-post-card";
+import { StoryReplyCard } from "./story-reply-card";
+import { parseSharedPost } from "@/lib/shared-post";
+import { parseStoryReply } from "@/lib/story-reply";
 import { EmojiPicker } from "./emoji-picker";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -29,6 +33,10 @@ const ChatBubbleImpl = forwardRef<HTMLDivElement, ChatBubbleProps>(
     const [isHovered, setIsHovered] = useState(false);
 
     const { isSent, media, replyTo, reactions, isDeleted, type, content, time, status } = message;
+    // Rich messages carried in `content`: shared post → card; story reply →
+    // quoted story preview above the reply text (Instagram/WhatsApp style).
+    const sharedPost = parseSharedPost(content);
+    const storyReply = parseStoryReply(content);
 
     const openMenu = useCallback(
       (e: PointerEvent | MouseEvent) => {
@@ -149,7 +157,9 @@ const ChatBubbleImpl = forwardRef<HTMLDivElement, ChatBubbleProps>(
               >
                 <BubbleShell isSent={isSent} variant={type === "sticker" ? "sticker" : "default"}>
                   {replyTo && <MessageReply reply={replyTo} isSent={isSent} />}
-                  {media && (
+                  {sharedPost && <SharedPostCard post={sharedPost} isSent={isSent} />}
+                  {storyReply && <StoryReplyCard story={storyReply} isSent={isSent} />}
+                  {!sharedPost && !storyReply && media && (
                     <MessageMedia
                       media={media}
                       isSent={isSent}
@@ -157,7 +167,34 @@ const ChatBubbleImpl = forwardRef<HTMLDivElement, ChatBubbleProps>(
                       messageId={message.id}
                     />
                   )}
-                  {type === "sticker" ? (
+                  {sharedPost ? (
+                    // Card carries the content; just show the time/ticks row below it.
+                    <BubbleBody
+                      time={time}
+                      hasMedia
+                      align={isSent ? "end" : "start"}
+                      timeClassName={isSent ? "text-primary-foreground/65" : "text-muted-foreground"}
+                      statusNode={
+                        isSent ? (
+                          <MessageStatusIcon status={status} onRetry={() => onRetry?.(message)} />
+                        ) : undefined
+                      }
+                    />
+                  ) : storyReply ? (
+                    // Quoted story preview is above; the reply text is the body.
+                    <BubbleBody
+                      content={storyReply.text}
+                      time={time}
+                      hasMedia
+                      align={isSent ? "end" : "start"}
+                      timeClassName={isSent ? "text-primary-foreground/65" : "text-muted-foreground"}
+                      statusNode={
+                        isSent ? (
+                          <MessageStatusIcon status={status} onRetry={() => onRetry?.(message)} />
+                        ) : undefined
+                      }
+                    />
+                  ) : type === "sticker" ? (
                     // Stickers keep the floating time pill overlaid on the image.
                     <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/40 backdrop-blur-[2px] rounded-full px-2 py-0.5">
                       <span className="text-[10px] text-white/80 font-medium">{time}</span>

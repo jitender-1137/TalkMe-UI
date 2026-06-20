@@ -75,9 +75,6 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
-  experimental: {
-    allowedDevOrigins: ["*"],
-  },
   allowedDevOrigins: ["*"],
   env: {
     NEXT_PUBLIC_API_PATH: getApiPath(),

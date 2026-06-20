@@ -16,6 +16,18 @@ export function useFeed() {
   })
 }
 
+/** Fetch a single post by id — used to open a shared post from chat.
+ *  Pass null to stay idle (no request). 404 (deleted post) surfaces as error. */
+export function usePost(postId: string | null) {
+  return useQuery({
+    queryKey: QUERY_KEYS.POSTS.DETAIL(postId ?? ""),
+    queryFn: () => PostService.getPostById(postId as string),
+    enabled: typeof window !== "undefined" && Boolean(postId) && Boolean(getAccessToken()),
+    staleTime: 30 * 1000,
+    retry: false, // a deleted post 404s — don't hammer it
+  })
+}
+
 export function useCreatePost() {
   const queryClient = useQueryClient()
 

@@ -18,6 +18,7 @@ import { X } from "lucide-react"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { useLivePresenceStore } from "@/lib/presence/live-status-store"
 import { getTabFromHash } from "@/lib/navigation/url-hash"
+import { displayContent } from "@/lib/shared-post"
 import { db, mapResponseToLocalMessage, mapResponseToLocalChat, normalizeMessageStatus, putChatSafely } from "@/src/api/db"
 
 
@@ -325,7 +326,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 const msgSnippet = oldMsg?.content
                   ? `"${String(oldMsg.content).slice(0, 40)}${String(oldMsg.content).length > 40 ? "…" : ""}"`
                   : "your message"
-                const avatar = chatForReaction?.otherUser?.avatar ?? chatForReaction?.avatar
+                // Show the REACTOR's photo (the sender of the reaction), not
+                // chat.avatar — for a DIRECT chat that is the receiver's own
+                // avatar. In a DM the other user is the reactor; otherwise fall
+                // back to the reactor resolved from the contacts list.
+                const avatar = chatForReaction?.otherUser?.avatar ?? matchedContact?.avatar
 
                 toast.custom((t) => (
                   <div
@@ -580,10 +585,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         const sender = isGroup
           ? (payload.senderName || chatForMuteCheck?.name || "Group Chat")
           : (otherParticipant?.name || payload.senderName || "Someone")
-        const snippet = payload.content || "Sent an attachment"
-        
+        const snippet = (payload.content ? displayContent(payload.content) : "") || "Sent an attachment"
+
         toast.custom((t) => {
-          const avatar = chatForMuteCheck?.avatar || chatForMuteCheck?.otherUser?.avatar
+          // Show the SENDER's photo, never chat.avatar (for a DIRECT chat that
+          // is the current user's / receiver's own avatar). In a DM the other
+          // participant IS the sender; in a group the sender comes from the
+          // message payload, with the group avatar as a last resort.
+          const avatar = isGroup
+            ? (payload.senderAvatar || chatForMuteCheck?.avatar)
+            : (otherParticipant?.avatar || payload.senderAvatar)
           const fallback = sender.slice(0, 2).toUpperCase()
 
           return (

@@ -10,6 +10,7 @@ import { cn, getAvatarUrl } from "@/lib/utils"
 import { getMediaUrl } from "@/src/api/client"
 import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { MessageService } from "@/src/api/services/message.service"
+import { serializeStoryReply } from "@/lib/story-reply"
 import { showSuccessToast, showErrorToast } from "@/src/api/error-handler"
 import type { StoryGroup, Story } from "./types"
 
@@ -45,6 +46,10 @@ export function StoryViewer({
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
   const pausedProgressRef = useRef<number>(0)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  // Real length of the current video story (ms), measured from its metadata so
+  // the progress bar + auto-advance match the clip instead of the 10s default.
+  const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null)
 
   // Snapshot the groups for this viewing session. Marking a story viewed
   // invalidates the stories query, which refetches AND re-sorts the groups
@@ -56,8 +61,12 @@ export function StoryViewer({
 
   const currentGroup = groups[currentGroupIndex]
   const currentStory = currentGroup?.stories[currentStoryIndex]
-  // Each story is shown for 10s (Instagram-style) unless a specific duration is set.
-  const storyDuration = (currentStory?.duration || 10) * 1000
+  const isVideoStory = currentStory?.mediaType === "video"
+  // Videos play for their real length (capped at the 90s upload limit); images
+  // show for 10s (Instagram-style) unless a specific duration is set.
+  const storyDuration = isVideoStory
+    ? (videoDurationMs ?? 10000)
+    : (currentStory?.duration || 10) * 1000
   const isOwnStory = !!currentUserId && currentGroup?.userId === currentUserId
 
   const goToNextStory = useCallback(() => {
@@ -107,17 +116,28 @@ export function StoryViewer({
     goToNextStory()
   }, [currentStory, onDeleteStory, goToNextStory])
 
-  // Reply / react to a story → sent to the owner as a normal chat message.
+  // Reply / react to a story → sent to the owner as a chat message that carries
+  // a reference to the story, so the bubble renders an Instagram/WhatsApp-style
+  // quoted story preview above the reply text (see StoryReplyCard).
   const sendToOwner = useCallback(
     async (content: string) => {
       const ownerId = currentGroup?.userId
+      const story = currentGroup?.stories[currentStoryIndex]
       const text = content.trim()
-      if (!ownerId || !text || isSending) return
+      if (!ownerId || !story || !text || isSending) return
       setIsSending(true)
       setIsPaused(true) // hold the story while we send
       try {
         const chat = await openOrCreateChat(ownerId)
-        await MessageService.sendMessage(chat.id, { content: text })
+        const payloadContent = serializeStoryReply({
+          storyId: story.id,
+          ownerName: currentGroup?.userName ?? "user",
+          ownerUsername: (currentGroup as any)?.userUsername,
+          thumbnail: story.mediaUrl ? getMediaUrl(story.mediaUrl) : undefined,
+          mediaType: story.mediaType,
+          text,
+        })
+        await MessageService.sendMessage(chat.id, { content: payloadContent })
         showSuccessToast(`Sent to ${currentGroup?.userName ?? "user"}`)
         setReplyText("")
       } catch (e) {
@@ -127,7 +147,7 @@ export function StoryViewer({
         setIsPaused(false)
       }
     },
-    [currentGroup?.userId, currentGroup?.userName, isSending, openOrCreateChat],
+    [currentGroup?.userId, currentGroup?.userName, currentGroup?.stories, currentStoryIndex, isSending, openOrCreateChat],
   )
 
   // Progress timer
@@ -163,6 +183,19 @@ export function StoryViewer({
       pausedProgressRef.current = progress
     }
   }, [isPaused, progress])
+
+  // Reset the measured video length whenever the story changes.
+  useEffect(() => {
+    setVideoDurationMs(null)
+  }, [currentStory?.id])
+
+  // Hold-to-pause also pauses the video (Instagram behavior).
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el) return
+    if (isPaused) el.pause()
+    else el.play().catch(() => {})
+  }, [isPaused, currentStory?.id])
 
   // Reset paused progress on story change
   useEffect(() => {
@@ -334,12 +367,20 @@ export function StoryViewer({
           >
             {currentStory.mediaType === "video" ? (
               <video
+                ref={videoRef}
                 src={getMediaUrl(currentStory.mediaUrl)}
                 className="w-full h-full object-contain bg-black"
                 autoPlay
                 muted={isMuted}
                 playsInline
-                loop
+                onLoadedMetadata={(e) => {
+                  // Drive the progress bar with the clip's real length (capped
+                  // at the 90s upload limit) instead of the 10s image default.
+                  const secs = (e.target as HTMLVideoElement).duration
+                  if (Number.isFinite(secs) && secs > 0) {
+                    setVideoDurationMs(Math.min(secs, 90) * 1000)
+                  }
+                }}
                 onError={(e) => {
                   // Hide video on error, fallback handled by parent
                   (e.target as HTMLVideoElement).style.display = 'none'

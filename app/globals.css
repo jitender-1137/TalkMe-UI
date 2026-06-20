@@ -39,6 +39,31 @@
   --sidebar-ring: oklch(0.32 0.18 160);
   --warning: oklch(0.75 0.15 70);
   --warning-foreground: oklch(0.25 0.05 70);
+
+  /* ── iOS foundation tokens ─────────────────────────────────
+     Safe-area insets (resolve to 0 on non-notched devices).
+     REQUIRES `viewportFit: 'cover'` in app/layout.tsx — without
+     it env(safe-area-inset-*) is always 0. */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
+  /* Native easing curves. iOS does not use ease-in-out — these
+     mirror the system spring/standard curves for CSS transitions.
+     For JS-driven motion (framer-motion) use lib/motion.ts. */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);          /* sheets, pages */
+  --ease-ios-out: cubic-bezier(0.16, 1, 0.3, 1);       /* enter */
+  --ease-ios-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275); /* pops */
+
+  /* Frosted glass */
+  --glass-blur: 30px;
+  --glass-saturate: 180%;
+  --glass-tint: 72%;   /* % of background mixed in; lower = clearer */
+  /* Composed filter kept in a custom property on purpose: Tailwind v4's
+     Lightning CSS minifier strips a `backdrop-filter: blur(var()) saturate(var())`
+     declaration, but passes through `backdrop-filter: var(--glass-fx)` verbatim. */
+  --glass-fx: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .dark {
@@ -79,10 +104,16 @@
 }
 
 @theme inline {
+  /* Native iOS font: San Francisco. `-apple-system` / `BlinkMacSystemFont`
+     resolve to SF Pro on iOS & macOS (auto-switching SF Pro Text / Display by
+     size) — no font files to download. Non-Apple platforms fall through to
+     their own system UI font, then a sans-serif fallback. */
   --font-sans:
-    "Geist", "Geist Fallback", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
-    sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", "SF Mono", monospace;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Monaco, "Cascadia Mono",
+    "Roboto Mono", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -274,4 +305,170 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ============================================================
+   iOS FOUNDATION  (spec §2 safe areas, §3/§24 glass, §10 type,
+   §9 touch feedback, §24 PWA standalone)
+   Cross-cutting primitives every native screen composes from.
+   Screens stay generic — they apply these utilities, they don't
+   reinvent blur/insets/type per component.
+   ============================================================ */
+
+/* ── Safe areas (§2) ──────────────────────────────────────── */
+@layer utilities {
+  .pt-safe  { padding-top: var(--sat); }
+  .pb-safe  { padding-bottom: var(--sab); }
+  .pl-safe  { padding-left: var(--sal); }
+  .pr-safe  { padding-right: var(--sar); }
+  .px-safe  { padding-left: var(--sal); padding-right: var(--sar); }
+  .mt-safe  { margin-top: var(--sat); }
+  .mb-safe  { margin-bottom: var(--sab); }
+
+  /* Inset + intrinsic padding combined — for nav bars / tab bars that
+     need their own breathing room ON TOP of the device inset. */
+  .pt-safe-nav { padding-top: calc(var(--sat) + 0.5rem); }
+  .pb-safe-nav { padding-bottom: calc(var(--sab) + 0.5rem); }
+
+  /* Full-bleed viewport heights that respect the keyboard (dvh) and
+     the home-indicator / Dynamic Island. */
+  .h-dvh-safe   { height: calc(100dvh - var(--sat) - var(--sab)); }
+  .min-h-dvh-safe { min-height: calc(100dvh - var(--sat) - var(--sab)); }
+
+  /* Sticky offset helper for collapsing nav bars (§1, §8). */
+  .top-safe { top: var(--sat); }
+}
+
+/* ── Frosted glass (§3, §24) ──────────────────────────────── */
+@layer components {
+  /* Only the unprefixed property — Tailwind v4's Lightning CSS adds the
+     -webkit- prefix automatically. Writing both by hand makes its dedup keep
+     ONLY the prefixed form, which modern Chrome (unprefixed-only) ignores. */
+  .glass,
+  .glass-thin,
+  .glass-thick,
+  .glass-card {
+    backdrop-filter: var(--glass-fx);
+  }
+  .glass {
+    background: color-mix(in oklch, var(--background) var(--glass-tint), transparent);
+  }
+  .glass-thin {
+    background: color-mix(in oklch, var(--background) 55%, transparent);
+  }
+  .glass-thick {
+    background: color-mix(in oklch, var(--background) 88%, transparent);
+  }
+  /* Glass over the card surface (sheets, context menus, popovers). */
+  .glass-card {
+    background: color-mix(in oklch, var(--popover) 80%, transparent);
+  }
+}
+/* Opaque fallback where backdrop-filter is unsupported (older Firefox). */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass       { background: var(--background); }
+  .glass-thin  { background: var(--background); }
+  .glass-thick { background: var(--background); }
+  .glass-card  { background: var(--popover); }
+}
+
+/* ── iOS typography scale (§10) ───────────────────────────────
+   Apple text styles. Use alongside Tailwind utilities for color
+   (the font stack is already San Francisco via --font-sans). */
+@layer utilities {
+  .text-large-title { font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: 0.012em; }
+  .text-title-1     { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: 0.008em; }
+  .text-title-2     { font-size: 22px; line-height: 28px; font-weight: 700; }
+  .text-title-3     { font-size: 20px; line-height: 25px; font-weight: 600; }
+  .text-ios-body    { font-size: 17px; line-height: 22px; font-weight: 400; }
+  .text-callout     { font-size: 16px; line-height: 21px; font-weight: 400; }
+  .text-subhead     { font-size: 15px; line-height: 20px; font-weight: 400; }
+  .text-footnote    { font-size: 13px; line-height: 18px; font-weight: 400; }
+  .text-ios-caption { font-size: 12px; line-height: 16px; font-weight: 400; }
+}
+
+/* ── Touch feedback (§9) ──────────────────────────────────────
+   `.press` (scale 0.97) already exists above. `.tappable` is the
+   stronger variant + kills the grey iOS tap-highlight box. */
+@layer components {
+  .tappable {
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.12s var(--ease-ios), opacity 0.12s var(--ease-ios);
+    touch-action: manipulation;
+  }
+  .tappable:active { transform: scale(0.96); opacity: 0.85; }
+}
+
+/* ── PWA standalone mode (§24) ────────────────────────────────
+   `html.standalone` is set by useStandalone() for iOS (which lacks
+   reliable display-mode); the media query covers everyone else.
+   Hide the "web" feel: no overscroll glow. */
+html.standalone body {
+  overscroll-behavior: none;
+}
+@media (display-mode: standalone) {
+  body { overscroll-behavior: none; }
+}
+html.standalone {
+  /* Give standalone a touch more breathing room under the status bar
+     where the inset can read 0 on some installed contexts. */
+  --sat: max(env(safe-area-inset-top, 0px), 0.5rem);
+}
+
+/* ── iOS notification banners (§13) ───────────────────────────
+   Restyles sonner into frosted, rounded banners that drop from the
+   top — driven by classNames set in components/ui/sonner.tsx.
+   Selectors use sonner's data-attributes so they win over its
+   defaults without fighting specificity per-property. */
+[data-sonner-toast].ios-toast {
+  border: none;
+  border-radius: 1.375rem;
+  padding: 0.7rem 0.85rem;
+  gap: 0.7rem;
+  /* Frosted glass — unprefixed only; Lightning CSS adds -webkit- (a hand-
+     written prefix pair gets deduped to webkit-only, which Chrome ignores). */
+  backdrop-filter: var(--glass-fx);
+  /* Layered depth instead of a hard border (Apple uses depth, not borders). */
+  box-shadow:
+    0 0.5px 0 0 color-mix(in oklch, var(--foreground) 6%, transparent) inset,
+    0 1px 2px color-mix(in oklch, black 8%, transparent),
+    0 14px 34px -10px color-mix(in oklch, black 32%, transparent);
+}
+
+/* Smooth, iOS-curved enter/exit timing for the drop-from-top motion. */
+[data-sonner-toast] {
+  transition-timing-function: var(--ease-ios);
+}
+
+.ios-toast-title {
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.ios-toast-desc {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+
+/* Neutral glass surface + a colored status icon (iOS keeps the banner
+   neutral and signals state through the icon, not a solid color block). */
+[data-sonner-toast].ios-toast .ios-toast-icon { color: var(--muted-foreground); }
+[data-sonner-toast][data-type="success"] .ios-toast-icon { color: var(--primary); }
+[data-sonner-toast][data-type="error"]   .ios-toast-icon { color: var(--destructive); }
+[data-sonner-toast][data-type="warning"] .ios-toast-icon { color: var(--warning); }
+[data-sonner-toast][data-type="info"]    .ios-toast-icon { color: var(--accent); }
+
+/* Pill-shaped action buttons. */
+.ios-toast-action,
+.ios-toast-cancel {
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Opaque fallback where backdrop-filter is unsupported. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  [data-sonner-toast].ios-toast { background: var(--popover); }
 }

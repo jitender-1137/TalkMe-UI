@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useCallback, useEffect } from "react"
+import { haptic } from "@/lib/haptics"
 
 interface LongPressOptions {
   /** Duration in ms before long-press fires (default: 480) */
@@ -88,10 +89,8 @@ export function useLongPress({
           return
         }
         triggered.current = true
-        // Haptic feedback
-        if (typeof navigator !== "undefined" && navigator.vibrate) {
-          navigator.vibrate(40)
-        }
+        // Haptic feedback — context menu / long-press opening (spec §20)
+        haptic("impactHeavy")
         onLongPress(e.nativeEvent)
         cancel()
       }, delay)

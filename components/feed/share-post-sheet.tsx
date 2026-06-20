@@ -1,15 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, Send, Check, Loader2 } from "lucide-react"
 import { useContacts } from "@/src/api/hooks/useContacts"
-import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
+import { useOpenOrCreateChat, useChats } from "@/src/api/hooks/useChats"
 import { MessageService } from "@/src/api/services/message.service"
 import { getAvatarUrl } from "@/lib/utils"
+import { getMediaUrl } from "@/src/api/client"
+import { serializeSharedPost } from "@/lib/shared-post"
 import { showErrorToast, showSuccessToast } from "@/src/api/error-handler"
 import type { Post } from "./types"
 
@@ -22,33 +24,55 @@ interface SharePostSheetProps {
 /** In-app post sharing — send a post to a contact as a chat message. */
 export function SharePostSheet({ post, open, onOpenChange }: SharePostSheetProps) {
   const { data: contacts = [] } = useContacts()
+  const { data: chats = [] } = useChats()
   const openOrCreateChat = useOpenOrCreateChat()
   const [query, setQuery] = useState("")
   const [sentTo, setSentTo] = useState<Set<string>>(new Set())
   const [sendingId, setSendingId] = useState<string | null>(null)
 
-  const filtered = contacts.filter((c) =>
+  // Share targets = followings (contacts) + people you've chatted with (DM
+  // partners from the chat list), deduped by user id. Instagram shows both.
+  const people = useMemo(() => {
+    const byId = new Map<string, { id: string; name?: string; username?: string; avatar?: string | null }>()
+    for (const c of contacts) {
+      if (c?.id) byId.set(c.id, { id: c.id, name: c.name, username: c.username, avatar: c.avatar })
+    }
+    for (const chat of chats as any[]) {
+      const isGroup = chat?.chatType === "GROUP" || chat?.type === "group"
+      const u = chat?.otherUser
+      if (!isGroup && u?.id && !byId.has(u.id)) {
+        byId.set(u.id, { id: u.id, name: u.name, username: u.username, avatar: u.avatar })
+      }
+    }
+    return Array.from(byId.values())
+  }, [contacts, chats])
+
+  const filtered = people.filter((c) =>
     (c.name || c.username || "").toLowerCase().includes(query.toLowerCase()),
   )
 
   const buildPayload = () => {
     const first = post.media?.[0] as any
-    const url = first ? (typeof first === "string" ? first : first.url) : undefined
-    const mediaType = first
-      ? typeof first === "string"
-        ? "image"
-        : first.type || "image"
-      : undefined
-    const author = post.author?.username || post.author?.name || "a user"
-    const content = post.content
-      ? `Shared @${author}'s post: ${post.content}`
-      : `Shared @${author}'s post`
-    const payload: any = { content }
-    if (url) payload.media = { url, type: mediaType }
-    return payload
+    const rawUrl = first ? (typeof first === "string" ? first : first.url) : undefined
+    const mediaType: "image" | "video" =
+      first && typeof first !== "string" && first.type === "video" ? "video" : "image"
+    // Carry a structured reference to the post in the message content. The chat
+    // bubble renders it as an Instagram-style card (see SharedPostCard); list
+    // previews & notifications go through sharedPostPreview(), so the raw blob
+    // is never shown to the user.
+    const content = serializeSharedPost({
+      postId: post.id,
+      authorName: post.author?.name || post.author?.username || "Unknown",
+      authorUsername: post.author?.username,
+      authorAvatar: post.author?.avatar,
+      caption: post.content || undefined,
+      thumbnail: rawUrl ? getMediaUrl(rawUrl) : undefined,
+      mediaType: rawUrl ? mediaType : undefined,
+    })
+    return { content }
   }
 
-  const handleSend = async (contact: (typeof contacts)[number]) => {
+  const handleSend = async (contact: (typeof people)[number]) => {
     if (sendingId || sentTo.has(contact.id)) return
     setSendingId(contact.id)
     try {

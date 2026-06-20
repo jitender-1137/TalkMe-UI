@@ -22,6 +22,17 @@ export const PostService = {
     return unwrapPaginatedResponse(response)
   },
 
+  /** Fetch a single post by id (used to open a shared post from chat). */
+  getPostById: async (postId: string): Promise<Post> => {
+    const response = await apiClient.get<{
+      success: boolean
+      message: string
+      data: Post
+      timestamp: string
+    }>(ENDPOINTS.POSTS.BY_ID(postId))
+    return unwrapResponse(response)
+  },
+
   /** Create a new post. */
   createPost: async (payload: CreatePostPayload): Promise<Post> => {
     const response = await apiClient.post<{

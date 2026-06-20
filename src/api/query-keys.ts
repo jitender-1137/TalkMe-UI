@@ -80,6 +80,7 @@ export const QUERY_KEYS = {
   POSTS: {
     FEED: ["posts", "feed"] as const,
     USER: (userId: string) => ["posts", "user", userId] as const,
+    DETAIL: (postId: string) => ["posts", "detail", postId] as const,
     COMMENTS: (postId: string) => ["posts", postId, "comments"] as const,
   },
 

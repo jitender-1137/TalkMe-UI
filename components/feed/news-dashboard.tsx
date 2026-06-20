@@ -12,7 +12,7 @@ import CreatePostModal from "@/components/news/create-post-modal";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { validateUploadFile } from "@/lib/upload/file-validation";
+import { validateUploadFile, validateVideoDuration } from "@/lib/upload/file-validation";
 
 import {
   useFeed,
@@ -241,7 +241,7 @@ export function NewsDashboard() {
   }, []);
 
   const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       // Always reset the input so picking the same file again re-fires onChange.
       if (e.target) e.target.value = "";
@@ -252,6 +252,12 @@ export function NewsDashboard() {
       const result = validateUploadFile(file, ["image", "video"]);
       if (!result.ok) {
         toast.error("Can't upload this file", { description: result.message });
+        return;
+      }
+      // Story videos follow the same 90-second cap as post videos.
+      const duration = await validateVideoDuration(file);
+      if (!duration.ok) {
+        toast.error("Can't upload this video", { description: duration.message });
         return;
       }
 

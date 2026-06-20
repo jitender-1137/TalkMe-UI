@@ -11,6 +11,7 @@ import { useChatContext } from "./chat-context"
 import * as ContextMenu from "./message-context-menu"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
+import { displayContent } from "@/lib/shared-post"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -79,6 +80,15 @@ export function ChatArea({
   const [uploadType, setUploadType] = useState<"image" | "video" | "audio" | "document" | "camera">("image")
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null)
+
+  // Reply state is per-conversation. The ChatArea instance is reused when the
+  // user switches chats (only selectedConversationId changes), so an unsent
+  // reply selected in one chat would otherwise leak into the next. Clear the
+  // draft reply (and any in-progress attachment) when the conversation changes.
+  useEffect(() => {
+    setReplyTo(null)
+    setPendingAttachment(null)
+  }, [selectedConversationId])
 
   const { data: ownProfile } = useProfile()
   const { data: chatDetail, isLoading: isChatLoading } = useChat(selectedConversationId || "")
@@ -312,7 +322,7 @@ export function ChatArea({
         replyTo = {
           id: parentMsg.id,
           senderName: parentSenderName,
-          content: parentMsg.content,
+          content: displayContent(parentMsg.content),
           type: (parentMsg.type || parentMsg.messageType || "text").toLowerCase() as any,
         }
       }
@@ -658,7 +668,7 @@ export function ChatArea({
   }, [])
 
   const handleMessageReply = useCallback((message: Message) => {
-    setReplyTo({ id: message.id, senderName: message.isSent ? "You" : contact.name, content: message.content, type: message.type })
+    setReplyTo({ id: message.id, senderName: message.isSent ? "You" : contact.name, content: displayContent(message.content), type: message.type })
     setMessageMenuOpen(false)
   }, [contact.name])
 

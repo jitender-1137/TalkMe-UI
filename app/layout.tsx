@@ -1,20 +1,22 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
 import { QueryProvider, ImageViewerProvider, VideoPlayerProvider, CreatePostProvider } from '@/components/providers'
 import { PresenceProvider } from '@/components/presence'
-import { Toaster } from 'sonner'
+import { Toaster } from '@/components/ui/sonner'
 import { ZoomPreventer } from '@/components/zoom-preventer'
+import { NativeEnv } from '@/components/app-shell/native-env'
+import { SharedPostOpener } from '@/components/feed/shared-post-opener'
+import { InstallFullscreenPrompt } from '@/components/pwa/install-fullscreen-prompt'
 import { PwaRegister } from '@/components/pwa-register'
 import './globals.css'
-
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Required for env(safe-area-inset-*) to report real values on notched /
+  // Dynamic Island devices — without this every inset resolves to 0 (spec §2).
+  viewportFit: 'cover',
   // Android/Chrome: the on-screen keyboard resizes the layout viewport (so a
   // fixed, viewport-height chat container shrinks above the keyboard instead of
   // being overlaid). iOS ignores this — handled via VisualViewport in chat-area.
@@ -59,6 +61,7 @@ export default function RootLayout({
     <html lang="en" className="bg-background" suppressHydrationWarning>
       <body className="font-sans antialiased overflow-hidden overscroll-none touch-manipulation">
         <ZoomPreventer />
+        <NativeEnv />
         <PwaRegister />
         <QueryProvider>
           <PresenceProvider>
@@ -66,7 +69,9 @@ export default function RootLayout({
               <VideoPlayerProvider>
                 <CreatePostProvider>
                   {children}
-                  <Toaster position="top-center" richColors closeButton />
+                  <SharedPostOpener />
+                  <InstallFullscreenPrompt />
+                  <Toaster />
                 </CreatePostProvider>
               </VideoPlayerProvider>
             </ImageViewerProvider>

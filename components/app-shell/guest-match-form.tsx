@@ -9,6 +9,7 @@ import { useAuth } from "./auth-context";
 import { Turnstile } from "@/components/security/turnstile";
 import { User, Calendar, Users, Shield, Zap, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CopyrightFooter } from "./copyright-footer";
 
 export function GuestMatchForm() {
   const { loginAsGuest, openLoginModal, openSignupModal, isAuthenticated, isGuestMatch } = useAuth();
@@ -291,6 +292,9 @@ export function GuestMatchForm() {
           </div>
         </div>
       </div>
+
+      {/* Copyright footer */}
+      <CopyrightFooter className="px-4 pb-6" />
     </div>
   );
 }

@@ -19,6 +19,10 @@ export interface Stranger {
   isTyping?: boolean
   isRecording?: boolean
   isGuest?: boolean
+  /** Active matchmaking session id (used for per-session message storage). */
+  sessionId?: string
+  /** Chat id for the session (mirrors sessionId for stranger chats). */
+  chatId?: string
 }
 
 export interface StrangerMessage {

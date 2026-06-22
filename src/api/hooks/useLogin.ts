@@ -12,6 +12,7 @@ import type {
   SignupResponse,
   AuthUser,
   ForgotPasswordPayload,
+  ChangePasswordPayload,
   GuestLoginPayload,
   Session,
   User,
@@ -125,6 +126,17 @@ export function useForgotPassword() {
     mutationFn: (payload: ForgotPasswordPayload) => AuthService.forgotPassword(payload),
     onSuccess: () => {
       showSuccessToast("Email sent", "Check your inbox for a password reset link.")
+    },
+    onError: showErrorToast,
+  })
+}
+
+// ── Mutation: change password (authenticated) ────────────────────────────────
+export function useChangePassword() {
+  return useMutation<void, Error, ChangePasswordPayload>({
+    mutationFn: (payload: ChangePasswordPayload) => AuthService.changePassword(payload),
+    onSuccess: () => {
+      showSuccessToast("Password updated", "Your password has been changed.")
     },
     onError: showErrorToast,
   })

@@ -9,6 +9,7 @@ import type {
   AuthUser,
   ForgotPasswordPayload,
   ResetPasswordPayload,
+  ChangePasswordPayload,
   GuestLoginPayload,
   GuestLoginResponse,
   RefreshTokenResponse,
@@ -130,6 +131,11 @@ export const AuthService = {
   /** Set a new password using the reset token. */
   resetPassword: async (payload: ResetPasswordPayload): Promise<void> => {
     await apiClient.post(ENDPOINTS.AUTH.RESET_PASSWORD, payload)
+  },
+
+  /** Change the authenticated user's password (requires the current password). */
+  changePassword: async (payload: ChangePasswordPayload): Promise<void> => {
+    await apiClient.post(ENDPOINTS.AUTH.CHANGE_PASSWORD, payload)
   },
 
   /** Get all active sessions for the current user. */

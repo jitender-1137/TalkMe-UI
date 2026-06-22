@@ -55,6 +55,15 @@ export const UserService = {
     return unwrapResponse(response)
   },
 
+  /**
+   * Request deletion of the current account. The account is soft-deleted (locked
+   * immediately) and recoverable by logging back in within the recovery window;
+   * after that it is permanently anonymized server-side.
+   */
+  deleteAccount: async (): Promise<void> => {
+    await apiClient.delete(ENDPOINTS.USERS.PROFILE)
+  },
+
   /** Block a user. */
   blockUser: async (userId: string): Promise<void> => {
     await apiClient.post(ENDPOINTS.USERS.BLOCK(userId))

@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { TermsModal } from "./terms-modal";
 import { PrivacyModal } from "./privacy-modal";
 import { CookieModal } from "./cookie-modal";
+import { CopyrightFooter } from "./copyright-footer";
 
 export function SignupModal() {
   const { showSignupModal, closeSignupModal, openLoginModal, signup, isSignupPending } = useAuth();
@@ -467,6 +468,11 @@ export function SignupModal() {
                   </button>
                 </p>
               </form>
+
+              {/* Copyright footer */}
+              <div className="px-6 py-4 border-t border-border">
+                <CopyrightFooter />
+              </div>
             </motion.div>
           </motion.div>
         )}

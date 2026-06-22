@@ -274,13 +274,17 @@ function AppShellContent() {
             <SecondaryPanel />
           </div>
           {/* Mobile: overlay when toggled — instant show/hide (no slide).
-              The slide was replaying on Back / OS back-gesture, making the list
-              appear to animate twice. */}
-          {showMobileSecondaryPanel && (
-            <div className="fixed inset-0 z-40 md:hidden overflow-auto bg-card">
-              <SecondaryPanel />
-            </div>
-          )}
+              Kept MOUNTED and merely hidden (not unmounted) when a chat is open,
+              so returning to the list doesn't remount every row / replay status +
+              last-message and lose scroll position. */}
+          <div
+            className={cn(
+              "fixed inset-0 z-40 md:hidden overflow-auto bg-card",
+              !showMobileSecondaryPanel && "hidden",
+            )}
+          >
+            <SecondaryPanel />
+          </div>
         </>
       )}
 

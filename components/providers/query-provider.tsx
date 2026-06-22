@@ -19,6 +19,11 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             // that drained the backend rate limiter (429s). Disable both.
             refetchOnWindowFocus: false,
             refetchOnReconnect: false,
+            // Don't refetch just because a screen remounted on tab switch. The
+            // cached data renders instantly (no empty→repopulate "flip"); live
+            // updates still arrive over STOMP. This is the mount-time counterpart
+            // to the two flags above and removes the navigation flicker.
+            refetchOnMount: false,
             retry: (failureCount, error) => {
               // Do not retry on auth/permission/not-found, and never retry on
               // 429 — retrying a rate-limited request only deepens the flood.

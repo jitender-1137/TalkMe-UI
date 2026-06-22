@@ -195,11 +195,18 @@ export function useMessages(chatId: string) {
               lastSyncTimestamp: Date.now(),
             })
 
-            // Update chat metadata with last message info
+            // Update chat metadata with last message info.
             const sorted = [...newMessages].sort((a, b) => b.sequenceNumber - a.sequenceNumber)
             const latestMsg = sorted[0]
             const chat = await db.chats.get(chatId)
-            if (chat && latestMsg) {
+            // Only rewrite the chat's lastMessage when this sync actually produced a
+            // NEWER last message. This reconcile runs on every chat OPEN (it always
+            // refreshes the recent window), so unconditionally rebuilding lastMessage
+            // from the messages endpoint clobbered the richer chat-list version
+            // (delivery status / senderId) with a statusless one — making the
+            // chat-list tick disappear on open. When it's the same message, leave the
+            // existing lastMessage (and its status) untouched.
+            if (chat && latestMsg && chat.lastMessage?.id !== latestMsg.id) {
               await db.chats.update(chatId, {
                 lastMessageId: latestMsg.id,
                 lastMessagePreview: latestMsg.content || "Media attachment",
@@ -212,6 +219,9 @@ export function useMessages(chatId: string) {
                   type: latestMsg.type || "TEXT",
                   timestamp: latestMsg.createdAt || latestMsg.timestamp || new Date().toISOString(),
                   isDeleted: latestMsg.isDeleted || false,
+                  // Carry the message's delivery status so the chat-list tick is
+                  // present on a genuinely new last message too.
+                  status: normalizeMessageStatus(latestMsg.status || "sent"),
                 },
               })
             }

@@ -17,6 +17,8 @@ import {
   Trash2,
   Lock,
   UserMinus,
+  ArrowLeft,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,7 +31,9 @@ import { Switch } from "@/components/ui/switch";
 import { useTheme } from "next-themes";
 
 export function ConnectDashboard() {
-  const [activeSubTab, setActiveSubTab] = useState<"lobby" | "match">("lobby");
+  // "match" shows the Connect landing (Quick Chat / Live Lobby chooser);
+  // "lobby" shows the live lobby. Navigation is driven by the landing cards.
+  const [activeSubTab, setActiveSubTab] = useState<"lobby" | "match">("match");
   const { isGuestMatch, isAuthenticated, logout, openLoginModal } = useAuth();
 
   // Lobby settings store selectors
@@ -52,10 +56,7 @@ export function ConnectDashboard() {
     }
   }, [isMatchActive]);
 
-  const handleFilterChange = (id: string) => {
-    if (isMatchActive && id === "lobby") return;
-    setActiveSubTab(id as "lobby" | "match");
-  };
+  const inLobby = activeSubTab === "lobby" && !isMatchActive;
 
   return (
     <div className="h-full w-full">
@@ -252,17 +253,29 @@ export function ConnectDashboard() {
       <AppLayout
         title="Connect"
         icon={Zap}
-        filterChips={[
-          { id: "lobby", label: "Lobby" },
-          { id: "match", label: "Matchmaker" },
-        ]}
-        textSize="text-xl"
-        activeFilterId={activeSubTab}
-        onFilterChange={handleFilterChange}
-        collapseFiltersToHeader={true}
         disableBottomPadding={(activeSubTab === "lobby" && !!lobbySelectedUser) || isMatchActive}
         headerRight={
           <div className="flex items-center gap-2">
+            {inLobby ? (
+              // In the lobby, the right slot becomes a "back to Connect" control.
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setActiveSubTab("match")}
+                className="text-xs h-8 px-2.5 bg-muted hover:bg-primary text-foreground hover:text-primary-foreground rounded-xl transition-all font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Connect</span>
+              </Button>
+            ) : (
+              <div
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/15"
+                title="Safe Mode is on"
+              >
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+            )}
+
             {(!isAuthenticated || isGuestMatch) && (
               <Button
                 size="sm"
@@ -299,7 +312,11 @@ export function ConnectDashboard() {
       >
         {/* Bounded, flexible height so the lobby/match chat areas scroll internally */}
         <div className="flex-1 min-h-0 flex flex-col w-full">
-          {activeSubTab === "lobby" ? <LobbyDashboard /> : <MatchDashboard />}
+          {inLobby ? (
+            <LobbyDashboard />
+          ) : (
+            <MatchDashboard onGoToLobby={() => setActiveSubTab("lobby")} />
+          )}
         </div>
       </AppLayout>
     </div>

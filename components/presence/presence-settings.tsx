@@ -6,6 +6,8 @@ import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { usePresenceStore } from '@/lib/presence'
+import { PresenceService } from '@/src/api/services/presence.service'
+import { showErrorToast } from '@/src/api/error-handler'
 import { cn } from '@/lib/utils'
 
 interface SettingRowProps {
@@ -76,6 +78,32 @@ export function PresenceSettings() {
   const setHideLastSeen = usePresenceStore((state) => state.setHideLastSeen)
   const setInvisibleMode = usePresenceStore((state) => state.setInvisibleMode)
 
+  // Optimistically update the local store, then sync to the backend so the change
+  // actually takes effect for other users. Revert the local toggle if the call fails.
+  const handleGhostMode = (enabled: boolean) => {
+    setGhostMode(enabled)
+    PresenceService.setGhostMode(enabled).catch((e) => {
+      setGhostMode(!enabled)
+      showErrorToast(e as Error)
+    })
+  }
+
+  const handleInvisibleMode = (enabled: boolean) => {
+    setInvisibleMode(enabled)
+    PresenceService.setInvisibleMode(enabled).catch((e) => {
+      setInvisibleMode(!enabled)
+      showErrorToast(e as Error)
+    })
+  }
+
+  const handleHideLastSeen = (enabled: boolean) => {
+    setHideLastSeen(enabled)
+    PresenceService.setHideLastSeen(enabled).catch((e) => {
+      setHideLastSeen(!enabled)
+      showErrorToast(e as Error)
+    })
+  }
+
   return (
     <Card className="w-full">
       <CardHeader className="pb-4">
@@ -90,7 +118,7 @@ export function PresenceSettings() {
           title="Ghost Mode"
           description="Browse without triggering read receipts or typing indicators"
           checked={ghostMode}
-          onCheckedChange={setGhostMode}
+          onCheckedChange={handleGhostMode}
         />
 
         <SettingRow
@@ -98,7 +126,7 @@ export function PresenceSettings() {
           title="Hide Last Seen"
           description="Others won't see when you were last active"
           checked={hideLastSeen}
-          onCheckedChange={setHideLastSeen}
+          onCheckedChange={handleHideLastSeen}
         />
 
         <SettingRow
@@ -106,7 +134,7 @@ export function PresenceSettings() {
           title="Invisible Mode"
           description="Appear offline to everyone while still using the app"
           checked={invisibleMode}
-          onCheckedChange={setInvisibleMode}
+          onCheckedChange={handleInvisibleMode}
         />
 
         {invisibleMode && (

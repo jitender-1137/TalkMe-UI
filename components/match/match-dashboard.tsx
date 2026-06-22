@@ -1,20 +1,15 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useEffect, useCallback, useMemo, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { useMatchStore } from "./match-store"
 import { MatchRadar } from "./match-radar"
-import { MatchFiltersPanel } from "./match-filters"
 import { StrangerChatScreen } from "./stranger-chat-screen"
-import { Play, Square, Users, Zap, Shield } from "lucide-react"
+import { ArrowLeft, Square, Users, Zap } from "lucide-react"
 import { useWebSocket } from "@/components/providers"
 import { useAuth } from "@/components/app-shell/auth-context"
-import {
-  useMatchOnlineCount,
-  useGetActiveSession,
-} from "@/src/api/hooks/useMatch"
+import { useGetActiveSession } from "@/src/api/hooks/useMatch"
 import type { StrangerMessage } from "./types"
 import Dexie from "dexie"
 import { useLiveQuery } from "dexie-react-hooks"
@@ -45,14 +40,12 @@ const clearSessionDb = async (sessionId: string) => {
   }
 }
 
-export function MatchDashboard() {
+export function MatchDashboard({ onGoToLobby }: { onGoToLobby?: () => void }) {
   const {
     status,
-    filters,
     stranger,
     searchTime,
     setStatus,
-    setFilters,
     setStranger,
     clearMessages,
     resetMatch,
@@ -61,25 +54,21 @@ export function MatchDashboard() {
 
   const { user } = useAuth()
   const { registerHandler, sendEvent } = useWebSocket()
-  const [onlineUsers, setOnlineUsers] = useState(1247)
+  // True while the local user is the one ending the chat (exit/skip). The backend
+  // echoes MATCH_ENDED to BOTH participants, so this lets us ignore our own echo
+  // and only show the "stranger left" prompt when the PARTNER ended the chat.
+  const selfEndedRef = useRef(false)
 
   // API queries
-  const { data: onlineCount } = useMatchOnlineCount()
   const { data: activeSession } = useGetActiveSession()
-
-  // Track online users count
-  useEffect(() => {
-    if (typeof onlineCount === "number") {
-      setOnlineUsers(onlineCount)
-    }
-  }, [onlineCount])
 
   // Restore active session on mount
   useEffect(() => {
     if (activeSession && status === "idle") {
       setStranger({
+        // Keep the partner anonymous — never reveal their real username/name.
         id: activeSession.partner?.id || "stranger",
-        anonymousName: activeSession.partner?.username || "Stranger",
+        anonymousName: "Stranger",
         interests: Array.from(activeSession.partner?.interests || []),
         chatId: activeSession.chatId,
         sessionId: activeSession.id,
@@ -113,8 +102,9 @@ export function MatchDashboard() {
       console.log("[Matchmaker] MATCH_FOUND received:", payload)
       if (payload) {
         setStranger({
+          // Keep the partner anonymous — never reveal their real username/name.
           id: payload.partner?.id || "stranger",
-          anonymousName: payload.partner?.username || "Stranger",
+          anonymousName: "Stranger",
           interests: Array.from(payload.partner?.interests || []),
           chatId: payload.sessionId,
           sessionId: payload.sessionId,
@@ -135,10 +125,15 @@ export function MatchDashboard() {
 
     const unbindMatchEnded = registerHandler("MATCH_ENDED", (payload: any) => {
       console.log("[Matchmaker] MATCH_ENDED received")
-      if (stranger?.sessionId) {
-        clearSessionDb(stranger.sessionId)
+      if (selfEndedRef.current) {
+        // We initiated the exit/skip — local handlers already set the right state
+        // (idle or searching). Just consume our own echo.
+        selfEndedRef.current = false
+        return
       }
-      resetMatch()
+      // The PARTNER left (exited or jumped to a new chat). Keep the user here and
+      // surface the rematch prompt instead of dropping them back to Connect.
+      setStatus("disconnected")
     })
 
     return () => {
@@ -306,6 +301,7 @@ export function MatchDashboard() {
   )
 
   const handleSkip = () => {
+    selfEndedRef.current = true
     if (stranger?.sessionId) {
       clearSessionDb(stranger.sessionId)
     }
@@ -324,10 +320,22 @@ export function MatchDashboard() {
   }
 
   const handleExit = () => {
+    selfEndedRef.current = true
     if (stranger?.sessionId) {
       sendEvent("EXIT_CHAT", {})
       clearSessionDb(stranger.sessionId)
     }
+    resetMatch()
+  }
+
+  // "Stranger left" prompt actions (shown when the partner ends the chat).
+  const handleFindAnother = () => {
+    if (stranger?.sessionId) clearSessionDb(stranger.sessionId)
+    startSearch()
+  }
+
+  const handleBackToConnect = () => {
+    if (stranger?.sessionId) clearSessionDb(stranger.sessionId)
     resetMatch()
   }
 
@@ -368,50 +376,80 @@ export function MatchDashboard() {
   // Render chat screen when matched or disconnected
   if ((status === "matched" || status === "disconnected") && stranger) {
     return (
-      <StrangerChatScreen
-        stranger={stranger}
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        onSkip={handleSkip}
-        onReport={handleReport}
-        onBlock={handleBlock}
-        onExit={handleExit}
-        onRevealMedia={handleRevealMedia}
-        onHideMedia={handleHideMedia}
-      />
+      <>
+        <StrangerChatScreen
+          stranger={stranger}
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          onSkip={handleSkip}
+          onReport={handleReport}
+          onBlock={handleBlock}
+          onExit={handleExit}
+          onRevealMedia={handleRevealMedia}
+          onHideMedia={handleHideMedia}
+        />
+
+        {/* Stranger-left prompt — keep the user here with a clear choice instead of
+            silently dropping them back to the Connect landing. */}
+        <AnimatePresence>
+          {status === "disconnected" && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 16 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                transition={{ type: "spring", stiffness: 320, damping: 26 }}
+                className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-2xl text-center"
+              >
+                <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center">
+                  <Users className="h-7 w-7" />
+                </div>
+                <h2 className="text-lg font-bold text-foreground">
+                  {stranger.anonymousName} left the chat
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1.5">
+                  Your chat partner has left. Want to meet someone new?
+                </p>
+
+                <div className="mt-6 flex flex-col gap-2.5">
+                  <Button
+                    onClick={handleFindAnother}
+                    className="w-full h-12 rounded-2xl gap-2 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 font-semibold text-base shadow-lg shadow-primary/25"
+                  >
+                    <Zap className="h-5 w-5" />
+                    Find another stranger
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleBackToConnect}
+                    className="w-full h-12 rounded-2xl gap-2 font-semibold text-base"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                    Back to Connect
+                  </Button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </>
     )
   }
 
-  // Show radar/search view
-  return (
-    <div className="flex flex-col h-full overflow-y-auto pb-6 md:pb-4">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Match & Discover</h1>
-            <p className="text-sm text-muted-foreground">Find your next conversation</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Badge variant="outline" className="gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <Users className="h-3 w-3" />
-              {onlineUsers.toLocaleString()} online
-            </Badge>
-          </div>
-        </div>
-      </header>
-
-      {/* Main content */}
-      <div className="flex-1 p-4 md:p-6">
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* Radar section */}
-          <div className="flex flex-col items-center gap-1">
-            <MatchRadar isSearching={status === "searching"} />
-
-            {/* Search status */}
-            <AnimatePresence mode="wait">
-              {status === "searching" ? (
+  // Searching view — radar + live status
+  if (status === "searching") {
+    return (
+      <div className="flex flex-col h-full overflow-y-auto pb-6 md:pb-4">
+        <div className="flex-1 p-4 md:p-6">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex flex-col items-center gap-1">
+              <MatchRadar isSearching />
+              <AnimatePresence mode="wait">
                 <motion.div
                   key="searching"
                   initial={{ opacity: 0, y: 10 }}
@@ -435,79 +473,72 @@ export function MatchDashboard() {
                     Cancel Search
                   </Button>
                 </motion.div>
-              ) : (
-                <motion.div
-                  key="idle"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="flex flex-col items-center gap-4"
-                >
-                  <Button
-                    size="lg"
-                    onClick={startSearch}
-                    className="gap-2 px-8 py-6 text-lg font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-lg shadow-primary/25"
-                  >
-                    <Play className="h-5 w-5" />
-                    Start Matching
-                  </Button>
-                  <p className="text-sm text-muted-foreground text-center max-w-xs">
-                    Click to find a random stranger who shares your interests
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Filters section */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Match Preferences</h2>
-              <Badge variant="secondary" className="gap-1">
-                <Shield className="h-3 w-3" />
-                Safe Mode On
-              </Badge>
+              </AnimatePresence>
             </div>
-            <MatchFiltersPanel
-              filters={filters}
-              onFilterChange={setFilters}
-              disabled={status === "searching"}
-            />
-          </div>
-
-          {/* Tips section */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              {
-                icon: Shield,
-                title: "Stay Safe",
-                description: "Never share personal info with strangers",
-              },
-              {
-                icon: Users,
-                title: "Be Respectful",
-                description: "Treat others how you want to be treated",
-              },
-              {
-                icon: Zap,
-                title: "Have Fun",
-                description: "Discover new perspectives and cultures",
-              },
-            ].map((tip, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="p-4 rounded-xl bg-card/50 border border-border/50"
-              >
-                <tip.icon className="h-6 w-6 text-primary mb-2" />
-                <h3 className="font-medium text-foreground">{tip.title}</h3>
-                <p className="text-sm text-muted-foreground">{tip.description}</p>
-              </motion.div>
-            ))}
           </div>
         </div>
+      </div>
+    )
+  }
+
+  // Idle landing — "Connect" entry screen (one-tap chooser)
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="w-full max-w-md mx-auto px-4 pt-1 pb-8 space-y-4">
+        <p className="text-sm text-muted-foreground">Start a conversation in one tap</p>
+
+        {/* Quick Chat — anonymous matchmaking */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="rounded-3xl p-5 bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-600/25"
+        >
+          <div className="flex items-start gap-3">
+            <div className="h-11 w-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+              <Zap className="h-6 w-6 text-white" fill="currentColor" />
+            </div>
+            <div className="pt-0.5">
+              <h2 className="text-xl font-bold text-white">Quick Chat</h2>
+              <p className="text-sm text-white/80 mt-1 leading-snug">
+                Instantly match with someone anonymously.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={startSearch}
+            className="w-full mt-4 h-12 rounded-2xl bg-white text-violet-700 hover:bg-white/90 font-semibold text-base shadow-sm"
+          >
+            Start
+          </Button>
+        </motion.div>
+
+        {/* Live Lobby — see who's online */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.08 }}
+          className="rounded-3xl p-5 bg-gradient-to-br from-emerald-900 to-emerald-950 border border-emerald-700/30 shadow-lg shadow-emerald-950/40"
+        >
+          <div className="flex items-start gap-3">
+            <div className="h-11 w-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+              <Users className="h-6 w-6 text-white" />
+            </div>
+            <div className="pt-0.5">
+              <h2 className="text-xl font-bold text-white">Live Lobby</h2>
+              <p className="text-sm text-white/70 mt-1 leading-snug">
+                See who&apos;s online and start chatting.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            onClick={onGoToLobby}
+            className="w-full mt-4 h-12 rounded-2xl bg-transparent border-white/20 text-white hover:bg-white/10 font-semibold text-base"
+          >
+            Go to Lobby
+          </Button>
+        </motion.div>
       </div>
     </div>
   )

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "./auth-context"
 import { Turnstile } from "@/components/security/turnstile"
+import { CopyrightFooter } from "./copyright-footer"
 import { X, Mail, Lock, Eye, EyeOff } from "lucide-react"
 
 export function LoginModal() {
@@ -210,6 +211,11 @@ export function LoginModal() {
                 </button>
               </p>
             </form>
+
+            {/* Copyright footer */}
+            <div className="px-6 py-4 border-t border-border">
+              <CopyrightFooter />
+            </div>
           </motion.div>
         </motion.div>
       )}

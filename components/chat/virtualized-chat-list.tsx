@@ -80,6 +80,9 @@ function VirtualizedChatListImpl({
   const prependHeightRef = useRef<number | null>(null);
   // Track the newest message id so only a freshly-appended message animates in.
   const animatedLastIdRef = useRef<string | null>(null);
+  // The chat whose existing messages we've already "seen" (baseline established),
+  // so opening a conversation shows it settled and only later arrivals animate in.
+  const seenChatRef = useRef<string | null | undefined>(null);
   // Deferred "re-pin to bottom" timers fired right after a chat opens, so async
   // content (media/images growing the list) can't leave us above the true bottom.
   const settleTimersRef = useRef<number[]>([]);
@@ -194,6 +197,15 @@ function VirtualizedChatListImpl({
   };
 
   const lastIndex = uniqueMessages.length - 1;
+
+  // First time we render this chat with messages loaded, treat the current newest
+  // as already-seen so the conversation opens SETTLED (no bubble sliding in). Only
+  // messages that arrive afterwards get `justAppended` and animate. Safe ref writes
+  // during render: idempotent and guarded per-chat.
+  if (uniqueMessages.length > 0 && seenChatRef.current !== chatId) {
+    seenChatRef.current = chatId;
+    animatedLastIdRef.current = keyOf(uniqueMessages[lastIndex]) ?? null;
+  }
 
   return (
     <div className="relative flex-1 overflow-hidden">

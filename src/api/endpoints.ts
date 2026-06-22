@@ -127,6 +127,9 @@ export const ENDPOINTS = {
     STATUS: (username: string) => `/presence/${username}`,
     BULK: "/presence/status", // fallback
     UPDATE: "/presence/status",
+    GHOST: "/presence/ghost", // PUT ?enabled=
+    INVISIBLE: "/presence/invisible", // PUT ?enabled=
+    HIDE_LAST_SEEN: "/presence/hide-last-seen", // PUT ?enabled=
     TYPING_START: (chatId: string) => `/presence/status`, // fallback
     TYPING_STOP: (chatId: string) => `/presence/status`, // fallback
   },

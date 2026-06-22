@@ -46,6 +46,21 @@ export const PresenceService = {
     return unwrapResponse(response)
   },
 
+  /** Toggle Ghost Mode — hides presence broadcasts (read receipts/typing) from others. */
+  setGhostMode: async (enabled: boolean): Promise<void> => {
+    await apiClient.put(ENDPOINTS.PRESENCE.GHOST, null, { params: { enabled } })
+  },
+
+  /** Toggle Invisible Mode — appear offline to others while still using the app. */
+  setInvisibleMode: async (enabled: boolean): Promise<void> => {
+    await apiClient.put(ENDPOINTS.PRESENCE.INVISIBLE, null, { params: { enabled } })
+  },
+
+  /** Toggle Hide Last Seen — others never see your "last seen" timestamp. */
+  setHideLastSeen: async (enabled: boolean): Promise<void> => {
+    await apiClient.put(ENDPOINTS.PRESENCE.HIDE_LAST_SEEN, null, { params: { enabled } })
+  },
+
   /** Signal start typing in a specific chat. */
   startTyping: async (chatId: string): Promise<void> => {
     await apiClient.post(ENDPOINTS.PRESENCE.TYPING_START(chatId))

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { useImageViewer, useVideoPlayer } from "@/components/providers"
 import type { MediaAttachment } from "./types"
 import { useCachedMedia } from "@/src/api/hooks/use-cached-media"
+import { useChatPrefs } from "@/lib/chat/chat-prefs-store"
 
 interface MessageMediaProps {
   media: MediaAttachment
@@ -23,6 +24,37 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const audioRef = useRef<HTMLAudioElement>(null)
+
+  // Respect the "Media auto-download" preference: when off, photos/videos show a
+  // tap-to-load placeholder instead of fetching automatically.
+  const mediaAutoDownload = useChatPrefs((s) => s.mediaAutoDownload)
+  const [loadRequested, setLoadRequested] = useState(false)
+  const gateMedia =
+    !mediaAutoDownload && !loadRequested && (media.type === "image" || media.type === "video")
+
+  if (gateMedia) {
+    return (
+      <motion.button
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        onClick={() => setLoadRequested(true)}
+        className="relative rounded-lg overflow-hidden max-w-[280px] mb-2 flex flex-col items-center justify-center gap-1.5 bg-muted text-muted-foreground p-6 border border-border cursor-pointer hover:bg-muted/70 transition-colors"
+        style={{
+          aspectRatio:
+            media.type === "video"
+              ? "16/9"
+              : media.width && media.height
+                ? `${media.width}/${media.height}`
+                : "4/3",
+        }}
+      >
+        <Download className="h-6 w-6" />
+        <span className="text-xs font-medium">
+          Tap to load {media.type === "video" ? "video" : "photo"}
+        </span>
+      </motion.button>
+    )
+  }
 
   // Sticker support (must check first as it uses type "image" or "sticker" from server)
   if (media.type === "sticker" || media.fileName?.includes("sticker")) {

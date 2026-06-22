@@ -2,6 +2,14 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { useChatPrefs, type ChatFontSize } from "@/lib/chat/chat-prefs-store";
+
+// Message-body text size per the user's Chats → font-size preference.
+const BODY_FONT_CLASS: Record<ChatFontSize, string> = {
+  small: "text-[13px]",
+  medium: "text-[14.5px]",
+  large: "text-[16.5px]",
+};
 
 interface BubbleShellProps {
   /** True for the current user's own (right-aligned) message. */
@@ -74,6 +82,7 @@ export function BubbleBody({
   hasMedia,
   align = "end",
 }: BubbleBodyProps) {
+  const fontSize = useChatPrefs((s) => s.fontSize);
   const timeInner = (
     <>
       <span className="text-[10px]">{time}</span>
@@ -101,7 +110,8 @@ export function BubbleBody({
     <div className="relative">
       <p
         className={cn(
-          "text-[14.5px] leading-snug whitespace-pre-wrap wrap-break-word",
+          BODY_FONT_CLASS[fontSize],
+          "leading-snug whitespace-pre-wrap wrap-break-word",
           hasMedia && "mt-1",
         )}
       >

@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { buildGiphyUrl } from "@/lib/giphy";
+import { useChatPrefs } from "@/lib/chat/chat-prefs-store";
 import type { ReplyTo, PendingAttachment } from "./types";
 
 interface MessageInputProps {
@@ -386,6 +387,7 @@ export function MessageInput({
   onRecordComplete,
   onSendMediaDirectly,
 }: MessageInputProps) {
+  const enterToSend = useChatPrefs((s) => s.enterToSend);
   const [message, setMessage] = useState("");
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -615,7 +617,9 @@ export function MessageInput({
   }, [message, onSend, onTyping, pendingAttachment]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Respect the user's "Enter is send" preference. When disabled, Enter inserts
+    // a newline (default textarea behaviour) and the send button is used instead.
+    if (e.key === "Enter" && !e.shiftKey && enterToSend) {
       e.preventDefault();
       handleSend();
     }

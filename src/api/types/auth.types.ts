@@ -30,6 +30,11 @@ export interface ResetPasswordPayload {
   confirmPassword: string
 }
 
+export interface ChangePasswordPayload {
+  currentPassword: string
+  newPassword: string
+}
+
 // ── Token data ────────────────────────────────────────────────────────────────
 /**
  * Access token returned in response body.

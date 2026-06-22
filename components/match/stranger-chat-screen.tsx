@@ -261,20 +261,6 @@ export function StrangerChatScreen({
             </div>
           </motion.div>
 
-          {/* Shared interests */}
-          {stranger.interests.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.15 }}
-              className="flex justify-center mb-4"
-            >
-              <div className="text-xs text-muted-foreground bg-muted/30 px-3 py-1 rounded-full border border-border/50">
-                Shared interests: {stranger.interests.join(", ")}
-              </div>
-            </motion.div>
-          )}
-
           {/* Messages */}
           <AnimatePresence mode="popLayout">
             {messages.map((message) => (

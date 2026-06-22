@@ -215,7 +215,7 @@ export function AppLayout({
         {/* Blurred glass overlay */}
         <motion.div
           style={{ opacity: headerBgOpacity }}
-          className="absolute inset-0 bg-background/80 dark:bg-black/55 backdrop-blur-[20px] border-b border-border/40 dark:border-white/5"
+          className="absolute inset-0 bg-background/90 dark:bg-black/90 backdrop-blur-[20px] border-b border-border/40 dark:border-white/5"
         />
 
         {/* Header content bar */}
@@ -241,7 +241,7 @@ export function AppLayout({
           >
             {hasSearch && (
               <div className="w-full max-w-45 sm:max-w-xs">
-                <div className="relative flex items-center bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-full px-3 py-1 transition-all focus-within:bg-black/10 dark:focus-within:bg-white/10 h-8">
+                <div className="relative flex items-center bg-black/10 dark:bg-white/10 border border-black/5 dark:border-white/5 rounded-full px-3 py-1 transition-all focus-within:bg-black/10 dark:focus-within:bg-white/10 h-8">
                   <Search className="h-3.5 w-3.5 text-muted-foreground mr-1.5 shrink-0" />
                   <input
                     type="text"

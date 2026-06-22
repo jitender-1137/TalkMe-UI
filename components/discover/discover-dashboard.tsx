@@ -31,6 +31,7 @@ import {
   LayoutGrid,
   List,
   Compass,
+  RefreshCw,
 } from "lucide-react";
 import { cn, getAvatarUrl } from "@/lib/utils";
 import { toast } from "sonner";
@@ -141,7 +142,7 @@ export function DiscoverDashboard() {
   }, [filtersReady, viewMode]);
 
   const queryClient = useQueryClient();
-  const { data: discoverData, isLoading } = useDiscoverProfiles(
+  const { data: discoverData, isLoading, isFetching, refetch } = useDiscoverProfiles(
     {
       q: query,
       gender: gender !== "all" ? gender : undefined,
@@ -253,8 +254,24 @@ export function DiscoverDashboard() {
         searchPlaceholder="Search by name, interest, or location..."
         searchValue={query}
         onSearchChange={setQuery}
+        onRefresh={async () => {
+          await refetch();
+        }}
         headerRight={
           <div className="flex items-center gap-2">
+            {/* Refresh */}
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 cursor-pointer"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              aria-label="Refresh"
+              title="Refresh"
+            >
+              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+            </Button>
+
             {/* View Mode Toggle */}
             <div className="flex items-center bg-muted/60 dark:bg-muted/40 p-0.5 rounded-lg border border-border/50">
               <Button

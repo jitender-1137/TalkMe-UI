@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { QueryProvider, ImageViewerProvider, VideoPlayerProvider, CreatePostProvider } from '@/components/providers'
+import { QueryProvider, ImageViewerProvider, VideoPlayerProvider, CreatePostProvider, ConfirmProvider } from '@/components/providers'
 import { PresenceProvider } from '@/components/presence'
 import { Toaster } from '@/components/ui/sonner'
 import { ZoomPreventer } from '@/components/zoom-preventer'
@@ -68,7 +68,9 @@ export default function RootLayout({
             <ImageViewerProvider>
               <VideoPlayerProvider>
                 <CreatePostProvider>
-                  {children}
+                  <ConfirmProvider>
+                    {children}
+                  </ConfirmProvider>
                   <SharedPostOpener />
                   <InstallFullscreenPrompt />
                   <Toaster />

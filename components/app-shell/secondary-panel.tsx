@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import {
   Search,
   MoreVertical,
@@ -67,7 +67,71 @@ const formatRelativeTime = (dateStr: string | undefined | null) => {
   return `${diffDays}d`;
 };
 
-function ConversationItem({
+/**
+ * Skip re-rendering a row unless something it actually displays changed. Dexie's
+ * live query emits a brand-new array (and new chat objects) on every update, and
+ * the parent re-renders on unrelated state — without this, every row re-rendered
+ * and its status/last-message appeared to "flip". Function props (onSelect/
+ * onContextMenu) are intentionally ignored: they only ever act on this row's id.
+ * Live presence is read via a hook inside the row, so this row still updates the
+ * instant ITS user's presence changes — it just no longer re-renders for others'.
+ */
+/** Compare the display-relevant fields of the participant lists (used as the
+ *  1:1 fallback when otherUser is absent, and for group membership changes). */
+function participantsEqual(a: Chat["participants"], b: Chat["participants"]): boolean {
+  if (a === b) return true;
+  const al = a?.length ?? 0;
+  const bl = b?.length ?? 0;
+  if (al !== bl) return false;
+  for (let i = 0; i < al; i++) {
+    const pa = a![i] as { id?: string; name?: string; username?: string; avatar?: string | null; presence?: string; gender?: string | null };
+    const pb = b![i] as { id?: string; name?: string; username?: string; avatar?: string | null; presence?: string; gender?: string | null };
+    if (pa.id !== pb.id) return false;
+    if (pa.name !== pb.name) return false;
+    if (pa.username !== pb.username) return false;
+    if (pa.avatar !== pb.avatar) return false;
+    if (pa.presence !== pb.presence) return false;
+    if (pa.gender !== pb.gender) return false;
+  }
+  return true;
+}
+
+function areConvItemPropsEqual(prev: ConvItemProps, next: ConvItemProps): boolean {
+  if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isTyping !== next.isTyping) return false;
+  if (prev.currentUserId !== next.currentUserId) return false;
+  const a = prev.conversation;
+  const b = next.conversation;
+  if (a === b) return true;
+  if (a.id !== b.id) return false;
+  if (a.name !== b.name) return false;
+  if (a.avatar !== b.avatar) return false;
+  // Chat type drives how the row is derived (1:1 otherUser vs group participants).
+  if ((a.chatType ?? a.type) !== (b.chatType ?? b.type)) return false;
+  if (!participantsEqual(a.participants, b.participants)) return false;
+  if ((a.unreadCount ?? 0) !== (b.unreadCount ?? 0)) return false;
+  if ((a.muted ?? a.isMuted) !== (b.muted ?? b.isMuted)) return false;
+  if ((a.pinned ?? a.isPinned) !== (b.pinned ?? b.isPinned)) return false;
+  if ((a.archived ?? a.isArchived) !== (b.archived ?? b.isArchived)) return false;
+  if (a.updatedAt !== b.updatedAt) return false;
+  const am = a.lastMessage;
+  const bm = b.lastMessage;
+  if (am?.content !== bm?.content) return false;
+  if (am?.timestamp !== bm?.timestamp) return false;
+  if (am?.status !== bm?.status) return false;
+  if (am?.isDeleted !== bm?.isDeleted) return false;
+  if (am?.senderId !== bm?.senderId) return false;
+  const ap = a.otherUser;
+  const bp = b.otherUser;
+  if (ap?.id !== bp?.id) return false;
+  if (ap?.name !== bp?.name) return false;
+  if (ap?.avatar !== bp?.avatar) return false;
+  if (ap?.presence !== bp?.presence) return false;
+  if (ap?.gender !== bp?.gender) return false;
+  return true;
+}
+
+const ConversationItem = memo(function ConversationItem({
   conversation,
   isSelected,
   onSelect,
@@ -192,7 +256,7 @@ function ConversationItem({
       </div>
     </motion.div>
   );
-}
+}, areConvItemPropsEqual);
 
 export function SecondaryPanel() {
   const { user } = useAuth();
@@ -283,7 +347,7 @@ export function SecondaryPanel() {
       }
     : undefined;
 
-  const filteredConversations = conversations
+  const filteredConversations = useMemo(() => conversations
     .filter((c) => {
       const isGroupChat = c.chatType === "GROUP" || c.type === "group";
 
@@ -321,7 +385,8 @@ export function SecondaryPanel() {
       const aTime = a.lastMessage?.timestamp || a.updatedAt || a.createdAt || "";
       const bTime = b.lastMessage?.timestamp || b.updatedAt || b.createdAt || "";
       return new Date(bTime).getTime() - new Date(aTime).getTime();
-    });
+    }),
+    [conversations, viewArchived, activeFilter, searchQuery, user?.id]);
 
   const handleSelectConversation = (id: string) => {
     // Opened from the conversation list → Back should return to the list, so

@@ -218,6 +218,21 @@ export async function putChatSafely(c: any): Promise<void> {
       if (new Date(existing.updatedAt).getTime() > new Date(mapped.updatedAt).getTime()) {
         mapped.updatedAt = existing.updatedAt;
       }
+    } else if (
+      mapped.lastMessage &&
+      existing.lastMessage &&
+      mapped.lastMessage.id === existing.lastMessage.id
+    ) {
+      // Same last message, but a sync payload (e.g. the chat-detail endpoint hit
+      // when a chat is opened) may omit the delivery status / sender. Backfill the
+      // fields we already have so the chat-list tick doesn't disappear on
+      // open/return. An incoming, more-advanced status is still respected.
+      if (!mapped.lastMessage.status && existing.lastMessage.status) {
+        mapped.lastMessage.status = existing.lastMessage.status;
+      }
+      if (!mapped.lastMessage.senderId && existing.lastMessage.senderId) {
+        mapped.lastMessage.senderId = existing.lastMessage.senderId;
+      }
     }
   }
   await db.chats.put(mapped);

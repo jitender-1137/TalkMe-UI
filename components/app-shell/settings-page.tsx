@@ -8,20 +8,21 @@ import {
   KeyRound,
   X,
   Palette,
-  LogOut,
   Image as ImageIcon,
   Trash2,
   ChevronDown,
-  MessageSquare,
   MessageCircle,
-  Users,
-  Phone,
   Bell,
   QrCode,
   Pencil,
   ChevronRight,
   ChevronLeft,
   HelpCircle,
+  FileText,
+  ShieldCheck,
+  Cookie,
+  Info,
+  MessageSquareText,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -35,22 +36,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { AvatarStatusBadge, PresenceSettings, PresenceDebugPanel } from "@/components/presence";
-import { usePresenceStore } from "@/lib/presence";
 import { AppearanceSettings } from "./appearance-settings";
-import { useAuth } from "./auth-context";
 import { cn } from "@/lib/utils";
 import { useProfile, useUpdateProfile, useUploadAvatar } from "@/src/api/hooks/useProfile";
 import { AvatarCropperModal } from "@/components/settings/avatar-cropper-modal";
-import { useLobbyStore } from "@/components/lobby/lobby-store";
-import { showSuccessToast, showErrorToast } from "@/src/api/error-handler";
-import {
-  ensurePushSubscription,
-  removePushSubscription,
-  isPushSupported,
-} from "@/lib/push/push-manager";
-import { detectInstallationType } from "@/lib/pwa/install-detection";
+import { showSuccessToast } from "@/src/api/error-handler";
 import {
   Select,
   SelectContent,
@@ -58,6 +48,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TermsModal } from "./terms-modal";
+import { PrivacyModal } from "./privacy-modal";
+import { CookieModal } from "./cookie-modal";
+import { AboutModal } from "./about-modal";
+import { ContactUsModal } from "./contact-us-modal";
+import { CopyrightFooter } from "./copyright-footer";
+import { useUrlModal } from "@/lib/navigation/use-url-modal";
+import type { InfoPage } from "./info-pages";
+import { AccountPage } from "@/components/settings/account-page";
+import { PrivacyPage } from "@/components/settings/privacy-page";
+import { ChatsPage } from "@/components/settings/chats-page";
+import { NotificationsPage } from "@/components/settings/notifications-page";
+import { HelpPage } from "@/components/settings/help-page";
 
 const ALLOWED_INTERESTS = [
   "ART",
@@ -88,7 +91,26 @@ interface UserProfile {
   username: string;
 }
 
-type SubView = "menu" | "edit-profile" | "preferences" | "appearance" | "account";
+type SubView =
+  | "menu"
+  | "edit-profile"
+  | "account"
+  | "privacy"
+  | "chats"
+  | "notifications"
+  | "appearance"
+  | "help";
+
+// Each drill-down sub-view maps to a nested hash segment (#profile/<segment>).
+const SUBVIEW_SEGMENT: Record<Exclude<SubView, "menu">, string> = {
+  "edit-profile": "edit-profile",
+  account: "account",
+  privacy: "privacy",
+  chats: "chats",
+  notifications: "notification",
+  appearance: "appearance",
+  help: "help-and-feedback",
+};
 
 function MetaLogo({ className }: { className?: string }) {
   return (
@@ -131,10 +153,6 @@ function NeonSkullAvatar({ className }: { className?: string }) {
 
 export function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const status = usePresenceStore((state) => state.status);
-  const invisibleMode = usePresenceStore((state) => state.invisibleMode);
-  const displayStatus = invisibleMode ? "offline" : status;
-  const { logout } = useAuth();
 
   // API hooks
   const { data: userProfile, isLoading: isProfileLoading } = useProfile();
@@ -142,15 +160,29 @@ export function SettingsPage() {
   const uploadAvatarMutation = useUploadAvatar();
 
   const [currentSubView, setCurrentSubView] = useState<SubView>("menu");
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [forgotEmail, setForgotEmail] = useState("");
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+
+  // Info pages (Terms / Privacy / Cookie / About / Contact) — each gets its own
+  // nested hash URL (#profile/<page>) and Back closes it.
+  const [legalPage, setLegalPage] = useState<InfoPage | null>(null);
+  const closeLegal = () => setLegalPage(null);
+  useUrlModal(legalPage === "terms-of-use", closeLegal, "terms-of-use");
+  useUrlModal(legalPage === "privacy-policy", closeLegal, "privacy-policy");
+  useUrlModal(legalPage === "cookie-policy", closeLegal, "cookie-policy");
+  useUrlModal(legalPage === "about", closeLegal, "about");
+  useUrlModal(legalPage === "contact-us", closeLegal, "contact-us");
+
+  // Drill-down sub-views are hash-addressable too; Back returns to the menu.
+  const goToMenu = () => setCurrentSubView("menu");
+  useUrlModal(currentSubView === "edit-profile", goToMenu, SUBVIEW_SEGMENT["edit-profile"]);
+  useUrlModal(currentSubView === "account", goToMenu, SUBVIEW_SEGMENT.account);
+  useUrlModal(currentSubView === "privacy", goToMenu, SUBVIEW_SEGMENT.privacy);
+  useUrlModal(currentSubView === "chats", goToMenu, SUBVIEW_SEGMENT.chats);
+  useUrlModal(currentSubView === "notifications", goToMenu, SUBVIEW_SEGMENT.notifications);
+  useUrlModal(currentSubView === "appearance", goToMenu, SUBVIEW_SEGMENT.appearance);
+  useUrlModal(currentSubView === "help", goToMenu, SUBVIEW_SEGMENT.help);
 
   const [profile, setProfile] = useState<UserProfile>({
     name: "",
@@ -233,27 +265,6 @@ export function SettingsPage() {
     setEditForm(profile);
   };
 
-  const handlePasswordChange = () => {
-    if (newPassword === confirmPassword && newPassword.length >= 6) {
-      showSuccessToast("Password updated successfully!");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setShowPasswordForm(false);
-      setCurrentSubView("menu");
-    } else {
-      showErrorToast(new Error("Passwords do not match or are too short (min 6 characters)"));
-    }
-  };
-
-  const handleForgotPassword = () => {
-    if (forgotEmail) {
-      showSuccessToast(`Password reset link sent to ${forgotEmail}`);
-      setForgotEmail("");
-      setShowForgotPassword(false);
-    }
-  };
-
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -289,23 +300,30 @@ export function SettingsPage() {
   };
 
   const getSubViewTitle = () => {
-    if (currentSubView === "edit-profile") return "Edit Profile";
-    if (currentSubView === "preferences") return "Preferences";
-    if (currentSubView === "appearance") return "Appearance";
-    if (currentSubView === "account") return "Account Settings";
-    return "";
-  };
-
-  const handleFeaturePlaceholder = (featureName: string) => {
-    showSuccessToast(`${featureName} feature coming soon`);
+    switch (currentSubView) {
+      case "edit-profile":
+        return "Edit Profile";
+      case "account":
+        return "Account";
+      case "privacy":
+        return "Privacy";
+      case "chats":
+        return "Chats";
+      case "notifications":
+        return "Notifications";
+      case "appearance":
+        return "Appearance";
+      case "help":
+        return "Help & Feedback";
+      default:
+        return "";
+    }
   };
 
   // Return to the main settings menu from any sub-view, discarding unsaved edits.
   const handleBack = () => {
     setCurrentSubView("menu");
     setEditForm(profile);
-    setShowPasswordForm(false);
-    setShowForgotPassword(false);
   };
 
   return (
@@ -335,7 +353,7 @@ export function SettingsPage() {
             </div>
           ) : currentSubView === "menu" ? (
             /* ── WHATSAPP STYLE YOU MENU ── */
-            <div className="px-4 py-2 space-y-6">
+            <div className="px-4 py-2 space-y-6 max-w-2xl mx-auto">
               {/* Header Actions */}
               <div className="flex items-center justify-between mb-2">
                 <span className="font-bold text-base text-foreground tracking-tight select-none truncate max-w-25">
@@ -387,10 +405,7 @@ export function SettingsPage() {
               {/* Group 2: Account, Privacy, Chats, Notifications */}
               <div className="bg-card rounded-[18px] divide-y divide-border/50 overflow-hidden border border-border">
                 <div
-                  onClick={() => {
-                    setCurrentSubView("account");
-                    setShowPasswordForm(true);
-                  }}
+                  onClick={() => setCurrentSubView("account")}
                   className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
                 >
                   <div className="flex items-center gap-3.5 text-foreground">
@@ -401,7 +416,7 @@ export function SettingsPage() {
                 </div>
 
                 <div
-                  onClick={() => setCurrentSubView("preferences")}
+                  onClick={() => setCurrentSubView("privacy")}
                   className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
                 >
                   <div className="flex items-center gap-3.5 text-foreground">
@@ -412,7 +427,7 @@ export function SettingsPage() {
                 </div>
 
                 <div
-                  onClick={() => setCurrentSubView("preferences")}
+                  onClick={() => setCurrentSubView("chats")}
                   className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
                 >
                   <div className="flex items-center gap-3.5 text-foreground">
@@ -423,7 +438,7 @@ export function SettingsPage() {
                 </div>
 
                 <div
-                  onClick={() => setCurrentSubView("preferences")}
+                  onClick={() => setCurrentSubView("notifications")}
                   className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
                 >
                   <div className="flex items-center gap-3.5 text-foreground">
@@ -448,7 +463,7 @@ export function SettingsPage() {
                 </div>
 
                 <div
-                  onClick={() => handleFeaturePlaceholder("Help and feedback")}
+                  onClick={() => setCurrentSubView("help")}
                   className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
                 >
                   <div className="flex items-center gap-3.5 text-foreground">
@@ -458,6 +473,67 @@ export function SettingsPage() {
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </div>
               </div>
+
+              {/* Group 4: Legal & About */}
+              <div className="bg-card rounded-[18px] divide-y divide-border/50 overflow-hidden border border-border">
+                <div
+                  onClick={() => setLegalPage("terms-of-use")}
+                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5 text-foreground">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-medium">Terms of Use</span>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+
+                <div
+                  onClick={() => setLegalPage("privacy-policy")}
+                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5 text-foreground">
+                    <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-medium">Privacy Policy</span>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+
+                <div
+                  onClick={() => setLegalPage("cookie-policy")}
+                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5 text-foreground">
+                    <Cookie className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-medium">Cookie Policy</span>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+
+                <div
+                  onClick={() => setLegalPage("about")}
+                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5 text-foreground">
+                    <Info className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-medium">About</span>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+
+                <div
+                  onClick={() => setLegalPage("contact-us")}
+                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5 text-foreground">
+                    <MessageSquareText className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-medium">Contact Us</span>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </div>
+
+              {/* Copyright */}
+              <CopyrightFooter className="pt-1 pb-2" />
             </div>
           ) : currentSubView === "edit-profile" ? (
             /* ── PROFILE EDIT MODE (Original profile tab UI styled cleanly) ── */
@@ -689,183 +765,16 @@ export function SettingsPage() {
                 </Button>
               </div>
             </div>
-          ) : currentSubView === "preferences" ? (
-            /* ── PREFERENCES VIEW (Original preferences tab) ── */
-            <div className="p-4 space-y-6 max-w-2xl mx-auto text-left">
-              {/* Profile Preview */}
-              <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card/40">
-                <AvatarStatusBadge
-                  fallback={(profile.name || "U").slice(0, 2).toUpperCase()}
-                  status={displayStatus}
-                  size="xl"
-                />
-                <div>
-                  <h3 className="font-semibold text-foreground">{profile.name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Status:{" "}
-                    <span className="capitalize font-medium text-foreground">{displayStatus}</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Presence Settings */}
-              <PresenceSettings />
-
-              {/* Notification Settings */}
-              <NotificationSettingsSection />
-
-              {/* Debug Panel */}
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium text-muted-foreground px-1">Developer Tools</h3>
-                <PresenceDebugPanel />
-              </div>
-
-              {/* Logout */}
-              <div className="p-4 rounded-lg border border-destructive/20 bg-destructive/5">
-                <h3 className="text-sm font-semibold text-foreground mb-1">Account</h3>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Sign out of your account on this device.
-                </p>
-                <Button
-                  variant="destructive"
-                  className="w-full gap-2 cursor-pointer"
-                  onClick={logout}
-                >
-                  <LogOut className="h-4 w-4" />
-                  Logout
-                </Button>
-              </div>
-            </div>
+          ) : currentSubView === "privacy" ? (
+            <PrivacyPage />
+          ) : currentSubView === "chats" ? (
+            <ChatsPage onOpenAppearance={() => setCurrentSubView("appearance")} />
+          ) : currentSubView === "notifications" ? (
+            <NotificationsPage />
           ) : currentSubView === "account" ? (
-            /* ── ACCOUNT / SECURITY SUBVIEW (Original Change Password Form) ── */
-            <div className="p-4 space-y-6 max-w-2xl mx-auto text-left">
-              {showPasswordForm ? (
-                <div className="space-y-4 p-4 rounded-lg border border-border bg-card/40">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold flex items-center gap-2 text-foreground">
-                      <Lock className="h-5 w-5" />
-                      Change Password
-                    </h3>
-                  </div>
-                  <div className="relative mt-4">
-                    <Input
-                      id="settings-current-password"
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="Enter current password"
-                      className="h-10"
-                    />
-                    <Label
-                      htmlFor="settings-current-password"
-                      className="absolute left-3 -top-2 z-10 px-1 bg-background text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
-                    >
-                      Current Password
-                    </Label>
-                  </div>
-                  <div className="relative mt-4">
-                    <Input
-                      id="settings-new-password"
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Enter new password"
-                      className="h-10"
-                    />
-                    <Label
-                      htmlFor="settings-new-password"
-                      className="absolute left-3 -top-2 z-10 px-1 bg-background text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
-                    >
-                      New Password
-                    </Label>
-                  </div>
-                  <div className="relative mt-4">
-                    <Input
-                      id="settings-confirm-password"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm new password"
-                      className="h-10"
-                    />
-                    <Label
-                      htmlFor="settings-confirm-password"
-                      className="absolute left-3 -top-2 z-10 px-1 bg-background text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
-                    >
-                      Confirm New Password
-                    </Label>
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <Button
-                      onClick={handlePasswordChange}
-                      className="flex-1 bg-primary hover:bg-primary/90 cursor-pointer"
-                    >
-                      Update Password
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setShowPasswordForm(false);
-                        setCurrentSubView("menu");
-                      }}
-                      variant="outline"
-                      className="flex-1 border-border hover:bg-card cursor-pointer"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : showForgotPassword ? (
-                <div className="space-y-4 p-4 rounded-lg border border-border bg-card/40">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold flex items-center gap-2 text-foreground">
-                      <KeyRound className="h-5 w-5" />
-                      Reset Password
-                    </h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Enter your email address and we'll send you a link to reset your password.
-                  </p>
-                  <div className="relative mt-4">
-                    <Input
-                      id="settings-forgot-email"
-                      type="email"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="Enter your email"
-                      className="h-10"
-                    />
-                    <Label
-                      htmlFor="settings-forgot-email"
-                      className="absolute left-3 -top-2 z-10 px-1 bg-background text-xs font-semibold text-muted-foreground/80 cursor-pointer select-none leading-none transition-all"
-                    >
-                      Email Address
-                    </Label>
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <Button
-                      onClick={handleForgotPassword}
-                      className="flex-1 bg-primary hover:bg-primary/90 cursor-pointer"
-                    >
-                      Send Reset Link
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setShowForgotPassword(false);
-                        setCurrentSubView("menu");
-                      }}
-                      variant="outline"
-                      className="flex-1 border-border hover:bg-card cursor-pointer"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 rounded-lg border border-border bg-card/40 text-center text-muted-foreground">
-                  Select an option from the main menu.
-                </div>
-              )}
-            </div>
+            <AccountPage />
+          ) : currentSubView === "help" ? (
+            <HelpPage onOpenLegal={setLegalPage} />
           ) : (
             /* ── APPEARANCE VIEW (Original Theme Selection) ── */
             <div className="p-4 space-y-6 max-w-2xl mx-auto text-left">
@@ -927,419 +836,13 @@ export function SettingsPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-export function NotificationSettingsSection() {
-  const { notificationSettings, updateNotificationSettings } = useLobbyStore();
-
-  // OS-level Web Push opt-in (must be triggered by a user gesture — this toggle).
-  const [pushSupported] = useState(() => isPushSupported());
-  const [pushOn, setPushOn] = useState(false);
-  const [pushBusy, setPushBusy] = useState(false);
-
-  useEffect(() => {
-    if (!pushSupported) return;
-    (async () => {
-      try {
-        const granted =
-          typeof Notification !== "undefined" && Notification.permission === "granted";
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        setPushOn(granted && !!sub);
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, [pushSupported]);
-
-  const handlePushToggle = async (val: boolean) => {
-    if (pushBusy) return;
-    setPushBusy(true);
-    try {
-      if (val) {
-        const ok = await ensurePushSubscription(detectInstallationType(), true);
-        setPushOn(ok);
-        if (ok) {
-          showSuccessToast("Push notifications enabled");
-        } else if (typeof Notification !== "undefined" && Notification.permission === "denied") {
-          showErrorToast(
-            new Error(
-              "Notifications are blocked. Allow them in your browser/site settings, then try again.",
-            ),
-          );
-        } else {
-          showErrorToast(new Error("Couldn't enable push notifications."));
-        }
-      } else {
-        await removePushSubscription();
-        setPushOn(false);
-        showSuccessToast("Push notifications disabled");
-      }
-    } catch (e) {
-      showErrorToast(e as Error);
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6 text-left">
-      {/* OS push opt-in — the control that actually enables background notifications */}
-      {pushSupported && (
-        <div className="bg-card text-card-foreground flex items-center justify-between gap-4 rounded-xl border border-border/80 p-6 shadow-sm">
-          <div className="space-y-0.5">
-            <Label className="text-sm font-medium">Push Notifications</Label>
-            <p className="text-xs text-muted-foreground">
-              Get message alerts even when TalkMe is closed. Add the app to your home screen for the
-              most reliable delivery.
-            </p>
-          </div>
-          <Switch
-            id="push-switch"
-            checked={pushOn}
-            disabled={pushBusy}
-            onCheckedChange={handlePushToggle}
-          />
-        </div>
-      )}
-
-      <div className="bg-card text-card-foreground flex flex-col gap-6 rounded-xl border border-border/80 py-6 shadow-sm">
-        <div className="px-6 pb-2">
-          <h3 className="text-lg font-semibold text-foreground">Notification Settings</h3>
-          <p className="text-sm text-muted-foreground">
-            Manage your sound, vibration, and alert preferences
-          </p>
-        </div>
-
-        {/* Global Sound Switch */}
-        <div className="px-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Notification Sounds</Label>
-              <p className="text-xs text-muted-foreground">
-                Play sounds for incoming messages and alerts globally
-              </p>
-            </div>
-            <Switch
-              id="global-sound-switch"
-              checked={notificationSettings.sound}
-              onCheckedChange={(val) => updateNotificationSettings({ sound: val })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between border-t border-border/50 pt-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Conversation Tones</Label>
-              <p className="text-xs text-muted-foreground">
-                Play sounds for incoming and outgoing messages
-              </p>
-            </div>
-            <Switch
-              id="conv-tones-switch"
-              checked={notificationSettings.conversationTones}
-              onCheckedChange={(val) => updateNotificationSettings({ conversationTones: val })}
-            />
-          </div>
-
-          <div className="flex items-center justify-between border-t border-border/50 pt-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Desktop Notifications</Label>
-              <p className="text-xs text-muted-foreground">
-                Show previews and banner alerts on your desktop
-              </p>
-            </div>
-            <Switch
-              id="desktop-notifications-switch"
-              checked={notificationSettings.desktop}
-              onCheckedChange={(val) => updateNotificationSettings({ desktop: val })}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Messages Notifications Card */}
-      <div className="bg-card text-card-foreground flex flex-col gap-6 rounded-xl border border-border/80 py-6 shadow-sm">
-        <div className="px-6 pb-2 border-b border-border/50 flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-primary" />
-          <h3 className="text-base font-semibold text-foreground">Messages</h3>
-        </div>
-
-        <div className="px-6 space-y-5">
-          {/* Message Notification Tone */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="message-tone"
-              className="text-xs font-semibold text-muted-foreground/80"
-            >
-              Notification Tone
-            </Label>
-            <div className="relative">
-              <select
-                id="message-tone"
-                value={notificationSettings.messageTone}
-                onChange={(e) => updateNotificationSettings({ messageTone: e.target.value })}
-                className="pl-3 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-sm shadow-xs outline-none cursor-pointer appearance-none focus-visible:border-ring focus-visible:ring-[3px] text-foreground"
-              >
-                <option value="default" className="bg-card text-foreground">
-                  Default (notification.wav)
-                </option>
-                <option value="chime" className="bg-card text-foreground">
-                  Chime
-                </option>
-                <option value="chord" className="bg-card text-foreground">
-                  Chord
-                </option>
-                <option value="ding" className="bg-card text-foreground">
-                  Ding
-                </option>
-                <option value="none" className="bg-card text-foreground">
-                  None (Silent)
-                </option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-            </div>
-          </div>
-
-          {/* Message Vibrate */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="message-vibrate"
-              className="text-xs font-semibold text-muted-foreground/80"
-            >
-              Vibrate
-            </Label>
-            <div className="relative">
-              <select
-                id="message-vibrate"
-                value={notificationSettings.messageVibrate}
-                onChange={(e) => updateNotificationSettings({ messageVibrate: e.target.value })}
-                className="pl-3 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-sm shadow-xs outline-none cursor-pointer appearance-none focus-visible:border-ring focus-visible:ring-[3px] text-foreground"
-              >
-                <option value="off" className="bg-card text-foreground">
-                  Off
-                </option>
-                <option value="default" className="bg-card text-foreground">
-                  Default
-                </option>
-                <option value="short" className="bg-card text-foreground">
-                  Short
-                </option>
-                <option value="long" className="bg-card text-foreground">
-                  Long
-                </option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-            </div>
-          </div>
-
-          {/* Message High Priority */}
-          <div className="flex items-center justify-between border-t border-border/50 pt-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Use high priority notifications</Label>
-              <p className="text-xs text-muted-foreground">
-                Show previews of notifications at the top of the screen
-              </p>
-            </div>
-            <Switch
-              id="message-high-priority"
-              checked={notificationSettings.messageHighPriority}
-              onCheckedChange={(val) => updateNotificationSettings({ messageHighPriority: val })}
-            />
-          </div>
-
-          {/* Message Reactions */}
-          <div className="flex items-center justify-between border-t border-border/50 pt-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Reaction Notifications</Label>
-              <p className="text-xs text-muted-foreground">
-                Show notifications for reactions to messages you send
-              </p>
-            </div>
-            <Switch
-              id="message-reactions"
-              checked={notificationSettings.messageReactions}
-              onCheckedChange={(val) => updateNotificationSettings({ messageReactions: val })}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Groups Notifications Card */}
-      <div className="bg-card text-card-foreground flex flex-col gap-6 rounded-xl border border-border/80 py-6 shadow-sm">
-        <div className="px-6 pb-2 border-b border-border/50 flex items-center gap-2">
-          <Users className="h-5 w-5 text-primary" />
-          <h3 className="text-base font-semibold text-foreground">Groups</h3>
-        </div>
-
-        <div className="px-6 space-y-5">
-          {/* Group Notification Tone */}
-          <div className="space-y-1.5">
-            <Label htmlFor="group-tone" className="text-xs font-semibold text-muted-foreground/80">
-              Notification Tone
-            </Label>
-            <div className="relative">
-              <select
-                id="group-tone"
-                value={notificationSettings.groupTone}
-                onChange={(e) => updateNotificationSettings({ groupTone: e.target.value })}
-                className="pl-3 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-sm shadow-xs outline-none cursor-pointer appearance-none focus-visible:border-ring focus-visible:ring-[3px] text-foreground"
-              >
-                <option value="default" className="bg-card text-foreground">
-                  Default (notification.wav)
-                </option>
-                <option value="chime" className="bg-card text-foreground">
-                  Chime
-                </option>
-                <option value="chord" className="bg-card text-foreground">
-                  Chord
-                </option>
-                <option value="ding" className="bg-card text-foreground">
-                  Ding
-                </option>
-                <option value="none" className="bg-card text-foreground">
-                  None (Silent)
-                </option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-            </div>
-          </div>
-
-          {/* Group Vibrate */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="group-vibrate"
-              className="text-xs font-semibold text-muted-foreground/80"
-            >
-              Vibrate
-            </Label>
-            <div className="relative">
-              <select
-                id="group-vibrate"
-                value={notificationSettings.groupVibrate}
-                onChange={(e) => updateNotificationSettings({ groupVibrate: e.target.value })}
-                className="pl-3 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-sm shadow-xs outline-none cursor-pointer appearance-none focus-visible:border-ring focus-visible:ring-[3px] text-foreground"
-              >
-                <option value="off" className="bg-card text-foreground">
-                  Off
-                </option>
-                <option value="default" className="bg-card text-foreground">
-                  Default
-                </option>
-                <option value="short" className="bg-card text-foreground">
-                  Short
-                </option>
-                <option value="long" className="bg-card text-foreground">
-                  Long
-                </option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-            </div>
-          </div>
-
-          {/* Group High Priority */}
-          <div className="flex items-center justify-between border-t border-border/50 pt-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Use high priority notifications</Label>
-              <p className="text-xs text-muted-foreground">
-                Show previews of notifications at the top of the screen
-              </p>
-            </div>
-            <Switch
-              id="group-high-priority"
-              checked={notificationSettings.groupHighPriority}
-              onCheckedChange={(val) => updateNotificationSettings({ groupHighPriority: val })}
-            />
-          </div>
-
-          {/* Group Reactions */}
-          <div className="flex items-center justify-between border-t border-border/50 pt-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Reaction Notifications</Label>
-              <p className="text-xs text-muted-foreground">
-                Show notifications for reactions to messages you send
-              </p>
-            </div>
-            <Switch
-              id="group-reactions"
-              checked={notificationSettings.groupReactions}
-              onCheckedChange={(val) => updateNotificationSettings({ groupReactions: val })}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Calls Notifications Card */}
-      <div className="bg-card text-card-foreground flex flex-col gap-6 rounded-xl border border-border/80 py-6 shadow-sm">
-        <div className="px-6 pb-2 border-b border-border/50 flex items-center gap-2">
-          <Phone className="h-5 w-5 text-primary" />
-          <h3 className="text-base font-semibold text-foreground">Calls</h3>
-        </div>
-
-        <div className="px-6 space-y-5">
-          {/* Call Ringtone */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="call-ringtone"
-              className="text-xs font-semibold text-muted-foreground/80"
-            >
-              Ringtone
-            </Label>
-            <div className="relative">
-              <select
-                id="call-ringtone"
-                value={notificationSettings.callRingtone}
-                onChange={(e) => updateNotificationSettings({ callRingtone: e.target.value })}
-                className="pl-3 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-sm shadow-xs outline-none cursor-pointer appearance-none focus-visible:border-ring focus-visible:ring-[3px] text-foreground"
-              >
-                <option value="default" className="bg-card text-foreground">
-                  Default
-                </option>
-                <option value="ringing" className="bg-card text-foreground">
-                  Ringing
-                </option>
-                <option value="none" className="bg-card text-foreground">
-                  None (Silent)
-                </option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-            </div>
-          </div>
-
-          {/* Call Vibrate */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="call-vibrate"
-              className="text-xs font-semibold text-muted-foreground/80"
-            >
-              Vibrate
-            </Label>
-            <div className="relative">
-              <select
-                id="call-vibrate"
-                value={notificationSettings.callVibrate}
-                onChange={(e) => updateNotificationSettings({ callVibrate: e.target.value })}
-                className="pl-3 pr-8 dark:bg-input/30 border-input h-10 w-full min-w-0 rounded-md border bg-card py-1 text-sm shadow-xs outline-none cursor-pointer appearance-none focus-visible:border-ring focus-visible:ring-[3px] text-foreground"
-              >
-                <option value="off" className="bg-card text-foreground">
-                  Off
-                </option>
-                <option value="default" className="bg-card text-foreground">
-                  Default
-                </option>
-                <option value="short" className="bg-card text-foreground">
-                  Short
-                </option>
-                <option value="long" className="bg-card text-foreground">
-                  Long
-                </option>
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Info pages — hash-addressable (#profile/<page>), Back closes */}
+      <TermsModal isOpen={legalPage === "terms-of-use"} onClose={closeLegal} />
+      <PrivacyModal isOpen={legalPage === "privacy-policy"} onClose={closeLegal} />
+      <CookieModal isOpen={legalPage === "cookie-policy"} onClose={closeLegal} />
+      <AboutModal isOpen={legalPage === "about"} onClose={closeLegal} />
+      <ContactUsModal isOpen={legalPage === "contact-us"} onClose={closeLegal} />
     </div>
   );
 }

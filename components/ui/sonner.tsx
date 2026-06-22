@@ -36,8 +36,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
-          // Translucent surface so the glass blur behind it shows through.
-          '--normal-bg': 'color-mix(in oklch, var(--popover) 80%, transparent)',
+          // High-opacity surface (blur is disabled app-wide for performance, so
+          // a near-solid background keeps the banner legible over content).
+          '--normal-bg': 'color-mix(in oklch, var(--popover) 96%, transparent)',
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'transparent',
           '--border-radius': '1.375rem',

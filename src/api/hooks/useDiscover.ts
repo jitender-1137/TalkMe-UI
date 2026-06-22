@@ -6,12 +6,15 @@ import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
 import { getAccessToken } from "../token-store"
 
-export function useDiscoverProfiles(params?: DiscoverParams) {
+export function useDiscoverProfiles(params?: DiscoverParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...QUERY_KEYS.DISCOVER.LIST, params],
     queryFn: () => DiscoverService.getDiscoverProfiles(params),
     staleTime: 30 * 1000,
-    enabled: typeof window !== "undefined" && Boolean(getAccessToken()),
+    // Caller can gate the fetch (e.g. until persisted filters have loaded) on top
+    // of the always-required window + auth-token checks.
+    enabled:
+      (options?.enabled ?? true) && typeof window !== "undefined" && Boolean(getAccessToken()),
   })
 }
 

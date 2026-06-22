@@ -7,6 +7,8 @@ import { X, MessageCircle, Phone, Video, Ban, AlertTriangle, MapPin, Calendar, L
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AvatarStatusBadge } from '@/components/presence'
+import { useLivePresence } from '@/lib/presence/live-status-store'
+import { useWebSocket } from '@/components/providers/websocket-provider'
 import { useUserById, useBlockUser, useUnblockUser, useReportUser } from '@/src/api/hooks/useProfile'
 import { useMutualFriends } from '@/src/api/hooks/useDiscover'
 import { useImageViewer } from '@/components/providers'
@@ -30,6 +32,20 @@ export function UserProfileModal({ contact, userId, isOpen, onClose, onMessage, 
 
   const { data: user, isLoading: isUserLoading } = useUserById(activeUserId || '')
   const { data: mutualData, isLoading: isMutualLoading } = useMutualFriends(activeUserId || '')
+
+  // Real-time presence from the shared store (keyed by user UUID), falling back
+  // to the fetched user's stored presence until a live update arrives.
+  const { subscribeToPresence } = useWebSocket()
+  const livePresence = useLivePresence(user?.id || activeUserId)
+  const presenceStatus = livePresence?.status ?? user?.presence ?? 'offline'
+  const presenceLabel =
+    presenceStatus === 'online' ? 'Online' : presenceStatus === 'idle' ? 'Away' : 'Offline'
+
+  // Subscribe to this user's presence while the modal is open — the profile can
+  // be opened for a non-contact (e.g. from Discover) that isn't otherwise subscribed.
+  useEffect(() => {
+    if (isOpen && user?.username) subscribeToPresence(user.username, true)
+  }, [isOpen, user?.username, subscribeToPresence])
 
   const blockMutation = useBlockUser()
   const unblockMutation = useUnblockUser()
@@ -126,7 +142,7 @@ export function UserProfileModal({ contact, userId, isOpen, onClose, onMessage, 
                     >
                       <AvatarStatusBadge
                         fallback={(user.name || 'U').slice(0, 2).toUpperCase()}
-                        status={user.presence || 'offline'}
+                        status={presenceStatus}
                         size="xl"
                         showStatusDot
                         src={user.avatar || undefined}
@@ -144,8 +160,16 @@ export function UserProfileModal({ contact, userId, isOpen, onClose, onMessage, 
                     <p className="text-xs text-muted-foreground mt-1">
                       @{user.username || user.name.toLowerCase()}
                     </p>
-                    <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 mt-2">
-                      {user.presence === 'online' ? 'Online' : 'Offline'}
+                    <p
+                      className={`text-xs font-medium mt-2 ${
+                        presenceStatus === 'online'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : presenceStatus === 'idle'
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-muted-foreground'
+                      }`}
+                    >
+                      {presenceLabel}
                     </p>
 
                     {/* Quick call/message bar */}

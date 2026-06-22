@@ -73,13 +73,19 @@ export function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="activeTabIndicator"
-                    className="absolute inset-x-1.5 inset-y-0.5 bg-primary/10 dark:bg-primary/20 rounded-full z-0"
+                    className="absolute inset-x-1 inset-y-0 rounded-2xl bg-primary/10 dark:bg-primary/15 border border-primary/40 dark:border-primary/50 shadow-[0_0_12px_rgba(34,197,94,0.35)] z-0"
                     transition={{ type: "spring", stiffness: 350, damping: 30 }}
                   />
                 )}
 
                 <div className="relative z-10 flex flex-col items-center">
-                  <div className="p-1 rounded-full flex items-center justify-center min-h-7 min-w-7">
+                  <div className="relative p-1 rounded-full flex items-center justify-center min-h-7 min-w-7">
+                    {/* Badge anchored to the icon (visible in active & inactive states) */}
+                    {badgeCount > 0 && (
+                      <span className="absolute top-0 -right-1 z-20 h-4 min-w-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none px-1 ring-2 ring-background dark:ring-[rgb(30,37,43)]">
+                        {badgeCount > 99 ? "99+" : badgeCount}
+                      </span>
+                    )}
                     {item.id === "settings" ? (
                       /* settings tab shows user avatar image (DP) */
                       <div
@@ -107,13 +113,6 @@ export function MobileBottomNav() {
                       />
                     )}
                   </div>
-
-                  {/* Badge */}
-                  {badgeCount > 0 && (
-                    <span className="absolute -top-1 -right-1.5 h-4 min-w-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold px-1 ring-1 ring-background">
-                      {badgeCount > 99 ? "99+" : badgeCount}
-                    </span>
-                  )}
 
                   <span
                     className={cn(

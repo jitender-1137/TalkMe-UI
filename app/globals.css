@@ -56,14 +56,20 @@
   --ease-ios-out: cubic-bezier(0.16, 1, 0.3, 1);       /* enter */
   --ease-ios-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275); /* pops */
 
-  /* Frosted glass */
-  --glass-blur: 30px;
-  --glass-saturate: 180%;
-  --glass-tint: 72%;   /* % of background mixed in; lower = clearer */
+  /* Frosted glass. backdrop-filter blur is a per-frame GPU task that re-
+     rasterizes whenever a fixed glass surface sits over scrolling/animating
+     content — the #1 cause of animation jank. We DISABLE the blur (--glass-fx:
+     none) and instead use high-opacity backgrounds (cheap alpha compositing, no
+     GPU blur), like iOS "Reduce Transparency". To re-enable, set --glass-fx
+     back to `blur(var(--glass-blur)) saturate(var(--glass-saturate))`. */
+  --glass-blur: 16px;
+  --glass-saturate: 150%;
+  --glass-tint: 92%;   /* % of background mixed in; higher = more solid (no blur now) */
   /* Composed filter kept in a custom property on purpose: Tailwind v4's
      Lightning CSS minifier strips a `backdrop-filter: blur(var()) saturate(var())`
-     declaration, but passes through `backdrop-filter: var(--glass-fx)` verbatim. */
-  --glass-fx: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+     declaration, but passes through `backdrop-filter: var(--glass-fx)` verbatim.
+     DISABLED for performance — `none` means zero GPU blur on every glass surface. */
+  --glass-fx: none;
 }
 
 .dark {
@@ -354,14 +360,14 @@
     background: color-mix(in oklch, var(--background) var(--glass-tint), transparent);
   }
   .glass-thin {
-    background: color-mix(in oklch, var(--background) 55%, transparent);
+    background: color-mix(in oklch, var(--background) 82%, transparent);
   }
   .glass-thick {
-    background: color-mix(in oklch, var(--background) 88%, transparent);
+    background: color-mix(in oklch, var(--background) 97%, transparent);
   }
   /* Glass over the card surface (sheets, context menus, popovers). */
   .glass-card {
-    background: color-mix(in oklch, var(--popover) 80%, transparent);
+    background: color-mix(in oklch, var(--popover) 95%, transparent);
   }
 }
 /* Opaque fallback where backdrop-filter is unsupported (older Firefox). */
@@ -471,4 +477,23 @@ html.standalone {
 /* Opaque fallback where backdrop-filter is unsupported. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   [data-sonner-toast].ios-toast { background: var(--popover); }
+}
+
+/* ============================================================
+   PERFORMANCE KILL-SWITCH — no backdrop blur anywhere.
+   backdrop-filter blur is a per-frame GPU rasterization; on fixed
+   surfaces (header, tab bar, modal backdrops) over scrolling/
+   animating content it re-rasterizes every frame and is the main
+   source of animation jank. This disables ALL of it app-wide —
+   both the `.glass*` classes and Tailwind's `backdrop-blur-*`
+   utilities — regardless of where it's set. Background opacity is
+   untouched, so surfaces stay translucent; they just don't blur.
+   To bring blur back, delete this block (and restore --glass-fx).
+   ============================================================ */
+*,
+*::before,
+*::after {
+  /* Unprefixed only — Lightning CSS adds -webkit- itself; writing both makes its
+     dedup keep ONLY the prefixed form, leaving Chrome's unprefixed blur intact. */
+  backdrop-filter: none !important;
 }

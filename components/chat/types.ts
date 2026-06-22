@@ -2,7 +2,7 @@ export type MessageStatus = "sending" | "sent" | "delivered" | "seen" | "failed"
 
 export type MessageType = "text" | "image" | "video" | "audio" | "document" | "sticker"
 
-export type PresenceActivity = "online" | "typing" | "recording" | "recording_video" | "offline"
+export type PresenceActivity = "online" | "idle" | "typing" | "recording" | "recording_video" | "offline"
 
 export interface Reaction {
   emoji: string

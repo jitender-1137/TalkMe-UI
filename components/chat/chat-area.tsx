@@ -232,11 +232,9 @@ export function ChatArea({
   const contactName = isGroup
     ? (chatDetail?.name ?? "Group Chat")
     : (otherParticipant?.name || otherParticipant?.username || "Unknown User")
-  // Live presence overrides the (possibly stale) Dexie value. Normalize to the
-  // header's online/offline vocabulary; idle/offline all read as offline here.
-  const liveStatus = livePartner
-    ? (livePartner.status === "online" ? "online" : "offline")
-    : undefined
+  // Live presence overrides the (possibly stale) Dexie value. Pass the full
+  // online/idle/offline status through so the header reflects idle (Away) too.
+  const liveStatus = livePartner ? livePartner.status : undefined
   const contactPresence = isGroup
     ? "online"
     : (partnerRecording ? partnerRecording

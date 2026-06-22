@@ -45,6 +45,8 @@ function getActivityText(activity: PresenceActivity, lastSeen?: string): string 
       return "recording video..."
     case "online":
       return "Online"
+    case "idle":
+      return "Away"
     case "offline":
       return lastSeen ? `Last seen ${lastSeen}` : "Offline"
   }
@@ -57,6 +59,8 @@ function getPresenceStatus(activity: PresenceActivity): "online" | "idle" | "off
     case "recording_video":
     case "online":
       return "online"
+    case "idle":
+      return "idle"
     default:
       return "offline"
   }

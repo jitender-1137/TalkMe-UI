@@ -98,14 +98,7 @@ export function FilterChipBar({
           >
             {chip.label}
             {chip.badge !== undefined && chip.badge > 0 && (
-              <span
-                className={cn(
-                  "h-4 min-w-4 flex items-center justify-center rounded-full text-[9px] font-bold px-1 shrink-0",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-black/10 dark:bg-white/10 text-muted-foreground",
-                )}
-              >
+              <span className="h-4 min-w-4 flex items-center justify-center rounded-full text-[9px] font-bold px-1 shrink-0 bg-red-500 text-white ring-2 ring-background shadow-sm shadow-red-500/40">
                 {chip.badge}
               </span>
             )}
@@ -292,14 +285,7 @@ export function AppLayout({
                     >
                       {chip.label}
                       {chip.badge !== undefined && chip.badge > 0 && (
-                        <span
-                          className={cn(
-                            "h-3.5 min-w-3.5 flex items-center justify-center rounded-full text-[8px] font-bold px-0.5 shrink-0",
-                            isActive
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-black/10 dark:bg-white/10 text-muted-foreground",
-                          )}
-                        >
+                        <span className="h-4 min-w-4 flex items-center justify-center rounded-full text-[9px] font-bold px-1 shrink-0 bg-red-500 text-white ring-2 ring-background shadow-sm shadow-red-500/40">
                           {chip.badge}
                         </span>
                       )}

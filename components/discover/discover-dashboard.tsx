@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useHashSync } from "@/hooks/use-hash-sync";
 import { useLivePresence } from "@/lib/presence/live-status-store";
 import { useWebSocket } from "@/components/providers/websocket-provider";
@@ -42,53 +42,132 @@ import {
 } from "@/src/api/hooks/useDiscover";
 import { useOpenOrCreateChat } from "@/src/api/hooks/useChats";
 import { useAddContact, useRemoveContact } from "@/src/api/hooks/useContacts";
+import { useProfile } from "@/src/api/hooks/useProfile";
+import {
+  DEFAULT_DISCOVER_FILTERS,
+  DEFAULT_COUNTRY,
+  loadDiscoverFilters,
+  saveDiscoverFilters,
+  loadDiscoverView,
+  saveDiscoverView,
+  getDiscoverTempCountry,
+  setDiscoverTempCountry,
+  clearDiscoverTempCountry,
+} from "@/lib/discover-filters";
+import { COUNTRY_FILTER_OPTIONS } from "@/lib/countries";
+import { getTabFromHash } from "@/lib/navigation/url-hash";
 import { QUERY_KEYS } from "@/src/api/query-keys";
 import { useChatContext } from "@/components/chat/chat-context";
 import { useNavigation } from "@/components/app-shell/navigation-context";
 import type { DiscoverProfile } from "@/src/api/types";
 import { UserProfileModal } from "@/components/chat/user-profile-modal";
 
-const COUNTRIES = [
-  "All",
-  "United States",
-  "United Kingdom",
-  "Canada",
-  "Australia",
-  "India",
-  "Germany",
-  "France",
-  "Spain",
-  "Italy",
-  "Japan",
-  "Brazil",
-  "Mexico",
-  "Global",
-];
-
 export function DiscoverDashboard() {
   const [query, setQuery] = useState("");
   const [selectedPerson, setSelectedPerson] = useState<DiscoverProfile | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [gender, setGender] = useState<string>("all");
-  const [country, setCountry] = useState<string>("All");
-  const [minAge, setMinAge] = useState<number>(18);
-  const [maxAge, setMaxAge] = useState<number>(99);
+  // Filters start at defaults (stable SSR/first paint), then get hydrated from
+  // localStorage in an effect — avoids a hydration mismatch on the static export.
+  const [gender, setGender] = useState<string>(DEFAULT_DISCOVER_FILTERS.gender);
+  // Country is temporary: restore an in-memory selection carried over from a
+  // chats round-trip, otherwise start at "All" (defaults to the user's country
+  // once the profile loads).
+  const [country, setCountry] = useState<string>(getDiscoverTempCountry() ?? DEFAULT_COUNTRY);
+  const [minAge, setMinAge] = useState<number>(DEFAULT_DISCOVER_FILTERS.minAge);
+  const [maxAge, setMaxAge] = useState<number>(DEFAULT_DISCOVER_FILTERS.maxAge);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  // Gate the first fetch until persisted filters are loaded, so we don't fetch
+  // with the wrong (default) values and then immediately refetch.
+  const [filtersReady, setFiltersReady] = useState(false);
+  // True when a temporary country was carried over on mount — stops the
+  // user-country default from overriding it.
+  const hadTempCountry = useRef(getDiscoverTempCountry() != null);
+
+  const { data: ownProfile } = useProfile();
+  const userCountry = ownProfile?.country ?? null;
+
   const handleProfileClose = useHashSync(
     !!selectedPerson,
     () => setSelectedPerson(null),
     "#profile",
   );
 
+  // 1. Hydrate persisted filters (gender + age) from localStorage on mount.
+  //    Country is NOT persisted — it's restored from the in-memory temp value
+  //    (set when returning from the chats tab), else defaults below.
+  useEffect(() => {
+    const saved = loadDiscoverFilters();
+    if (saved) {
+      if (typeof saved.gender === "string") setGender(saved.gender);
+      if (typeof saved.minAge === "number") setMinAge(saved.minAge);
+      if (typeof saved.maxAge === "number") setMaxAge(saved.maxAge);
+    }
+    const savedView = loadDiscoverView();
+    if (savedView) setViewMode(savedView);
+    setFiltersReady(true);
+  }, []);
+
+  // 2. Default the country to the logged-in user's country — only when there's
+  //    no temporary selection carried over (e.g. from a chats round-trip).
+  useEffect(() => {
+    if (!filtersReady || hadTempCountry.current) return;
+    if (userCountry && country === DEFAULT_COUNTRY) {
+      setCountry(userCountry);
+    }
+  }, [filtersReady, userCountry, country]);
+
+  // 3. Persist gender + age (NOT country) whenever they change.
+  useEffect(() => {
+    if (!filtersReady) return;
+    saveDiscoverFilters({ gender, minAge, maxAge });
+  }, [filtersReady, gender, minAge, maxAge]);
+
+  // 4. Reset the temporary country when leaving Discover for any tab OTHER than
+  //    chats. By unmount time the hash already points at the destination tab, so
+  //    a trip to message someone (#chats) keeps the filter; everything else
+  //    clears it, so it re-defaults to the user's country next time.
+  useEffect(() => {
+    return () => {
+      const destTab = getTabFromHash(window.location.hash);
+      if (destTab !== "chats") clearDiscoverTempCountry();
+    };
+  }, []);
+
+  // Persist the view mode (card grid vs list) once hydrated.
+  useEffect(() => {
+    if (!filtersReady) return;
+    saveDiscoverView(viewMode);
+  }, [filtersReady, viewMode]);
+
   const queryClient = useQueryClient();
-  const { data: discoverData, isLoading } = useDiscoverProfiles({
-    q: query,
-    gender: gender !== "all" ? gender : undefined,
-    country: country !== "All" ? country : undefined,
-    minAge,
-    maxAge,
-  });
+  const { data: discoverData, isLoading } = useDiscoverProfiles(
+    {
+      q: query,
+      gender: gender !== "all" ? gender : undefined,
+      country: country !== "All" ? country : undefined,
+      minAge,
+      maxAge,
+    },
+    { enabled: filtersReady },
+  );
+  // Ensure the dropdown always contains the currently-selected country and the
+  // user's own country, even if they aren't in the preset list.
+  const countryOptions = useMemo(() => {
+    const list = [...COUNTRY_FILTER_OPTIONS];
+    for (const c of [userCountry, country]) {
+      if (c && !list.includes(c)) list.push(c);
+    }
+    return list;
+  }, [userCountry, country]);
+
+  // Any filter that narrows the result set (drives the indicator dot).
+  const hasActiveFilters =
+    gender !== "all" ||
+    country !== "All" ||
+    minAge !== DEFAULT_DISCOVER_FILTERS.minAge ||
+    maxAge !== DEFAULT_DISCOVER_FILTERS.maxAge;
+
   const likeMutation = useLikeDiscoverProfile();
   const unlikeMutation = useUnlikeDiscoverProfile();
   const openOrCreateChat = useOpenOrCreateChat();
@@ -209,10 +288,14 @@ export function DiscoverDashboard() {
             <Button
               variant={showFilters ? "default" : "outline"}
               size="icon"
-              className="h-9 w-9 cursor-pointer"
+              className="relative h-9 w-9 cursor-pointer"
               onClick={() => setShowFilters(!showFilters)}
             >
               <Filter className="h-4 w-4" />
+              {/* Dot when any filter is narrowing results. */}
+              {hasActiveFilters && (
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
+              )}
             </Button>
           </div>
         }
@@ -224,36 +307,45 @@ export function DiscoverDashboard() {
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden flex flex-wrap gap-4 px-6 py-4 bg-muted/30 border-b border-border/50"
+              className="shrink-0 overflow-hidden flex flex-wrap gap-4 px-6 py-4 bg-muted/30 border-b border-border/50"
             >
-              {/* Gender Filter */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Gender</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="bg-muted text-foreground border-0 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-9 min-w-[120px]"
-                >
-                  <option value="all">All</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </div>
+              {/* Gender + Country — kept together on a single line */}
+              <div className="flex gap-4 w-full">
+                {/* Gender Filter */}
+                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                  <label className="text-xs font-semibold text-muted-foreground">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="w-full bg-muted text-foreground border-0 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-9"
+                  >
+                    <option value="all">All</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
 
-              {/* Country Filter */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Country</label>
-                <select
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className="bg-muted text-foreground border-0 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-9 min-w-[150px]"
-                >
-                  {COUNTRIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                {/* Country Filter */}
+                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                  <label className="text-xs font-semibold text-muted-foreground">Country</label>
+                  <select
+                    value={country}
+                    onChange={(e) => {
+                      // Remember the explicit choice in-memory so it survives a
+                      // chats round-trip (and marks it non-default).
+                      setCountry(e.target.value);
+                      setDiscoverTempCountry(e.target.value);
+                      hadTempCountry.current = true;
+                    }}
+                    className="w-full bg-muted text-foreground border-0 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-9"
+                  >
+                    {countryOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Age Range Filter */}
@@ -293,10 +385,14 @@ export function DiscoverDashboard() {
                   size="sm"
                   className="h-9 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                   onClick={() => {
-                    setGender("all");
-                    setCountry("All");
-                    setMinAge(18);
-                    setMaxAge(99);
+                    // Reset to defaults — country falls back to the user's own,
+                    // and the temporary override is cleared.
+                    setGender(DEFAULT_DISCOVER_FILTERS.gender);
+                    setMinAge(DEFAULT_DISCOVER_FILTERS.minAge);
+                    setMaxAge(DEFAULT_DISCOVER_FILTERS.maxAge);
+                    clearDiscoverTempCountry();
+                    hadTempCountry.current = false;
+                    setCountry(userCountry ?? DEFAULT_COUNTRY);
                   }}
                 >
                   Reset Filters
@@ -424,9 +520,9 @@ function PersonCard({
 
   const age = person.age;
   const isFemale = person.gender?.toLowerCase() === "female";
-  // Real-time online state from the shared store (falls back to the API value).
+  // Real-time presence from the shared store (falls back to the API value).
   const live = useLivePresence(person.id);
-  const isOnline = live ? live.status === "online" : !!person.isOnline;
+  const presenceStatus = live ? live.status : (person.isOnline ? "online" : "offline");
 
   return (
     <motion.div
@@ -453,8 +549,13 @@ function PersonCard({
               {initials}
             </AvatarFallback>
           </Avatar>
-          {isOnline && (
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-card rounded-full" />
+          {presenceStatus !== "offline" && (
+            <span
+              className={cn(
+                "absolute bottom-0 right-0 w-2.5 h-2.5 border border-card rounded-full",
+                presenceStatus === "online" ? "bg-emerald-500" : "bg-amber-500",
+              )}
+            />
           )}
         </div>
       </button>
@@ -477,7 +578,7 @@ function PersonCard({
                 {age ? `, ${age}` : ""}
               </button>
               <span className="text-[11px] text-muted-foreground">@{person.username}</span>
-              {(person.isVerified || person.verified) && (
+              {person.isVerified && (
                 <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[9px] px-1 py-0">
                   Verified
                 </Badge>
@@ -640,9 +741,9 @@ function PersonGridCard({
   const age = person.age;
   const avatarUrl = getAvatarUrl(person.avatar || person.images?.[0], person.gender);
   const isFemale = person.gender?.toLowerCase() === "female";
-  // Real-time online state from the shared store (falls back to the API value).
+  // Real-time presence from the shared store (falls back to the API value).
   const live = useLivePresence(person.id);
-  const isOnline = live ? live.status === "online" : !!person.isOnline;
+  const presenceStatus = live ? live.status : (person.isOnline ? "online" : "offline");
 
   return (
     <motion.div
@@ -674,13 +775,16 @@ function PersonGridCard({
       {/* Top Badges (Verified & Online) */}
       <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-10">
         <div className="flex items-center gap-1">
-          {isOnline && (
+          {presenceStatus === "online" && (
             <span className="flex h-2 w-2 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
           )}
-          {(person.isVerified || person.verified) && (
+          {presenceStatus === "idle" && (
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+          )}
+          {person.isVerified && (
             <Badge className="bg-blue-500 text-white text-[9px] px-1 py-0 border-0 shadow-xs">
               Verified
             </Badge>

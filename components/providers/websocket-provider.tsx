@@ -208,7 +208,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         // Tab foregrounded → server marks us ONLINE and broadcasts.
         client.publish({ destination: "/app/presence/visibility", body: "true" })
       } else if (event === "presence_hidden") {
-        // Tab hidden/backgrounded → server marks us OFFLINE and broadcasts.
+        // Tab hidden/backgrounded → server marks us IDLE (auto-OFFLINE after a
+        // 10-min grace) and broadcasts. Heartbeats keep flowing so the server
+        // knows we're still connected, just inactive.
         client.publish({ destination: "/app/presence/visibility", body: "false" })
       } else if (event === "stranger_typing_started") {
         if (strangerChatIdRef.current) {
@@ -947,7 +949,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       presenceHeartbeatRef.current = setInterval(beat, 30000)
 
       // Sync initial visibility: if we (re)connected while the tab is hidden,
-      // immediately tell the server we're offline (otherwise CONNECT just set us
+      // immediately tell the server we're idle (otherwise CONNECT just set us
       // ONLINE). The visibilitychange listener handles subsequent transitions.
       // Exception: on the Connect (match) tab, presence ignores display state, so
       // a hidden tab there stays ONLINE.
@@ -1287,9 +1289,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // Tab-visibility presence (WhatsApp-Web style): switching/backgrounding the tab
-  // marks us OFFLINE to others even though the socket stays alive; returning marks
-  // us ONLINE again. sendEvent no-ops when disconnected; on reconnect, onConnect
-  // re-syncs the initial visibility.
+  // marks us IDLE to others (auto-OFFLINE after a 10-min grace) even though the
+  // socket stays alive; returning marks us ONLINE again. sendEvent no-ops when
+  // disconnected; on reconnect, onConnect re-syncs the initial visibility.
   useEffect(() => {
     if (typeof document === "undefined") return
     const onVisibility = () => {

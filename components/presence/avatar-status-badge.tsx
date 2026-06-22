@@ -65,6 +65,10 @@ const pulseVariants = {
       ease: easeInOut,
     },
   },
+  idle: {
+    scale: 1,
+    opacity: 1,
+  },
   typing: {
     scale: 1,
     opacity: 1,

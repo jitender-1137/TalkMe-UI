@@ -10,6 +10,7 @@ import { useChats } from "@/src/api/hooks/useChats"
 import { useContacts } from "@/src/api/hooks/useContacts"
 import { useProfile } from "@/src/api/hooks/useProfile"
 import { MessageService } from "@/src/api/services/message.service"
+import { getLocalMaxSequence } from "@/src/api/hooks/useMessages"
 import { ChatService } from "@/src/api/services/chat.service"
 import type { Chat, Contact } from "@/src/api/types"
 import { formatMediaUrls, checkIsSameJar } from "@/src/api/client"
@@ -934,6 +935,38 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       console.log("[STOMP] Connected successfully", frame)
       setIsConnected(true)
 
+      // Heal-on-(re)connect: a disconnect window is exactly when real-time
+      // messages get dropped (the socket flaps, /topic broadcasts during the gap
+      // never arrive). onConnect fires on every reconnect, so re-pull the OPEN
+      // chat's recent window + tail and upsert by id (idempotent). This closes the
+      // tail-loss hole (a dropped LAST message has no follow-up to trigger the
+      // per-message gap-fill, so it would otherwise stay missing until reopen) and
+      // makes delivery complete within one reconnect instead of one chat-reopen.
+      const resyncChatId = typeof window !== "undefined" ? (window as any).activeChatId : undefined
+      if (resyncChatId) {
+        ;(async () => {
+          try {
+            const localMax = await getLocalMaxSequence(resyncChatId)
+            const recent = await MessageService.getMessages(resyncChatId, { limit: 50 })
+            const tail = localMax > 0 ? await MessageService.getMessagesAfter(resyncChatId, localMax) : []
+            const byId = new Map<string, any>()
+            for (const m of recent.items) byId.set(m.id, m)
+            for (const m of tail) byId.set(m.id, m)
+            if (byId.size > 0) {
+              await db.transaction("rw", db.messages, async () => {
+                for (const m of byId.values()) {
+                  await db.messages.put(mapResponseToLocalMessage(resyncChatId, m))
+                }
+              })
+            }
+          } catch (e) {
+            console.warn("[WebSocket] reconnect resync failed:", e)
+          }
+        })()
+      }
+      // Refresh the chat list too so previews/unread/last-message heal after a gap.
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.CHATS.LIST })
+
       // Application-level presence heartbeat every 30s. The server's watchdog
       // marks the user OFFLINE if these stop for >60s (tab closed, crash, sleep,
       // network loss) — server-authoritative, never trusting client state.
@@ -1206,6 +1239,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       // Sync active topics
       syncChatSubscriptions(client)
       syncContactSubscriptions(client)
+
+      // Re-establish STICKY presence subscriptions (open chat partner, discover people,
+      // profile modal). onWebSocketClose cleared contactSubscriptionsRef, and the
+      // component effects that registered these don't re-run on a reconnect — so without
+      // this, a reconnect strands them and live status stops updating until a full page
+      // reload. stickyPresenceRef survives reconnects precisely so we can replay them here.
+      stickyPresenceRef.current.forEach((username) => subscribeToPresence(username, true))
 
       // markAllAsDelivered is now handled via separate useEffect to prevent race conditions with profile loading
     }

@@ -9,7 +9,37 @@ export interface UserPresence {
   lastSeen: string | null
 }
 
+export interface MyPresenceSettings {
+  ghostMode: boolean
+  invisibleMode: boolean
+  hideLastSeen: boolean
+}
+
 export const PresenceService = {
+  /**
+   * Fetch the current user's own privacy settings from the backend (source of truth),
+   * used to hydrate the local toggle state on login so it's correct even on a fresh
+   * browser/device where localStorage is empty.
+   */
+  getMySettings: async (username: string): Promise<MyPresenceSettings> => {
+    const response = await apiClient.get<{
+      success: boolean
+      message: string
+      data: {
+        ghostModeEnabled?: boolean
+        invisibleModeEnabled?: boolean
+        hideLastSeenEnabled?: boolean
+      }
+      timestamp: string
+    }>(ENDPOINTS.PRESENCE.STATUS(username))
+    const d = unwrapResponse(response)
+    return {
+      ghostMode: !!d?.ghostModeEnabled,
+      invisibleMode: !!d?.invisibleModeEnabled,
+      hideLastSeen: !!d?.hideLastSeenEnabled,
+    }
+  },
+
   /** Fetch presence status for a user. */
   getUserPresence: async (userId: string): Promise<UserPresence> => {
     const response = await apiClient.get<{

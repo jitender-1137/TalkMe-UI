@@ -10,6 +10,7 @@ import {
   ensurePushSubscription,
   removePushSubscription,
   isPushSupported,
+  setPushOptOut,
 } from "@/lib/push/push-manager";
 import { detectInstallationType } from "@/lib/pwa/install-detection";
 
@@ -53,6 +54,8 @@ export function NotificationSettingsSection() {
         const ok = await ensurePushSubscription(detectInstallationType(), true);
         setPushOn(ok);
         if (ok) {
+          // User explicitly enabled → clear the opt-out so auto-resubscribe is allowed.
+          setPushOptOut(false);
           showSuccessToast("Push notifications enabled");
         } else if (typeof Notification !== "undefined" && Notification.permission === "denied") {
           showErrorToast(
@@ -61,9 +64,13 @@ export function NotificationSettingsSection() {
             ),
           );
         } else {
-          showErrorToast(new Error("Couldn't enable push notifications."));
+          // permission is still "default" → the prompt was dismissed without choosing.
+          showErrorToast(new Error("Notification permission was dismissed. Tap the toggle and choose Allow."));
         }
       } else {
+        // User explicitly disabled → remember it so we don't silently re-subscribe
+        // on the next app open (browser permission stays "granted").
+        setPushOptOut(true);
         await removePushSubscription();
         setPushOn(false);
         showSuccessToast("Push notifications disabled");

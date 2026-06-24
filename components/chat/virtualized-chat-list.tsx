@@ -137,12 +137,23 @@ function VirtualizedChatListImpl({
         prependHeightRef.current = null;
       } else if (lastChanged) {
         // New message at the bottom: follow for own messages, or if near bottom.
-        // Always smooth so existing messages visibly slide up (native-app feel).
         const isOwn = lastMsg?.isSent === true;
         if (isOwn || isNearBottomRef.current) {
-          requestAnimationFrame(() => {
-            el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-          });
+          const pin = (smooth: boolean) => {
+            const node = parentRef.current;
+            if (node) node.scrollTo({ top: node.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+          };
+          // Smooth follow first, so existing messages visibly slide up (native feel)...
+          requestAnimationFrame(() => pin(true));
+          // ...then re-assert the TRUE bottom as layout settles. A single rAF scroll
+          // snapshots scrollHeight too early: right after a send the just-added bubble
+          // is still laying out AND the input shrinks back as the draft clears, both
+          // of which grow the list after the scroll — so the smooth animation lands
+          // short of the bottom. Instant re-pins catch that late growth.
+          settleTimersRef.current.push(
+            window.setTimeout(() => pin(false), 150),
+            window.setTimeout(() => pin(false), 400),
+          );
         }
       }
     }

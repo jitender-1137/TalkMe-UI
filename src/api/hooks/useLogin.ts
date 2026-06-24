@@ -5,6 +5,7 @@ import { AuthService } from "../services/auth.service"
 import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
 import { getAccessToken } from "../token-store"
+import { removePushSubscription } from "@/lib/push/push-manager"
 import type {
   LoginCredentials,
   SignupCredentials,
@@ -111,7 +112,16 @@ export function useLogout() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: AuthService.logout,
+    mutationFn: async () => {
+      // Drop THIS device's push subscription first (needs auth) so a signed-out
+      // device stops receiving push notifications. Best-effort and time-bounded —
+      // it must NEVER block logout (e.g. if the service worker never becomes ready).
+      await Promise.race([
+        removePushSubscription().catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ])
+      return AuthService.logout()
+    },
     onSuccess: () => {
       queryClient.clear()
       showSuccessToast("Signed out successfully")

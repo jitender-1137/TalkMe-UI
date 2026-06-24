@@ -6,6 +6,7 @@ import { detectInstallationType } from "@/lib/pwa/install-detection"
 import {
   ensurePushSubscription,
   refreshPushSubscription,
+  isPushOptedOut,
 } from "@/lib/push/push-manager"
 import { PushService } from "@/src/api/services/push.service"
 import { setBadge } from "@/lib/badge/badge"
@@ -40,12 +41,17 @@ export function NotificationSetup() {
       } catch {
         /* non-fatal */
       }
-      // Silently (re)subscribe ONLY if the user already granted permission.
-      // First-time permission must come from a user gesture (the Settings
-      // "Push notifications" toggle) — auto-prompting on load is blocked by
-      // most browsers, so we don't attempt it here.
+      // Silently (re)subscribe ONLY if the user already granted permission AND has
+      // not explicitly turned push off on this device. Without the opt-out check we'd
+      // re-enable push on the next app open right after the user disabled it (the
+      // browser permission stays "granted"). First-time permission must still come
+      // from a user gesture (the Settings toggle).
       try {
-        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        if (
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted" &&
+          !isPushOptedOut()
+        ) {
           await ensurePushSubscription(type, false)
         }
       } catch {
@@ -87,7 +93,7 @@ export function NotificationSetup() {
       if (!isAuthenticated || isGuest) return
       const type = detectInstallationType()
       PushService.updateInstallation(type).catch(() => {})
-      if (type !== "BROWSER") ensurePushSubscription(type, false).catch(() => {})
+      if (type !== "BROWSER" && !isPushOptedOut()) ensurePushSubscription(type, false).catch(() => {})
     }
     mq.addEventListener?.("change", onChange)
     return () => mq.removeEventListener?.("change", onChange)
@@ -100,7 +106,8 @@ export function NotificationSetup() {
       const data = e.data
       if (!data) return
       if (data.type === "PUSH_SUBSCRIPTION_CHANGED") {
-        refreshPushSubscription(detectInstallationType()).catch(() => {})
+        // Don't recreate a subscription the user deliberately turned off.
+        if (!isPushOptedOut()) refreshPushSubscription(detectInstallationType()).catch(() => {})
       } else if (data.type === "OPEN_CHAT" && data.chatId) {
         // Reuse AppShell's existing chat:open handler to navigate to the conversation.
         window.dispatchEvent(new CustomEvent("chat:open", { detail: { chatId: data.chatId } }))

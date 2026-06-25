@@ -14,7 +14,6 @@ import {
   MessageCircle,
   Bell,
   QrCode,
-  Pencil,
   ChevronRight,
   ChevronLeft,
   HelpCircle,
@@ -23,7 +22,11 @@ import {
   Cookie,
   Info,
   MessageSquareText,
+  Settings,
+  User,
+  Users,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +42,9 @@ import { Badge } from "@/components/ui/badge";
 import { AppearanceSettings } from "./appearance-settings";
 import { cn } from "@/lib/utils";
 import { useProfile, useUpdateProfile, useUploadAvatar } from "@/src/api/hooks/useProfile";
+import { useContactRequests } from "@/src/api/hooks/useContacts";
+import { FriendsOverlay } from "@/components/friends";
+import { useScrollRestore } from "@/lib/navigation/scroll-restore";
 import { AvatarCropperModal } from "@/components/settings/avatar-cropper-modal";
 import { showSuccessToast } from "@/src/api/error-handler";
 import {
@@ -151,13 +157,142 @@ function NeonSkullAvatar({ className }: { className?: string }) {
   );
 }
 
+/** Octagon gear badge for the Settings header (project green/teal). */
+function SettingsBadge() {
+  return (
+    <div className="relative h-12 w-12 shrink-0 drop-shadow-[0_0_12px_rgba(16,185,129,0.45)]">
+      <svg viewBox="0 0 56 56" className="absolute inset-0 h-full w-full">
+        <defs>
+          <linearGradient id="set-badge" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="oklch(0.75 0.15 180)" />
+            <stop offset="100%" stopColor="oklch(0.7 0.18 155)" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M28 3 L46 11 L54 28 L46 45 L28 53 L10 45 L2 28 L10 11 Z"
+          fill="url(#set-badge)"
+          fillOpacity="0.16"
+          stroke="url(#set-badge)"
+          strokeWidth="2"
+        />
+      </svg>
+      <Settings className="absolute inset-0 m-auto h-6 w-6 text-primary" />
+    </div>
+  );
+}
+
+/** Flowing green/teal wave backdrop for the Settings header. */
+function AuroraWaves() {
+  return (
+    <svg
+      viewBox="0 0 900 200"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden
+      className="pointer-events-none absolute inset-0 h-full w-full opacity-80"
+    >
+      <defs>
+        <linearGradient id="set-wave" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="oklch(0.78 0.18 160)" stopOpacity="0" />
+          <stop offset="55%" stopColor="oklch(0.8 0.18 165)" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="oklch(0.7 0.17 180)" stopOpacity="0" />
+        </linearGradient>
+        <radialGradient id="set-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="oklch(0.8 0.2 165)" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="oklch(0.8 0.2 165)" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="650" cy="80" rx="220" ry="90" fill="url(#set-glow)">
+        <animate attributeName="opacity" values="0.7;1;0.7" dur="6s" repeatCount="indefinite" />
+      </ellipse>
+      <g fill="none" stroke="url(#set-wave)" strokeLinecap="round">
+        <path d="M340 150 C 520 60, 640 70, 880 120" strokeWidth="2.5" strokeOpacity="0.9">
+          <animateTransform attributeName="transform" type="translate" values="0 0; 0 -8; 0 0" dur="7s" repeatCount="indefinite" />
+        </path>
+        <path d="M380 170 C 560 90, 680 95, 900 140" strokeWidth="1.5" strokeOpacity="0.6">
+          <animateTransform attributeName="transform" type="translate" values="0 0; 0 6; 0 0" dur="8s" repeatCount="indefinite" />
+        </path>
+        <path d="M420 130 C 560 70, 700 60, 880 100" strokeWidth="1" strokeOpacity="0.5">
+          <animateTransform attributeName="transform" type="translate" values="0 0; 0 -5; 0 0" dur="6.5s" repeatCount="indefinite" />
+        </path>
+      </g>
+    </svg>
+  );
+}
+
+/** Settings header banner: gear badge + title + subtitle over the wave backdrop. */
+function SettingsHeaderBanner() {
+  return (
+    <div
+      className="relative overflow-hidden px-4 md:px-6 border-b border-border/40"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+    >
+      <AuroraWaves />
+      <div className="relative z-10 flex items-center gap-3.5 h-[84px]">
+        <SettingsBadge />
+        <div className="min-w-0">
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">Settings</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Manage your experience</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A single settings row with a colorful gradient icon tile. */
+function SettingRow({
+  icon: Icon,
+  label,
+  tile,
+  value,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  tile: string;
+  value?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full px-3.5 py-3 flex items-center gap-3.5 hover:bg-muted/20 active:bg-muted/40 transition-colors cursor-pointer text-left"
+    >
+      <span
+        className={cn(
+          "h-9 w-9 rounded-xl flex items-center justify-center shrink-0 bg-gradient-to-br shadow-sm",
+          tile,
+        )}
+      >
+        <Icon className="h-[18px] w-[18px] text-white" />
+      </span>
+      <span className="flex-1 text-[15px] font-medium text-foreground truncate">{label}</span>
+      {value && (
+        <span className="text-sm text-muted-foreground rounded-full bg-muted/60 px-2.5 py-0.5">
+          {value}
+        </span>
+      )}
+      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+    </button>
+  );
+}
+
 export function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Preserve scroll across tab switches. No background-lock: sub-views (Account,
+  // Privacy, …) render INSIDE this same scroller and register URL overlays, so
+  // locking on overlay-open would freeze the sub-view the user is reading.
+  useScrollRestore(scrollRef, "tab:settings");
+  const { theme } = useTheme();
+  const themeLabel = theme === "light" ? "Light" : theme === "system" ? "System" : "Dark";
 
   // API hooks
   const { data: userProfile, isLoading: isProfileLoading } = useProfile();
   const updateProfileMutation = useUpdateProfile();
   const uploadAvatarMutation = useUploadAvatar();
+  const { data: contactRequests = [] } = useContactRequests();
+  const pendingRequestsCount = contactRequests.length;
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   const [currentSubView, setCurrentSubView] = useState<SubView>("menu");
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
@@ -329,6 +464,7 @@ export function SettingsPage() {
   return (
     <div className="h-full w-full bg-background">
       <div
+        ref={scrollRef}
         className={cn("relative h-full w-full flex flex-col overflow-auto bg-background md:pb-0")}
       >
         <div className="flex-1 w-full mx-auto pb-24">
@@ -352,189 +488,121 @@ export function SettingsPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : currentSubView === "menu" ? (
-            /* ── WHATSAPP STYLE YOU MENU ── */
-            <div className="px-4 py-2 space-y-6 max-w-2xl mx-auto">
-              {/* Header Actions */}
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-bold text-base text-foreground tracking-tight select-none truncate max-w-25">
-                  You
-                </span>
-                <div className="flex items-center gap-1 bg-card/80 rounded-full p-1 border border-border">
-                  <button
-                    onClick={() => setShowQrModal(true)}
-                    className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-foreground transition-colors"
-                  >
-                    <QrCode className="h-4.5 w-4.5" />
-                  </button>
-                  <div className="h-4 w-px bg-muted" />
-                  <button
-                    onClick={handleEditStart}
-                    className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center text-foreground transition-colors"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
+            /* ── SETTINGS MENU (colorful, sectioned) ── */
+            <>
+              <SettingsHeaderBanner />
 
-              {/* Circular Avatar */}
-              <div className="flex flex-col items-center justify-center">
-                <div
-                  onClick={handleEditStart}
-                  className="relative h-27.5 w-27.5 rounded-full overflow-hidden border border-border/80 flex items-center justify-center shadow-2xl cursor-pointer hover:opacity-90 transition-opacity"
-                >
-                  {profile.profileImage ? (
-                    <img
-                      src={profile.profileImage}
-                      alt={profile.name}
-                      className="w-full h-full object-cover"
+              <div className="px-4 py-4 space-y-6 max-w-2xl mx-auto">
+                {/* Account */}
+                <section>
+                  <h3 className="px-1 mb-2.5 text-lg font-bold text-foreground">Account</h3>
+                  <div className="bg-card rounded-2xl divide-y divide-border/50 overflow-hidden border border-border">
+                    <SettingRow
+                      icon={User}
+                      label="Edit Profile"
+                      tile="from-violet-500 to-purple-600"
+                      onClick={handleEditStart}
                     />
-                  ) : (
-                    <NeonSkullAvatar />
-                  )}
-                </div>
+                    <SettingRow
+                      icon={Users}
+                      label="Friends"
+                      tile="from-blue-500 to-indigo-600"
+                      value={pendingRequestsCount > 0 ? String(pendingRequestsCount) : undefined}
+                      onClick={() => setFriendsOpen(true)}
+                    />
+                    <SettingRow
+                      icon={Lock}
+                      label="Privacy & Safety"
+                      tile="from-teal-500 to-cyan-600"
+                      onClick={() => setCurrentSubView("privacy")}
+                    />
+                    <SettingRow
+                      icon={Bell}
+                      label="Notifications"
+                      tile="from-emerald-500 to-green-600"
+                      onClick={() => setCurrentSubView("notifications")}
+                    />
+                    <SettingRow
+                      icon={KeyRound}
+                      label="Account Settings"
+                      tile="from-amber-500 to-orange-600"
+                      onClick={() => setCurrentSubView("account")}
+                    />
+                  </div>
+                </section>
 
-                {/* Display Name & verify/plus badge */}
-                <h2 className="text-2xl font-bold tracking-wide text-foreground uppercase mt-4 flex items-center gap-2 justify-center">
-                  {profile.name || "YOU"}
-                </h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  @{profile.username || "user"}
-                </p>
+                {/* General */}
+                <section>
+                  <h3 className="px-1 mb-2.5 text-lg font-bold text-foreground">General</h3>
+                  <div className="bg-card rounded-2xl divide-y divide-border/50 overflow-hidden border border-border">
+                    <SettingRow
+                      icon={Palette}
+                      label="Appearance"
+                      tile="from-fuchsia-500 to-purple-600"
+                      value={themeLabel}
+                      onClick={() => setCurrentSubView("appearance")}
+                    />
+                    <SettingRow
+                      icon={MessageCircle}
+                      label="Chats"
+                      tile="from-sky-500 to-blue-600"
+                      onClick={() => setCurrentSubView("chats")}
+                    />
+                    <SettingRow
+                      icon={HelpCircle}
+                      label="Help & Feedback"
+                      tile="from-indigo-500 to-violet-600"
+                      onClick={() => setCurrentSubView("help")}
+                    />
+                    <SettingRow
+                      icon={QrCode}
+                      label="My QR Code"
+                      tile="from-pink-500 to-rose-600"
+                      onClick={() => setShowQrModal(true)}
+                    />
+                  </div>
+                </section>
+
+                {/* About */}
+                <section>
+                  <h3 className="px-1 mb-2.5 text-lg font-bold text-foreground">About</h3>
+                  <div className="bg-card rounded-2xl divide-y divide-border/50 overflow-hidden border border-border">
+                    <SettingRow
+                      icon={FileText}
+                      label="Terms of Use"
+                      tile="from-slate-500 to-slate-700"
+                      onClick={() => setLegalPage("terms-of-use")}
+                    />
+                    <SettingRow
+                      icon={ShieldCheck}
+                      label="Privacy Policy"
+                      tile="from-slate-500 to-slate-700"
+                      onClick={() => setLegalPage("privacy-policy")}
+                    />
+                    <SettingRow
+                      icon={Cookie}
+                      label="Cookie Policy"
+                      tile="from-slate-500 to-slate-700"
+                      onClick={() => setLegalPage("cookie-policy")}
+                    />
+                    <SettingRow
+                      icon={Info}
+                      label="About"
+                      tile="from-slate-500 to-slate-700"
+                      onClick={() => setLegalPage("about")}
+                    />
+                    <SettingRow
+                      icon={MessageSquareText}
+                      label="Contact Us"
+                      tile="from-slate-500 to-slate-700"
+                      onClick={() => setLegalPage("contact-us")}
+                    />
+                  </div>
+                </section>
+
+                <CopyrightFooter className="pt-1 pb-2" />
               </div>
-
-              {/* Group 2: Account, Privacy, Chats, Notifications */}
-              <div className="bg-card rounded-[18px] divide-y divide-border/50 overflow-hidden border border-border">
-                <div
-                  onClick={() => setCurrentSubView("account")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <KeyRound className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Account</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setCurrentSubView("privacy")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <Lock className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Privacy</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setCurrentSubView("chats")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <MessageCircle className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Chats</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setCurrentSubView("notifications")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <Bell className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Notifications</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </div>
-
-              {/* Group 3: Help and feedback */}
-              <div className="bg-card rounded-[18px] divide-y divide-border/50 overflow-hidden border border-border">
-                <div
-                  onClick={() => setCurrentSubView("appearance")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <Palette className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Appearance / Theme</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setCurrentSubView("help")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <HelpCircle className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Help and feedback</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </div>
-
-              {/* Group 4: Legal & About */}
-              <div className="bg-card rounded-[18px] divide-y divide-border/50 overflow-hidden border border-border">
-                <div
-                  onClick={() => setLegalPage("terms-of-use")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Terms of Use</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setLegalPage("privacy-policy")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <ShieldCheck className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Privacy Policy</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setLegalPage("cookie-policy")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <Cookie className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Cookie Policy</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setLegalPage("about")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <Info className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">About</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-
-                <div
-                  onClick={() => setLegalPage("contact-us")}
-                  className="px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/20 active:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center gap-3.5 text-foreground">
-                    <MessageSquareText className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm font-medium">Contact Us</span>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </div>
-
-              {/* Copyright */}
-              <CopyrightFooter className="pt-1 pb-2" />
-            </div>
+            </>
           ) : currentSubView === "edit-profile" ? (
             /* ── PROFILE EDIT MODE (Original profile tab UI styled cleanly) ── */
             <div className="p-4 space-y-6 max-w-2xl mx-auto text-left">
@@ -836,6 +904,9 @@ export function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Friends — nested overlay (#profile/friends), Back returns to Settings */}
+      <FriendsOverlay open={friendsOpen} onClose={() => setFriendsOpen(false)} />
 
       {/* Info pages — hash-addressable (#profile/<page>), Back closes */}
       <TermsModal isOpen={legalPage === "terms-of-use"} onClose={closeLegal} />

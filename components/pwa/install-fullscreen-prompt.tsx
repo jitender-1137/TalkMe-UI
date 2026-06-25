@@ -1,145 +1,335 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Share, Plus, Maximize2 } from "lucide-react"
+import { X, Share, Plus, Download, MoreVertical, Sparkles } from "lucide-react"
 import { isInstalled } from "@/lib/pwa/install-detection"
-import { useIsMobile } from "@/hooks/use-mobile"
+import { useHaptics } from "@/hooks/use-haptics"
+import { getAccessToken } from "@/src/api/token-store"
 
 /**
- * "Install for full screen" nudge.
+ * Install popup — surfaced to *browser* users so they move to the installed
+ * (standalone) PWA, which runs full-screen with no browser chrome.
  *
- * A mobile browser only auto-hides its address/toolbar when the *window*
- * scrolls — which this app's fixed shell intentionally disables. The reliable
- * way to get a genuinely chrome-free, full-screen experience is to install the
- * PWA (standalone display-mode → no browser UI at all). This banner points
- * users there:
- *   - Android/Chromium: one-tap install via the captured `beforeinstallprompt`.
- *   - iOS Safari (no such event): shows the Share → Add to Home Screen steps.
+ * Behaviour by platform:
+ *   - Android / Chromium: captures `beforeinstallprompt` and offers a one-tap
+ *     Install button. On accept we wait for `appinstalled`, then reload the
+ *     start URL so the experience continues seamlessly in the freshly-installed
+ *     app (Chrome auto-opens the standalone window on most devices; there is no
+ *     web API to launch it programmatically, so the reload is the seamless
+ *     fallback). If the event hasn't arrived yet we fall back to menu steps.
+ *   - iOS Safari: never fires `beforeinstallprompt`, so we show the manual
+ *     Share → Add to Home Screen instructions.
  *
- * Only appears in a real browser tab on mobile, never once installed, and stays
- * dismissed for 7 days.
+ * Visibility rule:
+ *   - Logged-OUT browser users: shown on every visit (no persistence).
+ *   - Logged-IN users: shown at least once per 12h — throttled by a stored
+ *     last-shown timestamp so it resurfaces across visits and within a single
+ *     long-lived session, without nagging.
+ *   - Never shown once the app is installed.
  */
 
-const DISMISS_KEY = "tm_install_fs_dismissed_at"
-const DISMISS_DAYS = 7
+// Logged-in throttle: re-show the popup at most once per 12h for a user who
+// holds a session. Logged-out users ignore this gate (shown every visit).
+const SHOWN_KEY = "tm_install_prompt_shown_at"
+const SHOW_INTERVAL_MS = 12 * 60 * 60 * 1000
+// Small delay so the popup doesn't slam in on first paint, so Android has a
+// beat to deliver `beforeinstallprompt`, and so session-restore (/auth/refresh)
+// can resolve before we read the login state.
+const SHOW_DELAY_MS = 2500
+// How often a long-lived session re-checks whether 12h has elapsed.
+const RECHECK_INTERVAL_MS = 10 * 60 * 1000
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
-function recentlyDismissed(): boolean {
+/** Logged in == we currently hold a (non-expired) access token in memory. */
+function isLoggedIn(): boolean {
+  return !!getAccessToken()
+}
+
+function shownWithin12h(): boolean {
   try {
-    const ts = Number(localStorage.getItem(DISMISS_KEY) || 0)
-    return ts > 0 && Date.now() - ts < DISMISS_DAYS * 24 * 60 * 60 * 1000
+    const ts = Number(localStorage.getItem(SHOWN_KEY) || 0)
+    return ts > 0 && Date.now() - ts < SHOW_INTERVAL_MS
   } catch {
     return false
   }
 }
 
+function markShown(): void {
+  try {
+    localStorage.setItem(SHOWN_KEY, String(Date.now()))
+  } catch {
+    /* ignore */
+  }
+}
+
+function detectIOS(): boolean {
+  const ua = window.navigator.userAgent
+  return (
+    /iphone|ipad|ipod/i.test(ua) ||
+    // iPadOS reports as Mac — detect via touch.
+    (window.navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1)
+  )
+}
+
 export function InstallFullscreenPrompt() {
-  const isMobile = useIsMobile()
+  const { haptic } = useHaptics()
   const [visible, setVisible] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
+  const [installing, setInstalling] = useState(false)
+  const [installed, setInstalled] = useState(false)
+  // True once the user closes the popup; keeps it shut until the next visit (or
+  // until the 12h window re-arms it in a long-lived session).
+  const [dismissed, setDismissed] = useState(false)
+  // `canInstall` mirrors `deferredRef` in state so the one-tap button appears
+  // even when `beforeinstallprompt` arrives after the popup is already shown.
+  const [canInstall, setCanInstall] = useState(false)
+  const deferredRef = useRef<BeforeInstallPromptEvent | null>(null)
 
   useEffect(() => {
-    if (!isMobile || isInstalled() || recentlyDismissed()) return
+    if (isInstalled()) return
 
-    const ua = window.navigator.userAgent
-    const ios =
-      /iphone|ipad|ipod/i.test(ua) ||
-      (window.navigator.platform === "MacIntel" && (navigator as any).maxTouchPoints > 1)
+    const ios = detectIOS()
     setIsIOS(ios)
 
-    // Android/Chromium: capture the install event so we can trigger it on tap.
+    // Android/Chromium: capture the install event whenever it arrives so the
+    // button can trigger it. It may fire before or after our show timer.
     const onBeforeInstall = (e: Event) => {
       e.preventDefault()
-      setDeferred(e as BeforeInstallPromptEvent)
-      setVisible(true)
+      deferredRef.current = e as BeforeInstallPromptEvent
+      setCanInstall(true)
     }
     window.addEventListener("beforeinstallprompt", onBeforeInstall)
 
-    // iOS never fires that event — show the manual instructions after a beat so
-    // it doesn't slam in on first paint.
-    let t: ReturnType<typeof setTimeout> | undefined
-    if (ios) t = setTimeout(() => setVisible(true), 1500)
+    // If the app gets installed (via our button or the browser's own UI), hide.
+    const onInstalled = () => setInstalled(true)
+    window.addEventListener("appinstalled", onInstalled)
+
+    const show = () => {
+      if (isInstalled()) return
+      markShown()
+      setDismissed(false)
+      setVisible(true)
+      haptic("impactLight")
+    }
+
+    // Initial decision after a beat (session-restore has resolved by now):
+    //   logged-out → show every visit; logged-in → only if 12h has elapsed.
+    const initial = setTimeout(() => {
+      if (isInstalled()) return
+      if (isLoggedIn() && shownWithin12h()) return
+      show()
+    }, SHOW_DELAY_MS)
+
+    // Long-lived sessions: resurface at least once per 12h. The 12h gate here
+    // applies to everyone, so neither logged-in nor logged-out users are nagged
+    // before the window elapses (or while the popup is already up).
+    const interval = setInterval(() => {
+      if (isInstalled() || shownWithin12h()) return
+      show()
+    }, RECHECK_INTERVAL_MS)
 
     return () => {
       window.removeEventListener("beforeinstallprompt", onBeforeInstall)
-      if (t) clearTimeout(t)
+      window.removeEventListener("appinstalled", onInstalled)
+      clearTimeout(initial)
+      clearInterval(interval)
     }
-  }, [isMobile])
+  }, [haptic])
 
-  const dismiss = () => {
-    setVisible(false)
-    try {
-      localStorage.setItem(DISMISS_KEY, String(Date.now()))
-    } catch {
-      /* ignore */
-    }
-  }
+  const dismiss = useCallback(() => {
+    haptic("selection")
+    setDismissed(true)
+  }, [haptic])
 
-  const install = async () => {
+  const install = useCallback(async () => {
+    const deferred = deferredRef.current
     if (!deferred) return
-    await deferred.prompt()
-    await deferred.userChoice.catch(() => undefined)
-    setDeferred(null)
-    dismiss()
-  }
+    haptic("impactMedium")
+    setInstalling(true)
+    try {
+      await deferred.prompt()
+      const choice = await deferred.userChoice.catch(() => ({ outcome: "dismissed" as const }))
+      deferredRef.current = null
+      setCanInstall(false)
+      if (choice.outcome === "accepted") {
+        haptic("success")
+        // Seamless hand-off: once the OS reports the app installed, reload the
+        // start URL so we continue in the standalone app rather than the tab.
+        let entered = false
+        const enter = () => {
+          if (entered) return
+          entered = true
+          setInstalled(true)
+          window.location.assign("/")
+        }
+        window.addEventListener("appinstalled", enter, { once: true })
+        // Fallback if `appinstalled` is slow/unsupported on this browser.
+        setTimeout(enter, 1500)
+      } else {
+        haptic("warning")
+        setInstalling(false)
+        dismiss()
+      }
+    } catch {
+      setInstalling(false)
+    }
+  }, [haptic, dismiss])
+
+  // Android with a captured prompt → one-tap install. Otherwise (event not yet
+  // delivered / not eligible) we show menu steps so there's still guidance.
+  const canOneTap = !isIOS && canInstall
 
   return (
     <AnimatePresence>
-      {visible && (
+      {visible && !installed && !dismissed && (
         <motion.div
-          initial={{ y: "120%", opacity: 0 }}
-          animate={{ y: 0, opacity: 1, transition: { type: "spring", stiffness: 320, damping: 32 } }}
-          exit={{ y: "120%", opacity: 0, transition: { duration: 0.2 } }}
-          className="fixed inset-x-0 bottom-0 z-[200] px-3 pb-safe-nav md:hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center"
+          aria-modal="true"
+          role="dialog"
         >
-          <div className="glass-card mx-auto mb-2 max-w-md rounded-2xl border border-border/60 p-3 shadow-2xl">
-            <div className="flex items-start gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
-                <Maximize2 className="h-5 w-5" />
+          {/* Backdrop */}
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={dismiss}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          />
+
+          {/* Sheet */}
+          <motion.div
+            initial={{ y: "110%" }}
+            animate={{ y: 0, transition: { type: "spring", stiffness: 320, damping: 32 } }}
+            exit={{ y: "110%", transition: { duration: 0.2 } }}
+            className="glass-card relative mx-3 mb-3 w-full max-w-md rounded-3xl border border-border/60 p-5 shadow-2xl pb-safe-nav"
+          >
+            <button
+              type="button"
+              onClick={dismiss}
+              aria-label="Dismiss"
+              className="tappable absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full text-muted-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="flex flex-col items-center text-center">
+              {/* App icon */}
+              <span className="relative grid h-16 w-16 place-items-center overflow-hidden rounded-2xl shadow-lg">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icon-192.png" alt="TalkMe" className="h-full w-full object-cover" />
               </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-subhead font-semibold text-foreground">Use TalkMe full screen</p>
-                {isIOS ? (
-                  <p className="mt-0.5 text-footnote text-muted-foreground">
-                    Tap <Share className="inline h-3.5 w-3.5 -translate-y-px" /> then{" "}
-                    <span className="font-medium text-foreground">
-                      Add to Home Screen <Plus className="inline h-3 w-3 -translate-y-px" />
-                    </span>{" "}
-                    to hide the browser bars.
-                  </p>
-                ) : (
-                  <p className="mt-0.5 text-footnote text-muted-foreground">
-                    Install the app to hide the browser bars and run full screen.
-                  </p>
-                )}
-                {!isIOS && deferred && (
-                  <button
-                    type="button"
-                    onClick={install}
-                    className="tappable mt-2 rounded-full bg-primary px-4 py-1.5 text-footnote font-semibold text-primary-foreground"
-                  >
-                    Install
-                  </button>
-                )}
-              </div>
+
+              <h2 className="mt-4 text-title-3 font-bold text-foreground">Install TalkMe</h2>
+              <p className="mt-1 text-subhead text-muted-foreground">
+                {isIOS
+                  ? "Add TalkMe to your Home Screen for a full-screen, app-like experience — no browser bars."
+                  : "Install the app to launch it from your home screen and run full screen — no browser bars."}
+              </p>
+
+              {isIOS ? (
+                <div className="mt-5 w-full space-y-2.5 text-left">
+                  <Step
+                    n={1}
+                    icon={<Share className="h-4 w-4" />}
+                    text={
+                      <>
+                        Tap the <span className="font-semibold text-foreground">Share</span> button in
+                        Safari&apos;s toolbar.
+                      </>
+                    }
+                  />
+                  <Step
+                    n={2}
+                    icon={<Plus className="h-4 w-4" />}
+                    text={
+                      <>
+                        Choose{" "}
+                        <span className="font-semibold text-foreground">Add to Home Screen</span>.
+                      </>
+                    }
+                  />
+                  <Step
+                    n={3}
+                    icon={<Sparkles className="h-4 w-4" />}
+                    text={
+                      <>
+                        Open <span className="font-semibold text-foreground">TalkMe</span> from your
+                        home screen — that&apos;s it!
+                      </>
+                    }
+                  />
+                </div>
+              ) : canOneTap ? (
+                <button
+                  type="button"
+                  onClick={install}
+                  disabled={installing}
+                  className="tappable mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-body font-semibold text-primary-foreground disabled:opacity-70"
+                >
+                  {installing ? (
+                    "Installing…"
+                  ) : (
+                    <>
+                      <Download className="h-5 w-5" />
+                      Install app
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="mt-5 w-full space-y-2.5 text-left">
+                  <Step
+                    n={1}
+                    icon={<MoreVertical className="h-4 w-4" />}
+                    text={
+                      <>
+                        Open your browser menu (
+                        <span className="font-semibold text-foreground">⋮</span>).
+                      </>
+                    }
+                  />
+                  <Step
+                    n={2}
+                    icon={<Download className="h-4 w-4" />}
+                    text={
+                      <>
+                        Tap <span className="font-semibold text-foreground">Install app</span> (or{" "}
+                        <span className="font-semibold text-foreground">Add to Home screen</span>).
+                      </>
+                    }
+                  />
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={dismiss}
-                aria-label="Dismiss"
-                className="tappable -mr-1 -mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground"
+                className="tappable mt-3 text-footnote font-medium text-muted-foreground"
               >
-                <X className="h-4 w-4" />
+                Maybe later
               </button>
             </div>
-          </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
+  )
+}
+
+function Step({ n, icon, text }: { n: number; icon: React.ReactNode; text: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-muted/40 px-3 py-2.5">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+        {n}
+      </span>
+      <span className="text-primary/80">{icon}</span>
+      <p className="text-footnote text-muted-foreground">{text}</p>
+    </div>
   )
 }

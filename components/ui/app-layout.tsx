@@ -4,6 +4,7 @@ import React, { useRef, useState, useEffect } from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useScrollRestore } from "@/lib/navigation/scroll-restore";
 
 export interface FilterChip {
   id: string;
@@ -29,26 +30,52 @@ export interface AppLayoutProps {
   textSize?: string;
   /** When provided, enables pull-to-refresh on the scroll container (mobile). */
   onRefresh?: () => Promise<void> | void;
+  /** Custom leading badge node (replaces the icon/logo image in the expanded title). */
+  logoNode?: React.ReactNode;
+  /** Decorative element rendered behind the expanded title row. */
+  headerBackdrop?: React.ReactNode;
+  /** Optional one-line tagline under the title. */
+  subtitle?: React.ReactNode;
+  /** Pin the header static (no scroll-driven collapse / shrink animation). */
+  disableCollapse?: boolean;
+  /** Control rendered to the right of the search bar (e.g. a filter button). */
+  searchRight?: React.ReactNode;
+  /** Toggle the search bar's visibility (defaults to shown when search exists). */
+  showSearchBar?: boolean;
+  /** Autofocus the search input when it appears (for toggle-to-open search). */
+  searchAutoFocus?: boolean;
+  /**
+   * Stable key for preserving/restoring this layout's scroll position across
+   * tab switches (e.g. "tab:chats"). When set, the scroll container also locks
+   * while a modal/overlay is open so the background can't scroll behind it.
+   */
+  scrollKey?: string;
 }
 
 export function SearchSection({
   placeholder = "Search",
   value = "",
   onChange,
+  trailing,
+  autoFocus,
 }: {
   placeholder?: string;
   value?: string;
   onChange?: (val: string) => void;
+  /** Optional control rendered to the right of the search pill. */
+  trailing?: React.ReactNode;
+  autoFocus?: boolean;
 }) {
   return (
-    <div className="relative w-full px-4 py-2 shrink-0">
-      <div className="relative flex items-center bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-full px-4 py-2 transition-all focus-within:bg-black/10 dark:focus-within:bg-white/10 h-10">
+    <div className="relative w-full px-4 py-2 shrink-0 flex items-center gap-2">
+      <div className="relative flex flex-1 items-center bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5 rounded-full px-4 py-2 transition-all focus-within:bg-black/10 dark:focus-within:bg-white/10 h-10">
         <Search className="h-4 w-4 text-muted-foreground mr-2 shrink-0" />
         <input
           type="text"
           value={value}
           onChange={(e) => onChange?.(e.target.value)}
           placeholder={placeholder}
+          autoFocus={autoFocus}
           className="w-full bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground text-foreground border-none p-0 outline-none"
         />
         {value && (
@@ -60,6 +87,7 @@ export function SearchSection({
           </button>
         )}
       </div>
+      {trailing}
     </div>
   );
 }
@@ -78,7 +106,7 @@ export function FilterChipBar({
   return (
     <div
       className={cn(
-        "w-full overflow-x-auto flex items-center gap-2 px-4 py-2 select-none shrink-0 scrollbar-none",
+        "w-full overflow-x-auto flex items-center gap-1.5 px-4 py-2 select-none shrink-0 scrollbar-none",
         textSize !== "text-xs" && "justify-center gap-12",
       )}
     >
@@ -89,16 +117,21 @@ export function FilterChipBar({
             key={chip.id}
             onClick={() => onChange?.(chip.id)}
             className={cn(
-              "relative shrink-0 text-{textSize} font-semibold px-4 py-1.5 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1.5 cursor-pointer",
+              "relative shrink-0 font-semibold h-9 px-3.5 rounded-full border transition-colors active:scale-95 flex items-center gap-1.5 cursor-pointer",
               textSize,
               isActive
-                ? "bg-primary dark:bg-primary text-foreground border border-primary"
-                : "bg-black/25 dark:bg-white/25 text-foreground border border-transparent hover:text-foreground",
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card/60 text-muted-foreground border-border hover:text-foreground",
             )}
           >
             {chip.label}
-            {chip.badge !== undefined && chip.badge > 0 && (
-              <span className="h-4 min-w-4 flex items-center justify-center rounded-full text-[9px] font-bold px-1 shrink-0 bg-red-500 text-white ring-2 ring-background shadow-sm shadow-red-500/40">
+            {chip.badge !== undefined && (
+              <span
+                className={cn(
+                  "h-5 min-w-5 px-1 flex items-center justify-center rounded-full text-[10px] font-bold shrink-0",
+                  isActive ? "bg-primary-foreground/20" : "bg-muted-foreground/15 text-foreground",
+                )}
+              >
                 {chip.badge}
               </span>
             )}
@@ -126,8 +159,22 @@ export function AppLayout({
   disableBottomPadding = false,
   textSize = "text-xs",
   onRefresh,
+  logoNode,
+  headerBackdrop,
+  subtitle,
+  disableCollapse = false,
+  searchRight,
+  showSearchBar,
+  searchAutoFocus,
+  scrollKey,
 }: AppLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Preserve scroll position across tab switches + lock the background while a
+  // modal is open (no-op unless a scrollKey is supplied).
+  useScrollRestore(containerRef, scrollKey ?? "", {
+    lockWhenOverlay: true,
+    enabled: !!scrollKey,
+  });
 
   // ── Pull-to-refresh (mobile) ───────────────────────────────────────────────
   const [pullDistance, setPullDistance] = useState(0);
@@ -211,94 +258,96 @@ export function AppLayout({
       className={cn("relative h-full w-full flex flex-col overflow-hidden bg-background md:pb-0")}
     >
       {/* 1. STICKY COLLAPSED HEADER (Always fixed, background & small title fade in) */}
-      <div className="fixed top-0 left-0 right-0 z-30 pointer-events-none md:left-18">
-        {/* Blurred glass overlay */}
-        <motion.div
-          style={{ opacity: headerBgOpacity }}
-          className="absolute inset-0 bg-background/90 dark:bg-black/90 backdrop-blur-[20px] border-b border-border/40 dark:border-white/5"
-        />
-
-        {/* Header content bar */}
-        <motion.div
-          style={{ pointerEvents }}
-          className="relative flex items-center justify-between px-4 h-14 pt-[env(safe-area-inset-top)] w-full gap-4"
-        >
-          {/* Left section: Tab icon (theme color) and Header Title */}
+      {!disableCollapse && (
+        <div className="fixed top-0 left-0 right-0 z-30 pointer-events-none md:left-18">
+          {/* Blurred glass overlay */}
           <motion.div
-            style={{ opacity: smallTitleOpacity, y: smallTitleY }}
-            className="flex items-center gap-2 shrink-0"
-          >
-            {Icon && <Icon className="h-5 w-5 text-primary shrink-0" />}
-            <span className="font-bold text-base text-foreground tracking-tight select-none truncate max-w-25">
-              {title}
-            </span>
-          </motion.div>
+            style={{ opacity: headerBgOpacity }}
+            className="absolute inset-0 bg-background/90 dark:bg-black/90 backdrop-blur-[20px] border-b border-border/40 dark:border-white/5"
+          />
 
-          {/* Middle section: Search bar (if search is supported on tab) */}
+          {/* Header content bar */}
           <motion.div
-            style={{ opacity: smallTitleOpacity }}
-            className="flex-1 flex justify-center min-w-0"
+            style={{ pointerEvents }}
+            className="relative flex items-center justify-between px-4 h-14 pt-[env(safe-area-inset-top)] w-full gap-4"
           >
-            {hasSearch && (
-              <div className="w-full max-w-45 sm:max-w-xs">
-                <div className="relative flex items-center bg-black/10 dark:bg-white/10 border border-black/5 dark:border-white/5 rounded-full px-3 py-1 transition-all focus-within:bg-black/10 dark:focus-within:bg-white/10 h-8">
-                  <Search className="h-3.5 w-3.5 text-muted-foreground mr-1.5 shrink-0" />
-                  <input
-                    type="text"
-                    value={searchValue}
-                    onChange={(e) => onSearchChange?.(e.target.value)}
-                    placeholder={searchPlaceholder || "Search..."}
-                    className="w-full bg-transparent text-xs focus:outline-none placeholder:text-muted-foreground text-foreground border-none p-0 outline-none"
-                  />
-                  {searchValue && (
-                    <button
-                      onClick={() => onSearchChange?.("")}
-                      className="p-0.5 rounded-full hover:bg-muted-foreground/25 transition-colors cursor-pointer"
-                    >
-                      <X className="h-3 w-3 text-muted-foreground" />
-                    </button>
-                  )}
+            {/* Left section: Tab icon (theme color) and Header Title */}
+            <motion.div
+              style={{ opacity: smallTitleOpacity, y: smallTitleY }}
+              className="flex items-center gap-2 shrink-0"
+            >
+              {Icon && <Icon className="h-5 w-5 text-primary shrink-0" />}
+              <span className="font-bold text-base text-foreground tracking-tight select-none truncate max-w-25">
+                {title}
+              </span>
+            </motion.div>
+
+            {/* Middle section: Search bar (if search is supported on tab) */}
+            <motion.div
+              style={{ opacity: smallTitleOpacity }}
+              className="flex-1 flex justify-center min-w-0"
+            >
+              {hasSearch && (
+                <div className="w-full max-w-45 sm:max-w-xs">
+                  <div className="relative flex items-center bg-black/10 dark:bg-white/10 border border-black/5 dark:border-white/5 rounded-full px-3 py-1 transition-all focus-within:bg-black/10 dark:focus-within:bg-white/10 h-8">
+                    <Search className="h-3.5 w-3.5 text-muted-foreground mr-1.5 shrink-0" />
+                    <input
+                      type="text"
+                      value={searchValue}
+                      onChange={(e) => onSearchChange?.(e.target.value)}
+                      placeholder={searchPlaceholder || "Search..."}
+                      className="w-full bg-transparent text-xs focus:outline-none placeholder:text-muted-foreground text-foreground border-none p-0 outline-none"
+                    />
+                    {searchValue && (
+                      <button
+                        onClick={() => onSearchChange?.("")}
+                        className="p-0.5 rounded-full hover:bg-muted-foreground/25 transition-colors cursor-pointer"
+                      >
+                        <X className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </motion.div>
+              )}
+            </motion.div>
 
-          {/* Right actions slot / Collapsed Filters */}
-          <motion.div
-            style={{ opacity: smallTitleOpacity }}
-            className="flex items-center gap-2 shrink-0"
-          >
-            {collapseFiltersToHeader && filterChips ? (
-              <div className="flex items-center gap-1.5 select-none">
-                {filterChips.map((chip) => {
-                  const isActive = activeFilterId === chip.id;
-                  return (
-                    <button
-                      key={chip.id}
-                      onClick={() => onFilterChange?.(chip.id)}
-                      className={cn(
-                        "relative shrink-0 text-xl font-bold px-3 py-1 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1 cursor-pointer",
-                        isActive
-                          ? "bg-primary/15 dark:bg-primary/25 text-primary border border-primary/20"
-                          : "bg-black/5 dark:bg-white/5 text-muted-foreground border border-transparent hover:text-foreground",
-                      )}
-                    >
-                      {chip.label}
-                      {chip.badge !== undefined && chip.badge > 0 && (
-                        <span className="h-4 min-w-4 flex items-center justify-center rounded-full text-[9px] font-bold px-1 shrink-0 bg-red-500 text-white ring-2 ring-background shadow-sm shadow-red-500/40">
-                          {chip.badge}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              headerRight
-            )}
+            {/* Right actions slot / Collapsed Filters */}
+            <motion.div
+              style={{ opacity: smallTitleOpacity }}
+              className="flex items-center gap-2 shrink-0"
+            >
+              {collapseFiltersToHeader && filterChips ? (
+                <div className="flex items-center gap-1.5 select-none">
+                  {filterChips.map((chip) => {
+                    const isActive = activeFilterId === chip.id;
+                    return (
+                      <button
+                        key={chip.id}
+                        onClick={() => onFilterChange?.(chip.id)}
+                        className={cn(
+                          "relative shrink-0 text-xl font-bold px-3 py-1 rounded-full transition-all duration-200 active:scale-95 flex items-center gap-1 cursor-pointer",
+                          isActive
+                            ? "bg-primary/15 dark:bg-primary/25 text-primary border border-primary/20"
+                            : "bg-black/5 dark:bg-white/5 text-muted-foreground border border-transparent hover:text-foreground",
+                        )}
+                      >
+                        {chip.label}
+                        {chip.badge !== undefined && chip.badge > 0 && (
+                          <span className="h-4 min-w-4 flex items-center justify-center rounded-full text-[9px] font-bold px-1 shrink-0 bg-red-500 text-white ring-2 ring-background shadow-sm shadow-red-500/40">
+                            {chip.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                headerRight
+              )}
+            </motion.div>
           </motion.div>
-        </motion.div>
-      </div>
+        </div>
+      )}
 
       {/* 2. SCROLLABLE CONTAINER (Content scrolls under the glass header) */}
       <div
@@ -307,9 +356,6 @@ export function AppLayout({
           "flex-1 flex flex-col",
           disableBottomPadding ? "overflow-hidden" : "overflow-y-auto overscroll-contain",
         )}
-        style={{
-          paddingTop: "calc(env(safe-area-inset-top) + 0.5rem)",
-        }}
       >
         {/* Pull-to-refresh indicator */}
         {onRefresh && (pullDistance > 0 || isRefreshing) && (
@@ -330,46 +376,56 @@ export function AppLayout({
         )}
 
         {/* Expanded State Header - Scrolls with content, transformations linked to scrollY */}
-        <div className="flex flex-col shrink-0">
+        <div
+          className={cn(
+            "flex flex-col shrink-0",
+            disableCollapse && "sticky top-0 z-20 bg-background",
+          )}
+        >
           {/* Large Title Area (Logo + Title on the left, action buttons on the right - SAME ROW) */}
-          <div className="md:px-6 pr-1 pl-4 py-2 flex items-center justify-between min-h-13">
+          <div className="relative overflow-hidden md:px-6 pr-1 pl-4 flex items-center justify-between min-h-21">
+            {/* Decorative backdrop (opt-in) */}
+            {headerBackdrop && (
+              <div className="pointer-events-none absolute inset-0 z-0">{headerBackdrop}</div>
+            )}
             <motion.div
-              style={{
-                opacity: largeTitleOpacity,
-                scale: largeTitleScale,
-                y: largeTitleY,
-                transformOrigin: "left center",
-              }}
-              className="flex items-center gap-3 select-none"
+              style={
+                disableCollapse
+                  ? { transformOrigin: "left center" }
+                  : {
+                      opacity: largeTitleOpacity,
+                      scale: largeTitleScale,
+                      y: largeTitleY,
+                      transformOrigin: "left center",
+                    }
+              }
+              className="relative z-10 flex items-center gap-3 select-none min-w-0"
             >
-              {logo && (
-                <div className="flex items-center justify-center h-10 w-10 rounded-2xl overflow-hidden shadow-lg shadow-primary/25 shrink-0">
-                  <img src={logo} alt={title} className="w-full h-full object-cover" />
-                </div>
+              {logoNode ? (
+                <div className="shrink-0">{logoNode}</div>
+              ) : (
+                logo && (
+                  <div className="flex items-center justify-center h-10 w-10 rounded-2xl overflow-hidden shadow-lg shadow-primary/25 shrink-0">
+                    <img src={logo} alt={title} className="w-full h-full object-cover" />
+                  </div>
+                )
               )}
-              <h1 className="text-3xl font-extrabold text-foreground tracking-tight">{title}</h1>
+              <div className="min-w-0">
+                <h1 className="text-3xl font-extrabold text-foreground tracking-tight">{title}</h1>
+                {subtitle && (
+                  <p className="mt-0.5 text-sm text-muted-foreground truncate">{subtitle}</p>
+                )}
+              </div>
             </motion.div>
 
             {/* Action buttons next to the title (fades out as scroller moves up) */}
             <motion.div
-              style={{
-                opacity: largeTitleOpacity,
-                y: largeTitleY,
-              }}
-              className="flex items-center gap-2"
+              style={disableCollapse ? undefined : { opacity: largeTitleOpacity, y: largeTitleY }}
+              className="relative z-10 flex items-center gap-2"
             >
               {headerRight}
             </motion.div>
           </div>
-
-          {/* Search bar section */}
-          {hasSearch && (
-            <SearchSection
-              placeholder={searchPlaceholder}
-              value={searchValue}
-              onChange={onSearchChange}
-            />
-          )}
 
           {/* Filter chips section */}
           {hasFilters && (
@@ -378,6 +434,17 @@ export function AppLayout({
               activeId={activeFilterId}
               onChange={onFilterChange}
               textSize={textSize}
+            />
+          )}
+
+          {/* Search bar section — sits below the tabs/filters, outside the banner */}
+          {hasSearch && (showSearchBar ?? true) && (
+            <SearchSection
+              placeholder={searchPlaceholder}
+              value={searchValue}
+              onChange={onSearchChange}
+              trailing={searchRight}
+              autoFocus={searchAutoFocus}
             />
           )}
         </div>

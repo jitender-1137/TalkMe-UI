@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useHashSync } from "@/hooks/use-hash-sync";
-import { useLivePresence } from "@/lib/presence/live-status-store";
+import { useLivePresence, useLivePresenceStore } from "@/lib/presence/live-status-store";
 import { useWebSocket } from "@/components/providers/websocket-provider";
 import { motion, AnimatePresence } from "framer-motion";
 import { AppLayout } from "@/components/ui/app-layout";
@@ -32,8 +32,14 @@ import {
   List,
   Compass,
   RefreshCw,
+  Bookmark,
 } from "lucide-react";
 import { cn, getAvatarUrl } from "@/lib/utils";
+import {
+  HEADER_ICON_BTN,
+  HEADER_ICON_BTN_ACTIVE,
+  HEADER_ICON,
+} from "@/components/ui/header-button";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -62,6 +68,224 @@ import { useChatContext } from "@/components/chat/chat-context";
 import { useNavigation } from "@/components/app-shell/navigation-context";
 import type { DiscoverProfile } from "@/src/api/types";
 import { UserProfileModal } from "@/components/chat/user-profile-modal";
+
+/** Green star-burst badge with a bookmark glyph (matches the other tabs). */
+function DiscoverLogo() {
+  return (
+    <div className="relative h-11 w-11 drop-shadow-[0_0_12px_rgba(16,185,129,0.5)]">
+      <svg viewBox="0 0 44 44" className="absolute inset-0 h-full w-full">
+        <defs>
+          <linearGradient id="disc-logo" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="oklch(0.78 0.16 165)" />
+            <stop offset="100%" stopColor="oklch(0.5 0.16 175)" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M22 1 L29 7 L38 6 L37 15 L43 22 L37 29 L38 38 L29 37 L22 43 L15 37 L6 38 L7 29 L1 22 L7 15 L6 6 L15 7 Z"
+          fill="url(#disc-logo)"
+        />
+      </svg>
+      <Bookmark className="absolute inset-0 m-auto h-5 w-5 text-white" strokeWidth={2.4} />
+    </div>
+  );
+}
+
+/** Cosmic backdrop: nebula glow, orbits, a ringed planet, a moon, a shooting
+ *  star and a little constellation (right-weighted, theme-safe). */
+function DiscoverBackdrop() {
+  return (
+    <svg
+      viewBox="0 0 900 120"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden
+      className="absolute inset-0 h-full w-full"
+    >
+      <defs>
+        {/* <linearGradient id="disc-bg" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="oklch(0.6 0.18 165)" stopOpacity="0" />
+          <stop offset="60%" stopColor="oklch(0.55 0.18 165)" stopOpacity="0.16" />
+          <stop offset="100%" stopColor="oklch(0.55 0.2 175)" stopOpacity="0.38" />
+        </linearGradient> */}
+        <radialGradient id="disc-planet" cx="40%" cy="35%" r="70%">
+          <stop offset="0%" stopColor="oklch(0.82 0.16 165)" />
+          <stop offset="100%" stopColor="oklch(0.45 0.16 175)" />
+        </radialGradient>
+        <radialGradient id="disc-nebula" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="oklch(0.7 0.2 160)" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="oklch(0.7 0.2 160)" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="disc-shoot" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="oklch(0.95 0.06 165)" stopOpacity="0" />
+          <stop offset="100%" stopColor="oklch(0.95 0.06 165)" stopOpacity="0.9" />
+        </linearGradient>
+      </defs>
+      <rect width="900" height="120" fill="url(#disc-bg)" />
+      <ellipse cx="700" cy="60" rx="240" ry="120" fill="url(#disc-nebula)">
+        <animate attributeName="opacity" values="0.7;1;0.7" dur="6s" repeatCount="indefinite" />
+      </ellipse>
+
+      {/* faint orbital swirls */}
+      <g stroke="oklch(0.8 0.1 165)" strokeOpacity="0.12" fill="none">
+        <path d="M120 100 Q 420 30 760 80" />
+        <path d="M200 115 Q 520 60 880 95" />
+        <ellipse cx="815" cy="58" rx="78" ry="26" transform="rotate(-18 815 58)" />
+      </g>
+
+      {/* constellation */}
+      <g stroke="oklch(0.9 0.05 165)" strokeOpacity="0.25" strokeWidth="0.8" fill="none">
+        <path d="M540 40 L 580 26 L 624 44 L 660 22" />
+      </g>
+
+      {/* stars (twinkling) */}
+      {[
+        [620, 30, 1.3],
+        [690, 18, 1],
+        [560, 55, 1],
+        [840, 24, 1.2],
+        [740, 95, 1],
+        [500, 30, 1],
+        [660, 70, 0.9],
+        [880, 88, 1.1],
+      ].map(([x, y, r], i) => (
+        <circle key={i} cx={x} cy={y} r={r} fill="oklch(0.94 0.04 165)" fillOpacity="0.85">
+          <animate
+            attributeName="opacity"
+            values="0.4;1;0.4"
+            dur={`${2 + (i % 3)}s`}
+            begin={`${i * 0.3}s`}
+            repeatCount="indefinite"
+          />
+        </circle>
+      ))}
+
+      {/* sparkle (4-point), gently rotating */}
+      <path
+        d="M585 64 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 z"
+        fill="oklch(0.95 0.06 165)"
+        fillOpacity="0.8"
+      >
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from="0 585 67"
+          to="360 585 67"
+          dur="9s"
+          repeatCount="indefinite"
+        />
+      </path>
+
+      {/* shooting star — sweeps across on a loop */}
+      <g>
+        <line
+          x1="0"
+          y1="0"
+          x2="70"
+          y2="18"
+          stroke="url(#disc-shoot)"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <circle cx="70" cy="18" r="2" fill="oklch(0.97 0.03 165)" />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="430 8; 700 80; 760 110"
+          keyTimes="0;0.7;1"
+          dur="5s"
+          begin="1s"
+          repeatCount="indefinite"
+        />
+        <animate
+          attributeName="opacity"
+          values="0;1;1;0"
+          keyTimes="0;0.1;0.7;1"
+          dur="5s"
+          begin="1s"
+          repeatCount="indefinite"
+        />
+      </g>
+
+      {/* small moon (gentle bob) */}
+      <path
+        d="M690 96 a11 11 0 1 0 0 -22 a9 9 0 0 1 0 22 z"
+        fill="oklch(0.85 0.08 165)"
+        fillOpacity="0.5"
+      >
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="0 0; 0 -4; 0 0"
+          dur="5s"
+          repeatCount="indefinite"
+        />
+      </path>
+
+      {/* ringed planet (slowly spinning ring) */}
+      <g transform="translate(490 32)">
+        <ellipse
+          rx="42"
+          ry="12"
+          transform="rotate(-22)"
+          fill="none"
+          stroke="oklch(0.7 0.18 170)"
+          strokeWidth="4"
+          strokeOpacity="0.85"
+        />
+        <circle r="24" fill="url(#disc-planet)" />
+        <ellipse
+          rx="42"
+          ry="12"
+          fill="none"
+          stroke="oklch(0.85 0.14 165)"
+          strokeWidth="2"
+          strokeOpacity="0.6"
+          strokeDasharray="60 120"
+        >
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="-22"
+            to="338"
+            dur="12s"
+            repeatCount="indefinite"
+          />
+        </ellipse>
+      </g>
+
+      {/* ringed planet (slowly spinning ring) */}
+      <g transform="translate(815 58)">
+        <ellipse
+          rx="42"
+          ry="12"
+          transform="rotate(-22)"
+          fill="none"
+          stroke="oklch(0.7 0.18 170)"
+          strokeWidth="4"
+          strokeOpacity="0.85"
+        />
+        <circle r="24" fill="url(#disc-planet)" />
+        <ellipse
+          rx="42"
+          ry="12"
+          fill="none"
+          stroke="oklch(0.85 0.14 165)"
+          strokeWidth="2"
+          strokeOpacity="0.6"
+          strokeDasharray="60 120"
+        >
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="-22"
+            to="338"
+            dur="12s"
+            repeatCount="indefinite"
+          />
+        </ellipse>
+      </g>
+    </svg>
+  );
+}
 
 export function DiscoverDashboard() {
   const [query, setQuery] = useState("");
@@ -142,14 +366,24 @@ export function DiscoverDashboard() {
   }, [filtersReady, viewMode]);
 
   const queryClient = useQueryClient();
-  const { data: discoverData, isLoading, isFetching, refetch } = useDiscoverProfiles(
-    {
-      q: query,
-      gender: gender !== "all" ? gender : undefined,
-      country: country !== "All" ? country : undefined,
-      minAge,
-      maxAge,
-    },
+  // When the user is searching, ignore the age/country/gender filters so the
+  // query hits ALL (non-deleted) users — search is global, not filter-scoped.
+  const isSearching = query.trim().length > 0;
+  const {
+    data: discoverData,
+    isLoading,
+    isFetching,
+    refetch,
+  } = useDiscoverProfiles(
+    isSearching
+      ? { q: query.trim() }
+      : {
+          q: query,
+          gender: gender !== "all" ? gender : undefined,
+          country: country !== "All" ? country : undefined,
+          minAge,
+          maxAge,
+        },
     { enabled: filtersReady },
   );
   // Ensure the dropdown always contains the currently-selected country and the
@@ -174,7 +408,8 @@ export function DiscoverDashboard() {
   const openOrCreateChat = useOpenOrCreateChat();
   const addFriendMutation = useAddContact();
   const removeFriendMutation = useRemoveContact();
-  const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
+  const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } =
+    useChatContext();
   const { setActiveTab } = useNavigation();
 
   const handleAddFriend = (person: DiscoverProfile) => {
@@ -193,13 +428,27 @@ export function DiscoverDashboard() {
     });
   };
 
-  const people = discoverData?.items ?? [];
+  // Online users ALWAYS on top. The backend already returns online-first, but
+  // presence changes live on the client — so re-sort here against the live
+  // presence store (falling back to the fetched isOnline flag until a live event
+  // arrives) to keep online users pinned to the top as statuses flip. Array.sort
+  // is stable, so the backend's order is preserved within each group.
+  const livePresence = useLivePresenceStore((s) => s.byUser);
+  const people = useMemo(() => {
+    const raw = discoverData?.items ?? [];
+    const isOnline = (p: any) =>
+      (livePresence[p.id]?.status ?? (p.isOnline ? "online" : "offline")) === "online";
+    return [...raw].sort((a, b) => Number(isOnline(b)) - Number(isOnline(a)));
+  }, [discoverData?.items, livePresence]);
 
   // Subscribe to the displayed people's presence so their online dots update in
   // real time (sticky so the contacts sync won't drop these non-contacts). The
   // PersonCard/PersonGridCard read live status from the shared store.
   const { subscribeToPresence } = useWebSocket();
-  const peopleUsernames = people.map((p: any) => p.username).filter(Boolean).join(",");
+  const peopleUsernames = people
+    .map((p: any) => p.username)
+    .filter(Boolean)
+    .join(",");
   useEffect(() => {
     if (!peopleUsernames) return;
     peopleUsernames.split(",").forEach((u) => subscribeToPresence(u, true));
@@ -251,69 +500,55 @@ export function DiscoverDashboard() {
       <AppLayout
         title="Discover"
         icon={Compass}
+        logoNode={<DiscoverLogo />}
+        headerBackdrop={<DiscoverBackdrop />}
+        subtitle="Explore. Connect. Share."
+        disableCollapse
+        scrollKey="tab:discover"
         searchPlaceholder="Search by name, interest, or location..."
         searchValue={query}
         onSearchChange={setQuery}
         onRefresh={async () => {
           await refetch();
         }}
+        searchRight={
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            aria-label="Filters"
+            className={cn(HEADER_ICON_BTN, "relative", showFilters && HEADER_ICON_BTN_ACTIVE)}
+          >
+            <Filter className={HEADER_ICON} />
+            {/* Dot when any filter is narrowing results. */}
+            {hasActiveFilters && (
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
+            )}
+          </button>
+        }
         headerRight={
           <div className="flex items-center gap-2">
-            {/* Refresh */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 cursor-pointer"
+            <button
+              onClick={() => setViewMode("grid")}
+              aria-label="Grid view"
+              className={cn(HEADER_ICON_BTN, viewMode === "grid" && HEADER_ICON_BTN_ACTIVE)}
+            >
+              <LayoutGrid className={HEADER_ICON} />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              aria-label="List view"
+              className={cn(HEADER_ICON_BTN, viewMode === "list" && HEADER_ICON_BTN_ACTIVE)}
+            >
+              <List className={HEADER_ICON} />
+            </button>
+            <button
               onClick={() => refetch()}
               disabled={isFetching}
               aria-label="Refresh"
               title="Refresh"
+              className={cn(HEADER_ICON_BTN, "disabled:opacity-50")}
             >
-              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-            </Button>
-
-            {/* View Mode Toggle */}
-            <div className="flex items-center bg-muted/60 dark:bg-muted/40 p-0.5 rounded-lg border border-border/50">
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-8 w-8 rounded-md transition-all p-0 cursor-pointer",
-                  viewMode === "grid"
-                    ? "bg-background text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground bg-transparent",
-                )}
-                onClick={() => setViewMode("grid")}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-8 w-8 rounded-md transition-all p-0 cursor-pointer",
-                  viewMode === "list"
-                    ? "bg-background text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground bg-transparent",
-                )}
-                onClick={() => setViewMode("list")}
-              >
-                <List className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <Button
-              variant={showFilters ? "default" : "outline"}
-              size="icon"
-              className="relative h-9 w-9 cursor-pointer"
-              onClick={() => setShowFilters(!showFilters)}
-            >
-              <Filter className="h-4 w-4" />
-              {/* Dot when any filter is narrowing results. */}
-              {hasActiveFilters && (
-                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
-              )}
-            </Button>
+              <RefreshCw className={cn(HEADER_ICON, isFetching && "animate-spin")} />
+            </button>
           </div>
         }
       >
@@ -539,7 +774,7 @@ function PersonCard({
   const isFemale = person.gender?.toLowerCase() === "female";
   // Real-time presence from the shared store (falls back to the API value).
   const live = useLivePresence(person.id);
-  const presenceStatus = live ? live.status : (person.isOnline ? "online" : "offline");
+  const presenceStatus = live ? live.status : person.isOnline ? "online" : "offline";
 
   return (
     <motion.div
@@ -760,7 +995,7 @@ function PersonGridCard({
   const isFemale = person.gender?.toLowerCase() === "female";
   // Real-time presence from the shared store (falls back to the API value).
   const live = useLivePresence(person.id);
-  const presenceStatus = live ? live.status : (person.isOnline ? "online" : "offline");
+  const presenceStatus = live ? live.status : person.isOnline ? "online" : "offline";
 
   return (
     <motion.div

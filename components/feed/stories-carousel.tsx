@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Plus, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, ChevronLeft, ChevronRight, User } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { cn, getAvatarUrl } from "@/lib/utils"
@@ -79,16 +79,15 @@ export function StoriesCarousel({
         <div
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex gap-4 overflow-x-auto scrollbar-hide py-2 px-4 scroll-smooth"
+          className="flex gap-3 overflow-x-auto [&::-webkit-scrollbar]:hidden py-1 px-4 scroll-smooth"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {/* "Your story" — always first. Opens own story if one exists; the
-              + badge always adds a new story (Instagram-style). */}
+          {/* "Add Story" tile — opens own story if one exists; the + badge
+              always adds a new story (Instagram-style). */}
           <motion.div
             onClick={ownGroup ? () => openStory(0) : onAddStory}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer"
+            whileTap={{ scale: 0.96 }}
+            className="flex w-[88px] shrink-0 flex-col items-center gap-2 rounded-2xl border border-border/60 bg-card/50 p-2.5 cursor-pointer"
           >
             <div className="relative">
               {ownGroup ? (
@@ -100,8 +99,8 @@ export function StoriesCarousel({
                       : "bg-muted",
                   )}
                 >
-                  <div className="bg-background rounded-full p-0.5">
-                    <Avatar className="h-14 w-14 md:h-16 md:w-16">
+                  <div className="bg-card rounded-full p-0.5">
+                    <Avatar className="h-14 w-14">
                       <AvatarImage src={getAvatarUrl(currentUserAvatar)} />
                       <AvatarFallback className="bg-muted text-muted-foreground">
                         {currentUserName.charAt(0)}
@@ -110,12 +109,9 @@ export function StoriesCarousel({
                   </div>
                 </div>
               ) : (
-                <Avatar className="h-16 w-16 md:h-18 md:w-18 border-2 border-muted">
-                  <AvatarImage src={getAvatarUrl(currentUserAvatar)} />
-                  <AvatarFallback className="bg-muted text-muted-foreground">
-                    {currentUserName.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
+                <div className="h-[60px] w-[60px] rounded-full border-2 border-dashed border-muted-foreground/40 flex items-center justify-center">
+                  <User className="h-7 w-7 text-muted-foreground" />
+                </div>
               )}
               <button
                 type="button"
@@ -124,13 +120,13 @@ export function StoriesCarousel({
                   onAddStory?.()
                 }}
                 aria-label="Add story"
-                className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-primary flex items-center justify-center border-2 border-background"
+                className="absolute -bottom-0.5 -right-0.5 h-6 w-6 rounded-full bg-primary flex items-center justify-center border-2 border-card"
               >
                 <Plus className="h-3.5 w-3.5 text-primary-foreground" />
               </button>
             </div>
-            <span className="text-xs font-medium text-muted-foreground truncate max-w-16 text-center">
-              {ownGroup ? "Your story" : "Add Story"}
+            <span className="text-xs font-medium text-foreground truncate max-w-full text-center">
+              {ownGroup ? "Your Story" : "Add Story"}
             </span>
           </motion.div>
 
@@ -139,37 +135,31 @@ export function StoriesCarousel({
             <motion.button
               key={group.userId}
               onClick={() => openStory(ownGroup ? i + 1 : i)}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex flex-col items-center gap-1.5 flex-shrink-0"
+              whileTap={{ scale: 0.96 }}
+              className="flex w-[88px] shrink-0 flex-col items-center gap-2 rounded-2xl border border-border/60 bg-card/50 p-2.5"
             >
-              <div
-                className={cn(
-                  "relative rounded-full p-[2.5px]",
-                  group.hasUnviewed
-                    ? // Instagram-style gradient ring for UNSEEN stories
-                      "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600"
-                    : // Seen → plain muted ring (no gradient)
-                      "bg-muted"
-                )}
-              >
-                <div className="relative bg-background rounded-full p-0.5">
-                  <Avatar className="h-14 w-14 md:h-16 md:w-16">
-                    <AvatarImage src={getAvatarUrl(group.userAvatar)} />
-                    <AvatarFallback className="bg-muted text-muted-foreground font-medium">
-                      {group.userName.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
+              <div className="relative">
+                <div
+                  className={cn(
+                    "rounded-full p-[2.5px]",
+                    group.hasUnviewed
+                      ? "bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600"
+                      : "bg-muted",
+                  )}
+                >
+                  <div className="bg-card rounded-full p-0.5">
+                    <Avatar className="h-14 w-14">
+                      <AvatarImage src={getAvatarUrl(group.userAvatar)} />
+                      <AvatarFallback className="bg-muted text-muted-foreground font-medium">
+                        {group.userName.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
                 </div>
+                {/* online dot */}
+                <span className="absolute bottom-0.5 right-0.5 h-3.5 w-3.5 rounded-full bg-primary border-2 border-card" />
               </div>
-              <span
-                className={cn(
-                  "text-xs truncate max-w-16 text-center",
-                  group.hasUnviewed
-                    ? "font-semibold text-foreground"
-                    : "font-medium text-muted-foreground"
-                )}
-              >
+              <span className="text-xs font-medium text-foreground truncate max-w-full text-center">
                 {group.userName.split(" ")[0]}
               </span>
             </motion.button>

@@ -1,7 +1,11 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { pushHash } from "./url-hash"
+
+/** Base z-index for overlays; each nesting level stacks above the previous. */
+const Z_BASE = 250
+const Z_STEP = 5
 
 /**
  * Centralized overlay (modal) back-stack.
@@ -20,6 +24,8 @@ import { pushHash } from "./url-hash"
 interface Overlay {
   id: number
   onClose: () => void
+  /** Whether this overlay should hide the bottom nav while open. */
+  blocking: boolean
 }
 
 const stack: Overlay[] = []
@@ -28,6 +34,20 @@ let nextId = 1
 // popstate isn't double-handled.
 let skipNextPop = false
 let listening = false
+
+// ── Subscription: lets the bottom nav (and others) react to overlay changes ──
+const listeners = new Set<() => void>()
+function notify() {
+  listeners.forEach((l) => l())
+}
+function subscribe(cb: () => void) {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+/** True while at least one nav-blocking overlay (modal) is open. */
+function hasBlockingOverlay() {
+  return stack.some((o) => o.blocking)
+}
 
 function ensureListener() {
   if (listening || typeof window === "undefined") return
@@ -39,18 +59,25 @@ function ensureListener() {
     }
     // Back/forward by the user → close the topmost overlay only.
     const top = stack.pop()
+    notify()
     if (top) top.onClose()
   })
 }
 
 /** Push an overlay: append its segment to the current hash + record its closer. */
-function pushOverlay(segment: string, onClose: () => void): number {
+function pushOverlay(
+  segment: string,
+  onClose: () => void,
+  blocking: boolean,
+): { id: number; depth: number } {
   ensureListener()
   const id = nextId++
-  stack.push({ id, onClose })
+  const depth = stack.length // nesting level (0 = first overlay)
+  stack.push({ id, onClose, blocking })
+  notify()
   const base = (window.location.hash || "").replace(/\/+$/, "")
   pushHash(base ? `${base}/${segment}` : `#${segment}`)
-  return id
+  return { id, depth }
 }
 
 /**
@@ -62,6 +89,7 @@ function pushOverlay(segment: string, onClose: () => void): number {
  */
 export function clearOverlays() {
   stack.length = 0
+  notify()
 }
 
 /** Remove an overlay closed via the UI; consume its history entry with back(). */
@@ -69,8 +97,21 @@ function removeOverlay(id: number) {
   const idx = stack.findIndex((o) => o.id === id)
   if (idx === -1) return
   stack.splice(idx, 1)
+  notify()
   skipNextPop = true
   if (typeof window !== "undefined") window.history.back()
+}
+
+/**
+ * Subscribe to whether a nav-blocking modal/overlay is currently open. The
+ * bottom nav uses this to hide itself whenever any extra modal is on top.
+ */
+export function useHasBlockingOverlay(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => hasBlockingOverlay(),
+    () => false,
+  )
 }
 
 /**
@@ -79,22 +120,39 @@ function removeOverlay(id: number) {
  * @param open    whether the modal is currently shown
  * @param onClose called when the user presses Back (close the modal in state)
  * @param segment URL path segment for this modal, e.g. `post/123` or `profile/abc`
+ * @param options.hideNav  whether to hide the bottom nav while open (default true;
+ *                          set false for tab-like views such as Connect's lobby).
+ * @returns a z-index for the overlay so each nesting level stacks above the one
+ *          beneath it (used by full-screen modals that can open one another).
  */
-export function useUrlModal(open: boolean, onClose: () => void, segment: string) {
+export function useUrlModal(
+  open: boolean,
+  onClose: () => void,
+  segment: string,
+  options?: { hideNav?: boolean },
+): number {
+  const blocking = options?.hideNav ?? true
   const onCloseRef = useRef(onClose)
   useEffect(() => {
     onCloseRef.current = onClose
   }, [onClose])
 
   const idRef = useRef<number | null>(null)
+  const [zIndex, setZIndex] = useState(Z_BASE)
 
   useEffect(() => {
     if (typeof window === "undefined") return
     if (open && idRef.current == null) {
-      idRef.current = pushOverlay(segment, () => {
-        idRef.current = null // Back already consumed our entry
-        onCloseRef.current()
-      })
+      const { id, depth } = pushOverlay(
+        segment,
+        () => {
+          idRef.current = null // Back already consumed our entry
+          onCloseRef.current()
+        },
+        blocking,
+      )
+      idRef.current = id
+      setZIndex(Z_BASE + depth * Z_STEP)
     } else if (!open && idRef.current != null) {
       const id = idRef.current
       idRef.current = null
@@ -112,4 +170,6 @@ export function useUrlModal(open: boolean, onClose: () => void, segment: string)
       }
     }
   }, [])
+
+  return zIndex
 }

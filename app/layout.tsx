@@ -7,6 +7,8 @@ import { NativeEnv } from '@/components/app-shell/native-env'
 import { SharedPostOpener } from '@/components/feed/shared-post-opener'
 import { InstallFullscreenPrompt } from '@/components/pwa/install-fullscreen-prompt'
 import { PwaRegister } from '@/components/pwa-register'
+import { OrganizationJsonLd, WebSiteJsonLd, SoftwareAppJsonLd } from '@/components/seo/json-ld'
+import { siteConfig, SITE_URL } from '@/lib/seo/site'
 import './globals.css'
 
 export const viewport: Viewport = {
@@ -28,10 +30,65 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'TalkMe - Connect & Chat',
-  description: 'A premium modern messaging app to connect with friends and discover new people',
-  generator: 'v0.app',
+  // metadataBase makes every relative OG/canonical URL resolve to an absolute
+  // https URL — required for valid social cards and canonical tags.
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: siteConfig.title,
+    // Subpages render as "Page Title · TalkMe" automatically.
+    template: `%s · ${siteConfig.name}`,
+  },
+  description: siteConfig.description,
+  keywords: [...siteConfig.keywords],
+  applicationName: siteConfig.name,
+  authors: [{ name: siteConfig.author, url: SITE_URL }],
+  creator: siteConfig.author,
+  publisher: siteConfig.author,
   manifest: '/manifest.json',
+  // The homepage is the canonical for "/" — prevents duplicate-URL dilution
+  // from query strings, hash routes, and www/non-www variants.
+  alternates: {
+    canonical: '/',
+  },
+  // Tell crawlers exactly how to index. Defaults are permissive; we just make
+  // intent explicit and unlock large image/snippet previews.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    siteName: siteConfig.name,
+    title: siteConfig.title,
+    description: siteConfig.description,
+    url: SITE_URL,
+    locale: siteConfig.locale,
+    images: [
+      {
+        url: '/opengraph-image',
+        width: 1200,
+        height: 630,
+        alt: siteConfig.title,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: siteConfig.title,
+    description: siteConfig.description,
+    site: siteConfig.twitterHandle,
+    creator: siteConfig.twitterHandle,
+    images: ['/opengraph-image'],
+  },
+  category: 'social',
+  generator: 'Next.js',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -50,6 +107,11 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+  // Paste the token from Google Search Console (Settings → Ownership →
+  // HTML tag) here to verify the property. Leave empty until you have it.
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
+  },
 }
 
 export default function RootLayout({
@@ -60,6 +122,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-background" suppressHydrationWarning>
       <body className="font-sans antialiased overflow-hidden overscroll-none touch-manipulation">
+        <OrganizationJsonLd />
+        <WebSiteJsonLd />
+        <SoftwareAppJsonLd />
         <ZoomPreventer />
         <NativeEnv />
         <PwaRegister />

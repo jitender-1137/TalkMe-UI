@@ -3,15 +3,15 @@
 import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import {
   Search,
-  MoreVertical,
+  MoreHorizontal,
   Plus,
   Pin,
   BellOff,
   ChevronLeft,
   Archive,
   MessageCircle,
+  Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { AvatarStatusBadge } from "@/components/presence";
 import { useLivePresence } from "@/lib/presence/live-status-store";
 import { MessageStatusIcon } from "@/components/chat/message-status";
@@ -40,9 +40,291 @@ import {
   useMarkChatAsRead,
 } from "@/src/api/hooks/useChats";
 import { useBlockUser } from "@/src/api/hooks/useProfile";
+import { useContactRequests } from "@/src/api/hooks/useContacts";
+import { FriendsOverlay } from "@/components/friends";
 import type { Chat } from "@/src/api/types";
 import { useWebSocket } from "@/components/providers";
 import { useNavigation } from "./navigation-context";
+import {
+  HEADER_ICON_BTN,
+  HEADER_ICON_BTN_ACTIVE,
+  HEADER_ICON,
+} from "@/components/ui/header-button";
+
+/** Messaging-themed backdrop for the Chats header: a flowing conversation of
+ *  speech bubbles, a reaction heart and drifting sparkles. */
+function ChatsBackdrop() {
+  return (
+    <svg
+      viewBox="0 0 900 200"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden
+      className="pointer-events-none absolute inset-0 h-full w-full opacity-80"
+    >
+      <defs>
+        <radialGradient id="chats-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="oklch(0.8 0.2 165)" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="oklch(0.8 0.2 165)" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="chats-stroke" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="oklch(0.82 0.16 165)" stopOpacity="0.2" />
+          <stop offset="60%" stopColor="oklch(0.85 0.17 165)" stopOpacity="0.85" />
+          <stop offset="100%" stopColor="oklch(0.75 0.16 185)" stopOpacity="0.3" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="690" cy="80" rx="240" ry="110" fill="url(#chats-glow)">
+        <animate attributeName="opacity" values="0.7;1;0.7" dur="5s" repeatCount="indefinite" />
+      </ellipse>
+
+      {/* dotted "conversation thread" — dashes flow along the path */}
+      <path
+        d="M470 150 C 560 110, 540 60, 620 60 S 760 110, 845 120"
+        fill="none"
+        stroke="oklch(0.82 0.16 165)"
+        strokeOpacity="0.35"
+        strokeWidth="1.5"
+        strokeDasharray="2 7"
+        strokeLinecap="round"
+      >
+        <animate
+          attributeName="stroke-dashoffset"
+          values="36;0"
+          dur="2s"
+          repeatCount="indefinite"
+        />
+      </path>
+
+      {/* main incoming bubble + tail (gentle float) */}
+      <g fill="none" stroke="url(#chats-stroke)">
+        <path
+          d="M548 38 h150 a18 18 0 0 1 18 18 v40 a18 18 0 0 1 -18 18 h-92 l-22 20 v-20 h-36 a18 18 0 0 1 -18 -18 v-40 a18 18 0 0 1 18 -18 z"
+          strokeWidth="2"
+        />
+        {/* typing dots in the main bubble */}
+        {[600, 628, 656].map((cx, i) => (
+          <circle key={cx} cx={cx} cy="76" r="4" fill="oklch(0.86 0.16 165)" stroke="none">
+            <animate
+              attributeName="opacity"
+              values="0.35;1;0.35"
+              dur="1.4s"
+              begin={`${i * 0.2}s`}
+              repeatCount="indefinite"
+            />
+          </circle>
+        ))}
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="0 0; 0 -5; 0 0"
+          dur="4s"
+          repeatCount="indefinite"
+        />
+      </g>
+
+      {/* outgoing reply bubble (floats out of phase) */}
+      <g fill="none" stroke="url(#chats-stroke)">
+        <path
+          d="M770 104 h66 a14 14 0 0 1 14 14 v26 a14 14 0 0 1 -14 14 h-10 l-16 16 v-16 h-40 a14 14 0 0 1 -14 -14 v-26 a14 14 0 0 1 14 -14 z"
+          strokeWidth="1.6"
+          strokeOpacity="0.6"
+        />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="0 0; 0 5; 0 0"
+          dur="4.6s"
+          repeatCount="indefinite"
+        />
+      </g>
+
+      {/* tiny far bubble */}
+      <path
+        d="M455 96 h44 a12 12 0 0 1 12 12 v18 a12 12 0 0 1 -12 12 h-30 l-12 12 v-12 h-2 a12 12 0 0 1 -12 -12 v-18 a12 12 0 0 1 12 -12 z"
+        fill="none"
+        stroke="url(#chats-stroke)"
+        strokeWidth="1.2"
+        strokeOpacity="0.4"
+      >
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="0 0; 0 -3; 0 0"
+          dur="3.4s"
+          repeatCount="indefinite"
+        />
+      </path>
+
+      {/* reaction heart (beats by fading + bobbing) */}
+      <path
+        d="M812 70 c -4 -8 -16 -6 -16 3 c 0 7 9 12 16 18 c 7 -6 16 -11 16 -18 c 0 -9 -12 -11 -16 -3 z"
+        fill="oklch(0.72 0.2 20)"
+        fillOpacity="0.7"
+      >
+        <animate
+          attributeName="fill-opacity"
+          values="0.45;0.85;0.45"
+          dur="1.6s"
+          repeatCount="indefinite"
+        />
+        <animateTransform
+          attributeName="transform"
+          type="translate"
+          values="0 0; 0 -6; 0 0"
+          dur="3.2s"
+          repeatCount="indefinite"
+        />
+      </path>
+
+      {/* message "packets" travelling along the conversation thread */}
+      {[0, 1, 2].map((i) => (
+        <circle key={`pkt-${i}`} r={i === 1 ? 3 : 2.4} fill="oklch(0.9 0.14 165)">
+          <animateMotion
+            path="M470 150 C 560 110, 540 60, 620 60 S 760 110, 845 120"
+            dur="3.4s"
+            begin={`${i * 1.1}s`}
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0;1;1;0"
+            keyTimes="0;0.12;0.85;1"
+            dur="3.4s"
+            begin={`${i * 1.1}s`}
+            repeatCount="indefinite"
+          />
+        </circle>
+      ))}
+
+      {/* rising stream of chat bubbles (float up + fade) */}
+      {[
+        [462, 16, 8, 0],
+        [524, 11, 6.4, 1.6],
+        [604, 19, 9, 0.7],
+        [676, 12, 6.8, 2.4],
+        [752, 15, 7.6, 0.3],
+        [834, 10, 6, 3.1],
+        [704, 13, 8.4, 1.1],
+      ].map(([x, s, dur, begin], i) => (
+        <g key={`rise-${i}`}>
+          <rect
+            x={x}
+            y={172}
+            width={s * 1.7}
+            height={s}
+            rx={s / 2}
+            fill="oklch(0.8 0.14 165)"
+            fillOpacity="0.18"
+            stroke="oklch(0.85 0.16 165)"
+            strokeOpacity="0.5"
+            strokeWidth="1"
+          />
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0; 0 -160"
+            dur={`${dur}s`}
+            begin={`${begin}s`}
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0;0.9;0.9;0"
+            keyTimes="0;0.15;0.7;1"
+            dur={`${dur}s`}
+            begin={`${begin}s`}
+            repeatCount="indefinite"
+          />
+        </g>
+      ))}
+
+      {/* floating reactions (hearts + a thumbs-up) drifting up */}
+      {[
+        ["heart", 600, 150, 5.5, 0.5],
+        ["heart", 860, 150, 6.2, 2.2],
+        ["up", 510, 160, 6, 3.4],
+      ].map(([kind, x, y, dur, begin], i) => (
+        <g key={`react-${i}`}>
+          {kind === "heart" ? (
+            <path
+              d={`M${x} ${y} c -3 -6 -12 -4 -12 2 c 0 5 7 9 12 13 c 5 -4 12 -8 12 -13 c 0 -6 -9 -8 -12 -2 z`}
+              fill="oklch(0.72 0.2 20)"
+            />
+          ) : (
+            <path
+              d={`M${x as number} ${(y as number) - 4} v8 h-4 v-8 z M${x as number} ${(y as number) - 4} h8 v10 h-8 z`}
+              fill="oklch(0.8 0.16 165)"
+            />
+          )}
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0; 6 -70; -4 -130"
+            keyTimes="0;0.5;1"
+            dur={`${dur}s`}
+            begin={`${begin}s`}
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0;0.85;0"
+            keyTimes="0;0.3;1"
+            dur={`${dur}s`}
+            begin={`${begin}s`}
+            repeatCount="indefinite"
+          />
+        </g>
+      ))}
+
+      {/* drifting, twinkling sparkles */}
+      {[
+        [520, 50, 1.4],
+        [740, 46, 1.2],
+        [690, 150, 1.3],
+        [880, 70, 1],
+        [600, 30, 1],
+      ].map(([x, y, r], i) => (
+        <circle key={`spk-${i}`} cx={x} cy={y} r={r} fill="oklch(0.92 0.06 165)" fillOpacity="0.85">
+          <animate
+            attributeName="opacity"
+            values="0.3;1;0.3"
+            dur={`${2.5 + (i % 3)}s`}
+            begin={`${i * 0.4}s`}
+            repeatCount="indefinite"
+          />
+          <animateTransform
+            attributeName="transform"
+            type="translate"
+            values="0 0; 0 -6; 0 0"
+            dur={`${5 + i}s`}
+            repeatCount="indefinite"
+          />
+        </circle>
+      ))}
+
+      {/* rotating 4-point sparkles */}
+      {[
+        [560, 40],
+        [800, 150],
+      ].map(([x, y], i) => (
+        <path
+          key={`star-${i}`}
+          d={`M${x} ${(y as number) - 7} l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5 -6 -6 -2.5 6 -2.5 z`}
+          fill="oklch(0.94 0.06 165)"
+          fillOpacity="0.8"
+        >
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from={`0 ${x} ${y}`}
+            to={`360 ${x} ${y}`}
+            dur={`${7 + i * 2}s`}
+            repeatCount="indefinite"
+          />
+        </path>
+      ))}
+    </svg>
+  );
+}
 
 interface ConvItemProps {
   conversation: Chat;
@@ -84,8 +366,22 @@ function participantsEqual(a: Chat["participants"], b: Chat["participants"]): bo
   const bl = b?.length ?? 0;
   if (al !== bl) return false;
   for (let i = 0; i < al; i++) {
-    const pa = a![i] as { id?: string; name?: string; username?: string; avatar?: string | null; presence?: string; gender?: string | null };
-    const pb = b![i] as { id?: string; name?: string; username?: string; avatar?: string | null; presence?: string; gender?: string | null };
+    const pa = a![i] as {
+      id?: string;
+      name?: string;
+      username?: string;
+      avatar?: string | null;
+      presence?: string;
+      gender?: string | null;
+    };
+    const pb = b![i] as {
+      id?: string;
+      name?: string;
+      username?: string;
+      avatar?: string | null;
+      presence?: string;
+      gender?: string | null;
+    };
     if (pa.id !== pb.id) return false;
     if (pa.name !== pb.name) return false;
     if (pa.username !== pb.username) return false;
@@ -174,7 +470,11 @@ const ConversationItem = memo(function ConversationItem({
   // current user sent in a 1:1 chat — same as WhatsApp's chat list.
   const lastMsg = conversation.lastMessage;
   const showLastMsgStatus =
-    !!lastMsg && !isGroup && !lastMsg.isDeleted && lastMsg.senderId === currentUserId && !!lastMsg.status;
+    !!lastMsg &&
+    !isGroup &&
+    !lastMsg.isDeleted &&
+    lastMsg.senderId === currentUserId &&
+    !!lastMsg.status;
 
   return (
     <motion.div
@@ -270,11 +570,13 @@ export function SecondaryPanel() {
   } = useChatContext();
   const isMobile = useIsMobile();
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTarget, setMenuTarget] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [viewArchived, setViewArchived] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { registerHandler } = useWebSocket();
@@ -282,28 +584,28 @@ export function SecondaryPanel() {
 
   useEffect(() => {
     const cleanupStarted = registerHandler("typing_started", (payload: any) => {
-      const isSelf = payload.userId === user?.id
+      const isSelf = payload.userId === user?.id;
       console.log("[TYPING UI] SecondaryPanel received typing_started event:", {
         currentLoggedInUserId: user?.id,
         chatId: payload.chatId,
         senderId: payload.userId,
         ignored: isSelf ? "YES" : "NO",
-        reason: isSelf ? "Self typing event" : "None"
-      })
+        reason: isSelf ? "Self typing event" : "None",
+      });
       if (payload.chatId && !isSelf) {
         setTypingChats((prev) => ({ ...prev, [payload.chatId]: true }));
       }
     });
 
     const cleanupStopped = registerHandler("typing_stopped", (payload: any) => {
-      const isSelf = payload.userId === user?.id
+      const isSelf = payload.userId === user?.id;
       console.log("[TYPING UI] SecondaryPanel received typing_stopped event:", {
         currentLoggedInUserId: user?.id,
         chatId: payload.chatId,
         senderId: payload.userId,
         ignored: isSelf ? "YES" : "NO",
-        reason: isSelf ? "Self typing event" : "None"
-      })
+        reason: isSelf ? "Self typing event" : "None",
+      });
       if (payload.chatId && !isSelf) {
         setTypingChats((prev) => ({ ...prev, [payload.chatId]: false }));
       }
@@ -316,6 +618,8 @@ export function SecondaryPanel() {
   }, [registerHandler, user?.id]);
 
   const { data: conversations = [], isLoading } = useChats();
+  const { data: contactRequests = [] } = useContactRequests();
+  const pendingRequestsCount = contactRequests.length;
   const muteMutation = useMuteChat();
   const unmuteMutation = useUnmuteChat();
   const archiveMutation = useArchiveChat();
@@ -347,46 +651,49 @@ export function SecondaryPanel() {
       }
     : undefined;
 
-  const filteredConversations = useMemo(() => conversations
-    .filter((c) => {
-      const isGroupChat = c.chatType === "GROUP" || c.type === "group";
+  const filteredConversations = useMemo(
+    () =>
+      conversations
+        .filter((c) => {
+          const isGroupChat = c.chatType === "GROUP" || c.type === "group";
 
-      // Hide private/stranger chats that do not have any messages
-      if (!isGroupChat && !c.lastMessage) {
-        return false;
-      }
+          // Hide private/stranger chats that do not have any messages
+          if (!isGroupChat && !c.lastMessage) {
+            return false;
+          }
 
-      // Handle archived vs active views
-      const isChatArchived = c.archived || c.isArchived;
-      if (viewArchived) {
-        if (!isChatArchived) return false;
-      } else {
-        if (isChatArchived) return false;
-      }
+          // Handle archived vs active views
+          const isChatArchived = c.archived || c.isArchived;
+          if (viewArchived) {
+            if (!isChatArchived) return false;
+          } else {
+            if (isChatArchived) return false;
+          }
 
-      // Filter chips handling
-      if (activeFilter === "unread" && c.unreadCount === 0) return false;
-      if (activeFilter === "pinned" && !(c.pinned || c.isPinned)) return false;
-      if (activeFilter === "groups" && !isGroupChat) return false;
+          // Filter chips handling
+          if (activeFilter === "unread" && c.unreadCount === 0) return false;
+          if (activeFilter === "pinned" && !(c.pinned || c.isPinned)) return false;
+          if (activeFilter === "groups" && !isGroupChat) return false;
 
-      const other = c.otherUser ?? c.participants?.find((p) => p.id !== user?.id);
-      const displayName = isGroupChat
-        ? (c.name ?? "Group Chat")
-        : other?.name || other?.username || "Unknown User";
-      return displayName.toLowerCase().includes(searchQuery.toLowerCase());
-    })
-    .sort((a, b) => {
-      // Sort pinned to top
-      const aPinned = a.pinned || a.isPinned ? 1 : 0;
-      const bPinned = b.pinned || b.isPinned ? 1 : 0;
-      if (aPinned !== bPinned) return bPinned - aPinned;
+          const other = c.otherUser ?? c.participants?.find((p) => p.id !== user?.id);
+          const displayName = isGroupChat
+            ? (c.name ?? "Group Chat")
+            : other?.name || other?.username || "Unknown User";
+          return displayName.toLowerCase().includes(searchQuery.toLowerCase());
+        })
+        .sort((a, b) => {
+          // Sort pinned to top
+          const aPinned = a.pinned || a.isPinned ? 1 : 0;
+          const bPinned = b.pinned || b.isPinned ? 1 : 0;
+          if (aPinned !== bPinned) return bPinned - aPinned;
 
-      // Then sort by timestamp
-      const aTime = a.lastMessage?.timestamp || a.updatedAt || a.createdAt || "";
-      const bTime = b.lastMessage?.timestamp || b.updatedAt || b.createdAt || "";
-      return new Date(bTime).getTime() - new Date(aTime).getTime();
-    }),
-    [conversations, viewArchived, activeFilter, searchQuery, user?.id]);
+          // Then sort by timestamp
+          const aTime = a.lastMessage?.timestamp || a.updatedAt || a.createdAt || "";
+          const bTime = b.lastMessage?.timestamp || b.updatedAt || b.createdAt || "";
+          return new Date(bTime).getTime() - new Date(aTime).getTime();
+        }),
+    [conversations, viewArchived, activeFilter, searchQuery, user?.id],
+  );
 
   const handleSelectConversation = (id: string) => {
     // Opened from the conversation list → Back should return to the list, so
@@ -404,55 +711,104 @@ export function SecondaryPanel() {
 
   const archivedChatsCount = conversations.filter((c) => c.archived || c.isArchived).length;
 
+  // Counts shown on the filter chips (over the active, non-archived chat set).
+  const filterCounts = useMemo(() => {
+    const base = conversations.filter((c) => {
+      const isGroupChat = c.chatType === "GROUP" || c.type === "group";
+      if (!isGroupChat && !c.lastMessage) return false;
+      return !(c.archived || c.isArchived);
+    });
+    return {
+      all: base.length,
+      unread: base.filter((c) => (c.unreadCount ?? 0) > 0).length,
+      pinned: base.filter((c) => c.pinned || c.isPinned).length,
+      groups: base.filter((c) => c.chatType === "GROUP" || c.type === "group").length,
+    };
+  }, [conversations]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
+
   return (
     <div className="flex flex-col bg-card border-r border-white/10 h-dvh w-full md:w-80 lg:w-96 md:fixed md:left-[72px] md:top-0">
       <AppLayout
         title={viewArchived ? "Archived" : "TalkMe"}
-        logo={viewArchived ? undefined : "/apple-icon.png"}
         icon={viewArchived ? Archive : MessageCircle}
+        logoNode={
+          viewArchived ? undefined : (
+            <div className="relative h-14 w-14 shrink-0">
+              <span className="absolute inset-0 rounded-2xl bg-primary/30 blur-md" />
+              <span className="absolute -inset-1 rounded-[18px] border border-primary/30" />
+              <div className="relative h-14 w-14 rounded-2xl overflow-hidden border border-primary/40 shadow-lg shadow-primary/25">
+                <img src="/apple-icon.png" alt="TalkMe" className="h-full w-full object-cover" />
+              </div>
+            </div>
+          )
+        }
+        subtitle={viewArchived ? undefined : "Your conversations, all in one place"}
+        headerBackdrop={viewArchived ? undefined : <ChatsBackdrop />}
+        disableCollapse
+        scrollKey="tab:chats"
         searchPlaceholder="Search conversations"
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
+        showSearchBar={searchOpen}
+        searchAutoFocus
         filterChips={
           viewArchived
             ? undefined
             : [
-                { id: "all", label: "All" },
-                { id: "unread", label: "Unread" },
-                { id: "pinned", label: "Pinned" },
-                { id: "groups", label: "Groups" },
+                { id: "all", label: "All", badge: filterCounts.all },
+                { id: "unread", label: "Unread", badge: filterCounts.unread },
+                { id: "pinned", label: "Pinned", badge: filterCounts.pinned },
+                { id: "groups", label: "Groups", badge: filterCounts.groups },
               ]
         }
         activeFilterId={activeFilter}
         onFilterChange={setActiveFilter}
         headerRight={
           viewArchived ? (
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
               onClick={() => setViewArchived(false)}
-              className="text-primary hover:text-primary-foreground font-semibold flex items-center gap-1 cursor-pointer"
+              aria-label="Back to Chats"
+              className={cn(HEADER_ICON_BTN, "w-auto gap-1 px-3 text-sm font-semibold")}
             >
               <ChevronLeft className="h-4 w-4" />
               Chats
-            </Button>
+            </button>
           ) : (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFriendsOpen(true)}
+                aria-label="Friends"
+                className={cn(HEADER_ICON_BTN, "relative")}
+              >
+                <Users className={HEADER_ICON} />
+                {pendingRequestsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none px-1 ring-2 ring-card">
+                    {pendingRequestsCount > 99 ? "99+" : pendingRequestsCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+                aria-label="Search"
+                className={cn(HEADER_ICON_BTN, searchOpen && HEADER_ICON_BTN_ACTIVE)}
+              >
+                <Search className={HEADER_ICON} />
+              </button>
+              <button
                 onClick={() => setActiveTab("discover")}
-                className="bg-primary text-primary-foreground h-9 w-9 rounded-full hover:bg-primary/80 dark:hover:bg-primary/80 active:scale-95 transition-all cursor-pointer"
+                aria-label="New chat"
+                className={HEADER_ICON_BTN}
               >
-                <Plus className="h-5 w-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all text-muted-foreground cursor-pointer"
-              >
-                <MoreVertical className="h-5 w-5" />
-              </Button>
+                <Plus className={HEADER_ICON} />
+              </button>
+              <button aria-label="More options" className={HEADER_ICON_BTN}>
+                <MoreHorizontal className={HEADER_ICON} />
+              </button>
             </div>
           )
         }
@@ -570,6 +926,9 @@ export function SecondaryPanel() {
           }
         }}
       />
+
+      {/* Friends — nested overlay (#chats/friends), Back returns to Chats */}
+      <FriendsOverlay open={friendsOpen} onClose={() => setFriendsOpen(false)} />
     </div>
   );
 }

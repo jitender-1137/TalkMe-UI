@@ -202,6 +202,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsGuestMatch(false)
         setUser(null)
         setGuestUser(null)
+        // Clear the homepage "entered app" flag so "/" shows the public landing
+        // page again on next visit (see components/home/home-gate.tsx).
+        try {
+          localStorage.removeItem("tm_entered")
+        } catch {}
       },
     })
   }, [logoutMutation])

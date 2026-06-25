@@ -2,6 +2,8 @@
   "name": "TalkMe - Connect & Chat",
   "short_name": "TalkMe",
   "description": "A premium modern messaging app to connect with friends and discover new people.",
+  "categories": ["social", "communication", "lifestyle"],
+  "lang": "en",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#09090b",

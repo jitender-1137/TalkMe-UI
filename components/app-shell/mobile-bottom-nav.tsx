@@ -9,6 +9,7 @@ import { useMatchStore } from "@/components/match/match-store";
 import { useInbox } from "@/components/lobby/hooks";
 import { useLobbyStore } from "@/components/lobby/lobby-store";
 import { useAuth } from "./auth-context";
+import { useHasBlockingOverlay } from "@/lib/navigation/use-url-modal";
 import { motion } from "framer-motion";
 import { User } from "lucide-react";
 
@@ -33,9 +34,19 @@ export function MobileBottomNav() {
     activeTab === "chats" && selectedConversationId !== null && !showMobileSecondaryPanel;
   const isLobbyChatOpen = activeTab === "match" && lobbySelectedUser !== null;
   const isMatchActive = activeTab === "match" && matchStatus !== "idle";
+  // Any open modal/overlay (post, comments, profile, settings legal pages,
+  // safety tips, create, etc.) hides the nav — it shows only on a bare tab.
+  const hasOverlay = useHasBlockingOverlay();
 
-  // Hide nav bar when active in a conversation room or auth modals
-  if (showLoginModal || showSignupModal || isOneToOneOpen || isLobbyChatOpen || isMatchActive) {
+  // Hide nav bar when active in a conversation room, auth modals, or any overlay
+  if (
+    showLoginModal ||
+    showSignupModal ||
+    isOneToOneOpen ||
+    isLobbyChatOpen ||
+    isMatchActive ||
+    hasOverlay
+  ) {
     return null;
   }
 
@@ -47,9 +58,9 @@ export function MobileBottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-[calc(env(safe-area-inset-bottom)+28px)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg md:hidden">
+    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg md:hidden">
       {/* Floating glassmorphic rounded pill */}
-      <div className="rounded-full bg-white/70 dark:bg-[rgb(30,37,43)] backdrop-blur-[25px] border border-black/5 dark:border-white/10 shadow-lg shadow-black/10 dark:shadow-black/30 px-2">
+      <div className="rounded-full bg-white/90 dark:bg-[rgb(30,37,43)] backdrop-blur-[60px] border border-black/12 dark:border-white/10 shadow-lg shadow-black/50 dark:shadow-black/30 px-2">
         <div className="flex items-center justify-around h-13 py-1 relative">
           {navigationItems.map((item) => {
             const Icon = item.icon;
@@ -66,7 +77,7 @@ export function MobileBottomNav() {
                   "flex flex-col items-center justify-center relative flex-1 py-1.5 transition-all cursor-pointer select-none",
                   isActive
                     ? "text-primary opacity-100"
-                    : "text-muted-foreground hover:opacity-85 active:scale-95",
+                    : "text-foreground/70 hover:opacity-85 active:scale-95",
                 )}
               >
                 {/* Sliding active background indicator using Framer Motion spring layout */}
@@ -116,7 +127,7 @@ export function MobileBottomNav() {
 
                   <span
                     className={cn(
-                      "text-[9px] tracking-tight transition-all",
+                      "text-[11px] tracking-tight transition-all",
                       isActive ? "font-semibold text-primary" : "font-medium text-muted-foreground",
                     )}
                   >

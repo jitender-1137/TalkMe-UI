@@ -1,4 +1,5 @@
 export { FriendsDashboard } from "./friends-dashboard"
+export { FriendsOverlay } from "./friends-overlay"
 export { AllFriends } from "./all-friends"
 export { FriendRequests } from "./friend-requests"
 export { DiscoverPeople } from "./discover-people"

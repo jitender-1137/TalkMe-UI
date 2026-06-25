@@ -98,6 +98,26 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil((async () => {
+    // Acknowledge delivery to the server the moment the push lands on this device
+    // — even though the tab/app is backgrounded and its WebSocket is closed. This
+    // is what flips the SENDER's tick from "sent" to "delivered" in real time
+    // (the WhatsApp double-tick). The signed token in the payload authorizes it,
+    // so no access token is needed here. Best-effort; runs CONCURRENTLY with (and
+    // never blocks) showing the notification, which must appear promptly because
+    // the subscription is userVisibleOnly.
+    let ackPromise = Promise.resolve();
+    if (data.deliveryToken && data.deliveryAck) {
+      try {
+        const ackUrl = new URL(data.deliveryAck, self.location.origin).toString();
+        ackPromise = fetch(ackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: data.deliveryToken }),
+          keepalive: true,
+        }).catch(() => { /* offline/transient — heals on recipient's next reconnect */ });
+      } catch (e) { /* bad URL — ignore */ }
+    }
+
     // Keep the OS app badge in sync from the push payload
     if (typeof data.badge === 'number' && 'setAppBadge' in self.navigator) {
       try {
@@ -105,7 +125,9 @@ self.addEventListener('push', (event) => {
         else await self.navigator.clearAppBadge();
       } catch (e) { /* unsupported — ignore */ }
     }
-    await self.registration.showNotification(title, options);
+
+    // Show the notification right away; keep the event alive for the ack too.
+    await Promise.all([self.registration.showNotification(title, options), ackPromise]);
   })());
 });
 

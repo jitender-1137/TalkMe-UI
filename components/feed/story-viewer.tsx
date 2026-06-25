@@ -12,6 +12,7 @@ import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { MessageService } from "@/src/api/services/message.service"
 import { serializeStoryReply } from "@/lib/story-reply"
 import { showSuccessToast, showErrorToast } from "@/src/api/error-handler"
+import { useUrlModal } from "@/lib/navigation/use-url-modal"
 import type { StoryGroup, Story } from "./types"
 
 const STORY_REACTIONS = ["❤️", "🔥", "😂", "😮", "😢", "👏", "🙌"]
@@ -34,6 +35,12 @@ export function StoryViewer({
   onDeleteStory,
   currentUserId,
 }: StoryViewerProps) {
+  // Register as a blocking overlay: hides the bottom nav, lifts the viewer above
+  // it (z-index ≥ 250, escaping the feed's trapped stacking context), and makes
+  // the Back button close the story — matching the app's other full-screen
+  // modals. The component only mounts while open, so `open` is constant true.
+  const zIndex = useUrlModal(true, onClose, "story")
+
   const [currentGroupIndex, setCurrentGroupIndex] = useState(initialGroupIndex)
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0)
   const [progress, setProgress] = useState(0)
@@ -224,7 +231,8 @@ export function StoryViewer({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
+      style={{ zIndex }}
+      className="fixed inset-0 bg-black flex items-center justify-center"
     >
       {/* Close button */}
       <Button

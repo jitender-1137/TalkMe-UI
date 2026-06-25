@@ -2,7 +2,6 @@ import {
   MessageCircle,
   Compass,
   Zap,
-  Users,
   Newspaper,
   Settings,
   type LucideIcon,
@@ -21,6 +20,5 @@ export const navigationItems: NavItem[] = [
   { id: "discover", label: "Discover", icon: Compass, href: "/discover" },
   { id: "news", label: "News", icon: Newspaper, href: "/news" },
   { id: "match", label: "Connect", icon: Zap, href: "/match" },
-  { id: "friends", label: "Friends", icon: Users, href: "/friends" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ]

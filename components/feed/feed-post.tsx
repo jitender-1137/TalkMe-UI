@@ -1,14 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Heart,
   MessageCircle,
-  Share2,
   Bookmark,
   MoreHorizontal,
   BadgeCheck,
+  Send,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -50,12 +50,14 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
   const [shareOpen, setShareOpen] = useState(false)
   const [profileUserId, setProfileUserId] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false) // view-post modal
+  const [commentText, setCommentText] = useState("")
+  const carouselRef = useRef<HTMLDivElement>(null)
 
   // Each overlay gets its own URL segment and is closed by the Back button.
+  // (ProfileModal self-registers its own `user/<id>` overlay.)
   useUrlModal(detailOpen, () => setDetailOpen(false), `post/${post.id}`)
   useUrlModal(commentsOpen, () => setCommentsOpen(false), "comments")
   useUrlModal(shareOpen, () => setShareOpen(false), "share")
-  useUrlModal(!!profileUserId, () => setProfileUserId(null), `user/${profileUserId ?? ""}`)
 
   const { data: ownProfile } = useProfile()
 
@@ -97,33 +99,53 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
     onLike(post.id)
   }
 
+  // Track the active slide of the media carousel for the "n/total" counter.
+  const handleCarouselScroll = () => {
+    const el = carouselRef.current
+    if (!el || post.media.length < 2) return
+    const idx = Math.round(el.scrollLeft / el.clientWidth)
+    if (idx !== imageIndex) setImageIndex(idx)
+  }
+
+  const handleSubmitComment = () => {
+    const text = commentText.trim()
+    if (!text) return
+    onComment(post.id, text)
+    setCommentText("")
+  }
+
   return (
     <motion.article
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card border border-border rounded-xl overflow-hidden"
+      className="bg-card border border-border/60 rounded-3xl overflow-hidden shadow-sm"
     >
       {/* Post header */}
-      <div className="flex items-center gap-3 p-4">
-        <Avatar className="h-10 w-10 cursor-pointer" onClick={() => openProfile(post.author.id)}>
-          <AvatarImage src={getAvatarUrl(post.author.avatar)} />
-          <AvatarFallback>{post.author.name.charAt(0)}</AvatarFallback>
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+        <Avatar
+          className="h-11 w-11 rounded-2xl cursor-pointer"
+          onClick={() => openProfile(post.author.id)}
+        >
+          <AvatarImage src={getAvatarUrl(post.author.avatar)} className="rounded-2xl" />
+          <AvatarFallback className="rounded-2xl">{post.author.name.charAt(0)}</AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openProfile(post.author.id)}>
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-sm truncate hover:underline">{post.author.name}</span>
+            <span className="font-bold text-[15px] truncate hover:underline">{post.author.name}</span>
             {post.author.verified && (
-              <BadgeCheck className="h-4 w-4 text-primary fill-primary/20" />
+              <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-primary">
+                <BadgeCheck className="h-3.5 w-3.5 text-primary-foreground" />
+              </span>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground truncate">
             @{post.author.username} · {formatTimeAgo(post.timestamp ?? (post as any).createdAt)}
           </p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+              <MoreHorizontal className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -134,127 +156,129 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
         </DropdownMenu>
       </div>
 
-      {/* Media grid — click to open the post in the view-post modal */}
+      {/* Media carousel — swipe horizontally; click to open the view-post modal */}
       {post.media.length > 0 && (
-        <div className="relative cursor-pointer" onClick={() => setDetailOpen(true)}>
-          {post.media.length === 1 ? (
-            <MediaItem media={post.media[0] as any} className="w-full aspect-square md:aspect-video" />
-          ) : post.media.length === 2 ? (
-            <div className="grid grid-cols-2 gap-0.5">
-              {post.media.map((media: any) => (
-                <MediaItem key={media.id || media} media={media} className="aspect-square" />
-              ))}
-            </div>
-          ) : post.media.length === 3 ? (
-            <div className="grid grid-cols-2 gap-0.5">
-              <MediaItem media={post.media[0] as any} className="row-span-2 aspect-[1/2]" />
-              <MediaItem media={post.media[1] as any} className="aspect-square" />
-              <MediaItem media={post.media[2] as any} className="aspect-square" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-0.5">
-              {post.media.slice(0, 4).map((media: any, index) => (
-                <div key={media.id || media} className="relative">
-                  <MediaItem media={media} className="aspect-square" />
-                  {index === 3 && post.media.length > 4 && (
-                    <div className="absolute inset-0 bg-black flex items-center justify-center">
-                      <span className="text-white text-2xl font-bold">
-                        +{post.media.length - 4}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="relative mx-3 mb-2 overflow-hidden rounded-2xl">
+          <div
+            ref={carouselRef}
+            onScroll={handleCarouselScroll}
+            className="flex overflow-x-auto snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}
+          >
+            {post.media.map((media: any, i) => (
+              <div
+                key={media.id || media || i}
+                className="w-full shrink-0 snap-center cursor-pointer"
+                onClick={() => setDetailOpen(true)}
+              >
+                <MediaItem media={media} className="w-full aspect-[4/3]" />
+              </div>
+            ))}
+          </div>
 
-          {/* Image indicator dots */}
+          {/* "n/total" counter */}
           {post.media.length > 1 && (
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-              {post.media.slice(0, 5).map((_, index) => (
-                <div
-                  key={index}
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full transition-colors",
-                    index === imageIndex ? "bg-white" : "bg-white/50"
-                  )}
-                />
-              ))}
+            <div className="absolute top-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+              {imageIndex + 1}/{post.media.length}
             </div>
           )}
         </div>
       )}
 
-      {/* Actions bar */}
-      <div className="px-4 py-3 flex items-center justify-between border-t border-border">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
+      {/* Action pills */}
+      <div className="px-4 pt-1 pb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button
             onClick={handleLike}
             className={cn(
-              "gap-1.5 h-9 px-3",
-              post.liked && "text-rose-500 hover:text-rose-500"
+              "flex items-center gap-1.5 h-9 px-3 rounded-full border text-sm font-semibold transition-colors cursor-pointer",
+              post.liked
+                ? "border-rose-500/40 text-rose-500 bg-rose-500/5"
+                : "border-border text-foreground hover:bg-muted-foreground/10",
             )}
           >
-            <motion.div
+            <motion.span
               animate={post.liked ? { scale: [1, 1.3, 1] } : { scale: 1 }}
               transition={{ duration: 0.3 }}
             >
-              <Heart
-                className={cn("h-5 w-5", post.liked && "fill-current")}
-              />
-            </motion.div>
-            <span className="text-sm font-medium">{formatCount(post.likes ?? 0)}</span>
-          </Button>
+              <Heart className={cn("h-5 w-5", post.liked && "fill-current")} />
+            </motion.span>
+            {formatCount(post.likes ?? 0)}
+          </button>
 
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
             onClick={handleToggleComments}
-            className="gap-1.5 h-9 px-3"
+            className="flex items-center gap-1.5 h-9 px-3 rounded-full border border-border text-sm font-semibold text-foreground hover:bg-muted-foreground/10 transition-colors cursor-pointer"
           >
             <MessageCircle className="h-5 w-5" />
-            <span className="text-sm font-medium">{formatCount(commentCount)}</span>
-          </Button>
+            {formatCount(commentCount)}
+          </button>
 
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
             onClick={() => {
               setShareOpen(true)
               onShare(post.id)
             }}
-            className="gap-1.5 h-9 px-3"
+            className="flex items-center gap-1.5 h-9 px-3 rounded-full border border-border text-sm font-semibold text-foreground hover:bg-muted-foreground/10 transition-colors cursor-pointer"
           >
-            <Share2 className="h-5 w-5" />
-            <span className="text-sm font-medium">{formatCount(post.shares ?? 0)}</span>
-          </Button>
+            <Send className="h-[18px] w-[18px]" />
+            {formatCount(post.shares ?? 0)}
+          </button>
         </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
+        <button
           onClick={() => onBookmark(post.id)}
-          className={cn("h-9 w-9", post.bookmarked && "text-primary")}
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-full border transition-colors cursor-pointer",
+            post.bookmarked
+              ? "border-primary/40 text-primary bg-primary/5"
+              : "border-border text-foreground hover:bg-muted-foreground/10",
+          )}
         >
           <Bookmark className={cn("h-5 w-5", post.bookmarked && "fill-current")} />
-        </Button>
+        </button>
       </div>
 
-      {/* Caption shown BELOW the like / comment / share actions.
-          Text-only posts (no media) open the view-post modal on tap. */}
+      {/* Caption */}
       {post.content && (
         <div
-          className={cn("px-4 pb-3", post.media.length === 0 && "cursor-pointer")}
+          className={cn("px-4", post.media.length === 0 && "cursor-pointer")}
           onClick={post.media.length === 0 ? () => setDetailOpen(true) : undefined}
         >
-          <p className="text-sm whitespace-pre-wrap">
+          <p className="text-[15px] leading-relaxed whitespace-pre-wrap text-foreground">
             <span className="font-semibold mr-1.5">{post.author.username}</span>
             {post.content}
           </p>
         </div>
       )}
+
+      {/* Inline comment composer */}
+      <div className="px-4 py-3 flex items-center gap-2.5">
+        <Avatar className="h-8 w-8 shrink-0">
+          <AvatarImage src={getAvatarUrl(ownProfile?.avatar)} />
+          <AvatarFallback>{(ownProfile?.name ?? "You").charAt(0)}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 flex items-center h-10 rounded-full bg-muted/60 px-4">
+          <input
+            type="text"
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSubmitComment()
+            }}
+            placeholder="Add a comment..."
+            className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-none p-0"
+          />
+        </div>
+        <button
+          onClick={handleSubmitComment}
+          disabled={!commentText.trim()}
+          aria-label="Send comment"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40 active:scale-95 transition-transform cursor-pointer"
+        >
+          <Send className="h-4 w-4" />
+        </button>
+      </div>
 
       {/* Desktop: comments shown directly inline */}
       {!isMobile && inlineComments && (
@@ -356,3 +380,4 @@ function formatCount(count: number): string {
   if (count < 1000000) return `${(count / 1000).toFixed(1)}K`
   return `${(count / 1000000).toFixed(1)}M`
 }
+

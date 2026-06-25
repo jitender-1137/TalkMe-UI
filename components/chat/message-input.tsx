@@ -936,7 +936,7 @@ export function MessageInput({
 
   return (
     <div className="bg-card shrink-0 flex flex-col">
-      <div className="px-1 py-3 max-w-3xl mx-auto space-y-2 w-full">
+      <div className="px-1 pb-6 md:pb-3 pt-3 max-w-3xl mx-auto space-y-2 w-full">
         {/* Reply preview */}
         <AnimatePresence>
           {replyTo && (

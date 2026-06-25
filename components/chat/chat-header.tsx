@@ -1,7 +1,7 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { Phone, Video, MoreVertical, ArrowLeft, Search, Menu, Trash2, BellOff, Ban, Image, UserCircle, UserPlus, X } from "lucide-react"
+import { Phone, Video, MoreHorizontal, ArrowLeft, Search, Menu, Trash2, BellOff, Ban, Image, UserCircle, UserPlus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AvatarStatusBadge } from "@/components/presence"
 import { useChatContext } from "./chat-context"
@@ -165,7 +165,7 @@ export function ChatHeader({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl hover:bg-white/10 active:scale-95 transition-all">
-              <MoreVertical className="h-5 w-5" />
+              <MoreHorizontal className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 bg-popover border-white/10 rounded-xl">

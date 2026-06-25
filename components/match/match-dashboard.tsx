@@ -9,7 +9,8 @@ import { StrangerChatScreen } from "./stranger-chat-screen"
 import { ArrowLeft, Square, Users, Zap } from "lucide-react"
 import { useWebSocket } from "@/components/providers"
 import { useAuth } from "@/components/app-shell/auth-context"
-import { useGetActiveSession } from "@/src/api/hooks/useMatch"
+import { useGetActiveSession, useMatchOnlineCount } from "@/src/api/hooks/useMatch"
+import { useLobbyUsers } from "@/src/api/hooks/useProfile"
 import type { StrangerMessage } from "./types"
 import Dexie from "dexie"
 import { useLiveQuery } from "dexie-react-hooks"
@@ -40,7 +41,13 @@ const clearSessionDb = async (sessionId: string) => {
   }
 }
 
-export function MatchDashboard({ onGoToLobby }: { onGoToLobby?: () => void }) {
+export function MatchDashboard({
+  onGoToLobby,
+  onStart,
+}: {
+  onGoToLobby?: () => void;
+  onStart?: () => void;
+}) {
   const {
     status,
     stranger,
@@ -61,6 +68,12 @@ export function MatchDashboard({ onGoToLobby }: { onGoToLobby?: () => void }) {
 
   // API queries
   const { data: activeSession } = useGetActiveSession()
+  // Live "present users" counts for the two landing cards. Quick Chat shows the
+  // matchmaking pool (live via /topic/match/online); Live Lobby shows the online
+  // lobby roster (same source the lobby screen counts).
+  const { data: matchOnlineCount = 0 } = useMatchOnlineCount()
+  const { data: lobbyUsers = [] } = useLobbyUsers()
+  const lobbyOnlineCount = lobbyUsers.length
 
   // Restore active session on mount
   useEffect(() => {
@@ -481,6 +494,19 @@ export function MatchDashboard({ onGoToLobby }: { onGoToLobby?: () => void }) {
     )
   }
 
+  // Live "X online" badge shown on each Connect card (pulsing green dot).
+  const OnlinePill = ({ count, label }: { count: number; label: string }) => (
+    <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs font-semibold text-white">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+      </span>
+      <span>
+        {count.toLocaleString()} {label}
+      </span>
+    </div>
+  )
+
   // Idle landing — "Connect" entry screen (one-tap chooser)
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -503,10 +529,14 @@ export function MatchDashboard({ onGoToLobby }: { onGoToLobby?: () => void }) {
               <p className="text-sm text-white/80 mt-1 leading-snug">
                 Instantly match with someone anonymously.
               </p>
+              <OnlinePill count={matchOnlineCount} label="online to match" />
             </div>
           </div>
           <Button
-            onClick={startSearch}
+            onClick={() => {
+              onStart?.();
+              startSearch();
+            }}
             className="w-full mt-4 h-12 rounded-2xl bg-white text-violet-700 hover:bg-white/90 font-semibold text-base shadow-sm"
           >
             Start
@@ -529,6 +559,7 @@ export function MatchDashboard({ onGoToLobby }: { onGoToLobby?: () => void }) {
               <p className="text-sm text-white/70 mt-1 leading-snug">
                 See who&apos;s online and start chatting.
               </p>
+              <OnlinePill count={lobbyOnlineCount} label="online now" />
             </div>
           </div>
           <Button

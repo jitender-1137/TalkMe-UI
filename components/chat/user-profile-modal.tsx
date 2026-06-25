@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useScrollRestore } from '@/lib/navigation/scroll-restore'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, MessageCircle, Phone, Video, Ban, AlertTriangle, MapPin, Calendar, Loader2, ShieldCheck, Heart, Briefcase, GraduationCap, User } from 'lucide-react'
@@ -29,6 +30,10 @@ export function UserProfileModal({ contact, userId, isOpen, onClose, onMessage, 
   const { showImage } = useImageViewer()
   // Use either the explicit userId prop or fallback to contact's ID if appropriate
   const activeUserId = userId || (contact && !contact.id.includes('-') ? contact.id : null)
+
+  // Preserve scroll per viewed user (keyed by id; reopening another starts fresh).
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useScrollRestore(scrollRef, `modal:user-profile:${activeUserId ?? 'none'}`, { enabled: isOpen })
 
   const { data: user, isLoading: isUserLoading } = useUserById(activeUserId || '')
   const { data: mutualData, isLoading: isMutualLoading } = useMutualFriends(activeUserId || '')
@@ -126,7 +131,10 @@ export function UserProfileModal({ contact, userId, isOpen, onClose, onMessage, 
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto bg-muted/20 dark:bg-muted/10 space-y-3 pb-8">
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto overscroll-contain bg-muted/20 dark:bg-muted/10 space-y-3 pb-8"
+            >
               {isUserLoading ? (
                 <div className="flex flex-col items-center justify-center h-64 p-6">
                   <Loader2 className="h-7 w-7 animate-spin text-primary" />

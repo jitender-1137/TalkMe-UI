@@ -25,6 +25,7 @@ import { QUERY_KEYS } from "@/src/api/query-keys"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { UserProfileModal } from "@/components/chat/user-profile-modal"
 import { getTabFromHash } from "@/lib/navigation/url-hash"
+import { ScrollRestoreProvider } from "@/lib/navigation/scroll-restore"
 import { useBackDismiss } from "@/hooks/use-back-dismiss"
 import { NotificationSetup } from "@/components/providers/notification-setup"
 
@@ -352,9 +353,11 @@ export function AppShell() {
   return (
     <AuthProvider>
       <NavigationProvider>
-        <ChatProvider>
-          <AppShellContent />
-        </ChatProvider>
+        <ScrollRestoreProvider>
+          <ChatProvider>
+            <AppShellContent />
+          </ChatProvider>
+        </ScrollRestoreProvider>
       </NavigationProvider>
     </AuthProvider>
   )

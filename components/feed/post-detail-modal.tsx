@@ -121,7 +121,7 @@ export function PostDetailModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-0 md:p-6"
+      className="fixed inset-0 z-200 bg-black/95 flex items-center justify-center p-0 md:p-6"
       onClick={onClose}
     >
       <Button

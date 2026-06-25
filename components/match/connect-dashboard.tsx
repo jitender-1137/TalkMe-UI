@@ -29,11 +29,87 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "next-themes";
+import { useUrlModal } from "@/lib/navigation/use-url-modal";
+import { SafetyTipsModal } from "./safety-tips-modal";
+import { HEADER_ICON_BTN, HEADER_ICON } from "@/components/ui/header-button";
+
+type ConnectView = "connect" | "lobby" | "quick";
+
+/** Energy/pulse backdrop for the Connect header: radiating signal rings. */
+function ConnectBackdrop() {
+  return (
+    <svg
+      viewBox="0 0 1100 200"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden
+      className="pointer-events-none absolute inset-0 h-full w-full opacity-80"
+    >
+      <defs>
+        <radialGradient id="connect-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="oklch(0.8 0.2 165)" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="oklch(0.8 0.2 165)" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="700" cy="90" rx="200" ry="100" fill="url(#connect-glow)" />
+      {/* radiating pulse rings from a node */}
+      <g fill="none" stroke="oklch(0.82 0.18 165)" transform="translate(700 90)">
+        <circle r="18" strokeWidth="2" strokeOpacity="0.8" />
+        <circle r="42" strokeWidth="1.6" strokeOpacity="0.5" />
+        <circle r="70" strokeWidth="1.3" strokeOpacity="0.32" />
+        <circle r="100" strokeWidth="1" strokeOpacity="0.18" />
+        {/* expanding radar pulses */}
+        {[0, 1.3].map((begin, i) => (
+          <circle key={i} r="18" strokeWidth="2" stroke="oklch(0.88 0.18 165)">
+            <animate
+              attributeName="r"
+              values="18;105"
+              dur="2.6s"
+              begin={`${begin}s`}
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="stroke-opacity"
+              values="0.7;0"
+              dur="2.6s"
+              begin={`${begin}s`}
+              repeatCount="indefinite"
+            />
+          </circle>
+        ))}
+        <circle r="0" fill="oklch(0.85 0.18 165)" stroke="none">
+          <animate attributeName="r" values="3;5;3" dur="2s" repeatCount="indefinite" />
+        </circle>
+      </g>
+      {/* scattered signal sparks */}
+      {[
+        [520, 60, 1.4],
+        [600, 140, 1.2],
+        [820, 50, 1.3],
+        [860, 130, 1],
+      ].map(([x, y, r], i) => (
+        <circle key={i} cx={x} cy={y} r={r} fill="oklch(0.9 0.08 165)" fillOpacity="0.8" />
+      ))}
+    </svg>
+  );
+}
+
+/** Glowing circular lightning badge for the Connect header (project green). */
+function ConnectLogo() {
+  return (
+    <div className="relative h-12 w-12 shrink-0">
+      <span className="absolute inset-0 rounded-full bg-primary/30 blur-md" />
+      <span className="absolute -inset-1 rounded-full border border-primary/30" />
+      <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 border border-primary/40">
+        <Zap className="h-6 w-6 text-primary fill-primary/30" />
+      </div>
+    </div>
+  );
+}
 
 export function ConnectDashboard() {
-  // "match" shows the Connect landing (Quick Chat / Live Lobby chooser);
-  // "lobby" shows the live lobby. Navigation is driven by the landing cards.
-  const [activeSubTab, setActiveSubTab] = useState<"lobby" | "match">("match");
+  // Landing stays on the bare #match hash. Lobby / Quick-Match are pushed as
+  // overlay segments (#match/lobby, #match/quick) so Back returns to #match.
+  const [view, setView] = useState<ConnectView>("connect");
   const { isGuestMatch, isAuthenticated, logout, openLoginModal } = useAuth();
 
   // Lobby settings store selectors
@@ -45,18 +121,28 @@ export function ConnectDashboard() {
   const unblockUser = useLobbyStore((state) => state.unblockUser);
   const clearAllData = useLobbyStore((state) => state.clearAllData);
   const lobbySelectedUser = useLobbyStore((state) => state.selectedUser);
+  const lobbyTab = useLobbyStore((state) => state.activeTab);
   const { theme, setTheme } = useTheme();
   const { status } = useMatchStore();
   const isMatchActive = status !== "idle";
 
-  // Prevent user from switching to the Lobby subtab if match is active (searching, matched, or disconnected)
-  useEffect(() => {
-    if (isMatchActive) {
-      setActiveSubTab("match");
-    }
-  }, [isMatchActive]);
+  // "Before You Connect" safety tips modal (opened from the header shield).
+  const [showSafety, setShowSafety] = useState(false);
+  useUrlModal(showSafety, () => setShowSafety(false), "safety-tips");
 
-  const inLobby = activeSubTab === "lobby" && !isMatchActive;
+  // Lobby & Quick-Match push their own history entry so Back returns to #match.
+  // hideNav:false — these are tab-like views, not modals, so keep the bottom nav.
+  useUrlModal(view === "lobby", () => setView("connect"), "lobby", { hideNav: false });
+  useUrlModal(view === "quick", () => setView("connect"), "quick", { hideNav: false });
+
+  // Keep the URL in step with an active match: starting from the lobby jumps to
+  // the quick-match flow (#match/quick); ending it returns to the landing.
+  useEffect(() => {
+    if (isMatchActive && view === "lobby") setView("quick");
+    else if (!isMatchActive && view === "quick") setView("connect");
+  }, [isMatchActive, view]);
+
+  const inLobby = view === "lobby" && !isMatchActive;
 
   return (
     <div className="h-full w-full">
@@ -253,59 +339,61 @@ export function ConnectDashboard() {
       <AppLayout
         title="Connect"
         icon={Zap}
-        disableBottomPadding={(activeSubTab === "lobby" && !!lobbySelectedUser) || isMatchActive}
+        logoNode={<ConnectLogo />}
+        headerBackdrop={<ConnectBackdrop />}
+        subtitle="Talk to someone new"
+        disableCollapse
+        scrollKey={inLobby ? `tab:connect:lobby:${lobbyTab}` : "tab:connect"}
+        disableBottomPadding={(view === "lobby" && !!lobbySelectedUser) || isMatchActive}
         headerRight={
           <div className="flex items-center gap-2">
             {inLobby ? (
               // In the lobby, the right slot becomes a "back to Connect" control.
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setActiveSubTab("match")}
-                className="text-xs h-8 px-2.5 bg-muted hover:bg-primary text-foreground hover:text-primary-foreground rounded-xl transition-all font-semibold flex items-center gap-1 cursor-pointer"
+              <button
+                onClick={() => setView("connect")}
+                aria-label="Back to Connect"
+                className={cn(HEADER_ICON_BTN, "w-auto gap-1.5 px-3 text-sm font-semibold")}
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
+                <ArrowLeft className="h-4 w-4" />
                 <span className="hidden sm:inline">Connect</span>
-              </Button>
+              </button>
             ) : (
-              <div
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/15"
-                title="Safe Mode is on"
+              <button
+                onClick={() => setShowSafety(true)}
+                title="Safety tips"
+                aria-label="Safety tips"
+                className={HEADER_ICON_BTN}
               >
-                <ShieldCheck className="w-4 h-4" />
-              </div>
+                <ShieldCheck className={HEADER_ICON} />
+              </button>
             )}
 
             {(!isAuthenticated || isGuestMatch) && (
-              <Button
-                size="sm"
-                variant="outline"
+              <button
                 onClick={openLoginModal}
-                className="text-xs text-primary hover:text-primary-foreground hover:bg-primary/20 border-primary/30 h-8 w-8 sm:w-auto px-0 sm:px-3 rounded-xl transition-all font-semibold flex items-center justify-center cursor-pointer"
+                aria-label="Login"
+                className={cn(
+                  HEADER_ICON_BTN,
+                  "sm:w-auto sm:gap-1.5 sm:px-3 sm:text-sm sm:font-semibold",
+                )}
               >
-                <LogIn className="w-3.5 h-3.5 sm:mr-1" />
+                <LogIn className="h-5 w-5 sm:h-4 sm:w-4" />
                 <span className="hidden sm:inline">Login</span>
-              </Button>
+              </button>
             )}
 
-            <Button
-              size="icon"
-              variant="secondary"
+            <button
               onClick={() => setShowSettings(true)}
-              className="w-8 h-8 bg-muted hover:bg-primary text-foreground hover:text-primary-foreground rounded-xl transition-all cursor-pointer"
+              aria-label="Settings"
+              className={HEADER_ICON_BTN}
             >
-              <Settings className="w-4 h-4" />
-            </Button>
+              <Settings className={HEADER_ICON} />
+            </button>
 
             {isGuestMatch && (
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={logout}
-                className="w-8 h-8 text-destructive hover:text-destructive-foreground hover:bg-destructive/20 border-destructive/30 rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
+              <button onClick={logout} aria-label="Log out" className={HEADER_ICON_BTN}>
+                <LogOut className={HEADER_ICON} />
+              </button>
             )}
           </div>
         }
@@ -315,10 +403,12 @@ export function ConnectDashboard() {
           {inLobby ? (
             <LobbyDashboard />
           ) : (
-            <MatchDashboard onGoToLobby={() => setActiveSubTab("lobby")} />
+            <MatchDashboard onGoToLobby={() => setView("lobby")} onStart={() => setView("quick")} />
           )}
         </div>
       </AppLayout>
+
+      <SafetyTipsModal isOpen={showSafety} onClose={() => setShowSafety(false)} />
     </div>
   );
 }

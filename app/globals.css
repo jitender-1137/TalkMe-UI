@@ -52,8 +52,8 @@
   /* Native easing curves. iOS does not use ease-in-out — these
      mirror the system spring/standard curves for CSS transitions.
      For JS-driven motion (framer-motion) use lib/motion.ts. */
-  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);          /* sheets, pages */
-  --ease-ios-out: cubic-bezier(0.16, 1, 0.3, 1);       /* enter */
+  --ease-ios: cubic-bezier(0.32, 0.72, 0, 1); /* sheets, pages */
+  --ease-ios-out: cubic-bezier(0.16, 1, 0.3, 1); /* enter */
   --ease-ios-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275); /* pops */
 
   /* Frosted glass. backdrop-filter blur is a per-frame GPU task that re-
@@ -64,7 +64,7 @@
      back to `blur(var(--glass-blur)) saturate(var(--glass-saturate))`. */
   --glass-blur: 16px;
   --glass-saturate: 150%;
-  --glass-tint: 92%;   /* % of background mixed in; higher = more solid (no blur now) */
+  --glass-tint: 92%; /* % of background mixed in; higher = more solid (no blur now) */
   /* Composed filter kept in a custom property on purpose: Tailwind v4's
      Lightning CSS minifier strips a `backdrop-filter: blur(var()) saturate(var())`
      declaration, but passes through `backdrop-filter: var(--glass-fx)` verbatim.
@@ -115,11 +115,11 @@
      size) — no font files to download. Non-Apple platforms fall through to
      their own system UI font, then a sans-serif fallback. */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   --font-mono:
-    ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Monaco, "Cascadia Mono",
-    "Roboto Mono", monospace;
+    ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Monaco, "Cascadia Mono", "Roboto Mono",
+    monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -323,26 +323,51 @@
 
 /* ── Safe areas (§2) ──────────────────────────────────────── */
 @layer utilities {
-  .pt-safe  { padding-top: var(--sat); }
-  .pb-safe  { padding-bottom: var(--sab); }
-  .pl-safe  { padding-left: var(--sal); }
-  .pr-safe  { padding-right: var(--sar); }
-  .px-safe  { padding-left: var(--sal); padding-right: var(--sar); }
-  .mt-safe  { margin-top: var(--sat); }
-  .mb-safe  { margin-bottom: var(--sab); }
+  .pt-safe {
+    padding-top: var(--sat);
+  }
+  .pb-safe {
+    padding-bottom: var(--sab);
+  }
+  .pl-safe {
+    padding-left: var(--sal);
+  }
+  .pr-safe {
+    padding-right: var(--sar);
+  }
+  .px-safe {
+    padding-left: var(--sal);
+    padding-right: var(--sar);
+  }
+  .mt-safe {
+    margin-top: var(--sat);
+  }
+  .mb-safe {
+    margin-bottom: var(--sab);
+  }
 
   /* Inset + intrinsic padding combined — for nav bars / tab bars that
      need their own breathing room ON TOP of the device inset. */
-  .pt-safe-nav { padding-top: calc(var(--sat) + 0.5rem); }
-  .pb-safe-nav { padding-bottom: calc(var(--sab) + 0.5rem); }
+  .pt-safe-nav {
+    padding-top: calc(var(--sat));
+  }
+  .pb-safe-nav {
+    padding-bottom: calc(var(--sab) + 0.5rem);
+  }
 
   /* Full-bleed viewport heights that respect the keyboard (dvh) and
      the home-indicator / Dynamic Island. */
-  .h-dvh-safe   { height: calc(100dvh - var(--sat) - var(--sab)); }
-  .min-h-dvh-safe { min-height: calc(100dvh - var(--sat) - var(--sab)); }
+  .h-dvh-safe {
+    height: calc(100dvh - var(--sat) - var(--sab));
+  }
+  .min-h-dvh-safe {
+    min-height: calc(100dvh - var(--sat) - var(--sab));
+  }
 
   /* Sticky offset helper for collapsing nav bars (§1, §8). */
-  .top-safe { top: var(--sat); }
+  .top-safe {
+    top: var(--sat);
+  }
 }
 
 /* ── Frosted glass (§3, §24) ──────────────────────────────── */
@@ -372,25 +397,71 @@
 }
 /* Opaque fallback where backdrop-filter is unsupported (older Firefox). */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass       { background: var(--background); }
-  .glass-thin  { background: var(--background); }
-  .glass-thick { background: var(--background); }
-  .glass-card  { background: var(--popover); }
+  .glass {
+    background: var(--background);
+  }
+  .glass-thin {
+    background: var(--background);
+  }
+  .glass-thick {
+    background: var(--background);
+  }
+  .glass-card {
+    background: var(--popover);
+  }
 }
 
 /* ── iOS typography scale (§10) ───────────────────────────────
    Apple text styles. Use alongside Tailwind utilities for color
    (the font stack is already San Francisco via --font-sans). */
 @layer utilities {
-  .text-large-title { font-size: 34px; line-height: 41px; font-weight: 700; letter-spacing: 0.012em; }
-  .text-title-1     { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: 0.008em; }
-  .text-title-2     { font-size: 22px; line-height: 28px; font-weight: 700; }
-  .text-title-3     { font-size: 20px; line-height: 25px; font-weight: 600; }
-  .text-ios-body    { font-size: 17px; line-height: 22px; font-weight: 400; }
-  .text-callout     { font-size: 16px; line-height: 21px; font-weight: 400; }
-  .text-subhead     { font-size: 15px; line-height: 20px; font-weight: 400; }
-  .text-footnote    { font-size: 13px; line-height: 18px; font-weight: 400; }
-  .text-ios-caption { font-size: 12px; line-height: 16px; font-weight: 400; }
+  .text-large-title {
+    font-size: 34px;
+    line-height: 41px;
+    font-weight: 700;
+    letter-spacing: 0.012em;
+  }
+  .text-title-1 {
+    font-size: 28px;
+    line-height: 34px;
+    font-weight: 700;
+    letter-spacing: 0.008em;
+  }
+  .text-title-2 {
+    font-size: 22px;
+    line-height: 28px;
+    font-weight: 700;
+  }
+  .text-title-3 {
+    font-size: 20px;
+    line-height: 25px;
+    font-weight: 600;
+  }
+  .text-ios-body {
+    font-size: 17px;
+    line-height: 22px;
+    font-weight: 400;
+  }
+  .text-callout {
+    font-size: 16px;
+    line-height: 21px;
+    font-weight: 400;
+  }
+  .text-subhead {
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 400;
+  }
+  .text-footnote {
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 400;
+  }
+  .text-ios-caption {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 400;
+  }
 }
 
 /* ── Touch feedback (§9) ──────────────────────────────────────
@@ -399,10 +470,15 @@
 @layer components {
   .tappable {
     -webkit-tap-highlight-color: transparent;
-    transition: transform 0.12s var(--ease-ios), opacity 0.12s var(--ease-ios);
+    transition:
+      transform 0.12s var(--ease-ios),
+      opacity 0.12s var(--ease-ios);
     touch-action: manipulation;
   }
-  .tappable:active { transform: scale(0.96); opacity: 0.85; }
+  .tappable:active {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
 }
 
 /* ── PWA standalone mode (§24) ────────────────────────────────
@@ -413,7 +489,9 @@ html.standalone body {
   overscroll-behavior: none;
 }
 @media (display-mode: standalone) {
-  body { overscroll-behavior: none; }
+  body {
+    overscroll-behavior: none;
+  }
 }
 html.standalone {
   /* Give standalone a touch more breathing room under the status bar
@@ -460,11 +538,21 @@ html.standalone {
 
 /* Neutral glass surface + a colored status icon (iOS keeps the banner
    neutral and signals state through the icon, not a solid color block). */
-[data-sonner-toast].ios-toast .ios-toast-icon { color: var(--muted-foreground); }
-[data-sonner-toast][data-type="success"] .ios-toast-icon { color: var(--primary); }
-[data-sonner-toast][data-type="error"]   .ios-toast-icon { color: var(--destructive); }
-[data-sonner-toast][data-type="warning"] .ios-toast-icon { color: var(--warning); }
-[data-sonner-toast][data-type="info"]    .ios-toast-icon { color: var(--accent); }
+[data-sonner-toast].ios-toast .ios-toast-icon {
+  color: var(--muted-foreground);
+}
+[data-sonner-toast][data-type="success"] .ios-toast-icon {
+  color: var(--primary);
+}
+[data-sonner-toast][data-type="error"] .ios-toast-icon {
+  color: var(--destructive);
+}
+[data-sonner-toast][data-type="warning"] .ios-toast-icon {
+  color: var(--warning);
+}
+[data-sonner-toast][data-type="info"] .ios-toast-icon {
+  color: var(--accent);
+}
 
 /* Pill-shaped action buttons. */
 .ios-toast-action,
@@ -476,7 +564,9 @@ html.standalone {
 
 /* Opaque fallback where backdrop-filter is unsupported. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  [data-sonner-toast].ios-toast { background: var(--popover); }
+  [data-sonner-toast].ios-toast {
+    background: var(--popover);
+  }
 }
 
 /* ============================================================

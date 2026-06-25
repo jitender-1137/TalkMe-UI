@@ -20,6 +20,7 @@ import { MessageStatusIcon } from "@/components/chat/message-status";
 import { BubbleBody, BubbleShell } from "@/components/chat/bubble-body";
 import type { MediaAttachment } from "@/components/chat/types";
 import type { ChatUser } from "./types";
+import { useScrollRestore } from "@/lib/navigation/scroll-restore";
 
 // Helper to detect if a message content is a media URL (GIF/sticker)
 const isMediaUrl = (content: string) => {
@@ -78,6 +79,11 @@ export function LobbyDashboard() {
   // Zustand State
   const activeTab = useLobbyStore((state) => state.activeTab);
   const setActiveTab = useLobbyStore((state) => state.setActiveTab);
+
+  // The online-users list and the inbox list share one container but must keep
+  // independent scroll positions, so the restore key tracks the active list.
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  useScrollRestore(listScrollRef, `lobby:${activeTab}`);
 
   const genderFilter = useLobbyStore((state) => state.genderFilter);
   const setGenderFilter = useLobbyStore((state) => state.setGenderFilter);
@@ -171,12 +177,12 @@ export function LobbyDashboard() {
           )}
         >
           {/* Header Card */}
-          <div className="p-4 bg-card border-b border-border shrink-0 md:static sticky top-[calc(env(safe-area-inset-top)+56px)] z-20">
+          {/* <div className="p-4 bg-card border-b border-border shrink-0 md:static sticky top-[calc(env(safe-area-inset-top)+56px)] z-20">
             <h1 className="text-lg font-bold text-foreground tracking-tight flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shrink-0" />
               Talk with Strangers
             </h1>
-          </div>
+          </div> */}
 
           {/* Statistics Tabs */}
           <div className="grid grid-cols-2 p-2 gap-2 bg-card border-b border-border shrink-0 md:static sticky top-[calc(env(safe-area-inset-top)+112px)] z-20">
@@ -252,7 +258,10 @@ export function LobbyDashboard() {
           )}
 
           {/* Scrollable Container (User List or Inbox list) */}
-          <div className="flex-1 md:overflow-y-auto overflow-visible custom-scrollbar p-3 space-y-2">
+          <div
+            ref={listScrollRef}
+            className="flex-1 md:overflow-y-auto overflow-visible custom-scrollbar p-3 space-y-2"
+          >
             {activeTab === "lobby" ? (
               isUsersLoading ? (
                 <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-2">
@@ -653,8 +662,14 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
                       <BubbleBody
                         time={formatMessageTime(msg.timestamp || new Date(msg.createdAt).getTime())}
                         hasMedia
-                        timeClassName={isOwn ? "text-primary-foreground/65" : "text-muted-foreground"}
-                        statusNode={isOwn ? <MessageStatusIcon status={msg.read ? "seen" : "sent"} /> : undefined}
+                        timeClassName={
+                          isOwn ? "text-primary-foreground/65" : "text-muted-foreground"
+                        }
+                        statusNode={
+                          isOwn ? (
+                            <MessageStatusIcon status={msg.read ? "seen" : "sent"} />
+                          ) : undefined
+                        }
                       />
                     </BubbleShell>
                   ) : isMediaUrl(msg.content) ? (
@@ -680,8 +695,14 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
                       <BubbleBody
                         content={msg.content}
                         time={formatMessageTime(msg.timestamp || new Date(msg.createdAt).getTime())}
-                        timeClassName={isOwn ? "text-primary-foreground/65" : "text-muted-foreground"}
-                        statusNode={isOwn ? <MessageStatusIcon status={msg.read ? "seen" : "sent"} /> : undefined}
+                        timeClassName={
+                          isOwn ? "text-primary-foreground/65" : "text-muted-foreground"
+                        }
+                        statusNode={
+                          isOwn ? (
+                            <MessageStatusIcon status={msg.read ? "seen" : "sent"} />
+                          ) : undefined
+                        }
                       />
                     </BubbleShell>
                   )}

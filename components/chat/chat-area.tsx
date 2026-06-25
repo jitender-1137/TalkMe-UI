@@ -85,9 +85,17 @@ export function ChatArea({
   // user switches chats (only selectedConversationId changes), so an unsent
   // reply selected in one chat would otherwise leak into the next. Clear the
   // draft reply (and any in-progress attachment) when the conversation changes.
+  //
+  // The live typing / recording indicators are likewise per-conversation and
+  // MUST be reset here: if the partner is mid-typing when we switch away, their
+  // eventual `typing_stopped` carries the OLD chatId and is filtered out by the
+  // `isTargetChat` guard below — so a stale `partnerTyping = true` would stick
+  // and surface as a phantom "typing"/online status on the newly opened chat.
   useEffect(() => {
     setReplyTo(null)
     setPendingAttachment(null)
+    setPartnerTyping(false)
+    setPartnerRecording(null)
   }, [selectedConversationId])
 
   const { data: ownProfile } = useProfile()

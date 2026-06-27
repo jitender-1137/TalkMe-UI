@@ -1,6 +1,6 @@
 "use client"
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { DiscoverService, type DiscoverParams } from "../services/discover.service"
 import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
@@ -13,6 +13,28 @@ export function useDiscoverProfiles(params?: DiscoverParams, options?: { enabled
     staleTime: 30 * 1000,
     // Caller can gate the fetch (e.g. until persisted filters have loaded) on top
     // of the always-required window + auth-token checks.
+    enabled:
+      (options?.enabled ?? true) && typeof window !== "undefined" && Boolean(getAccessToken()),
+  })
+}
+
+/**
+ * Infinite-scroll variant of {@link useDiscoverProfiles}. Pages through the
+ * backend using its numeric cursor (page number as string). `params` should NOT
+ * include `cursor` — it's supplied per page from the page param.
+ */
+export function useDiscoverProfilesInfinite(
+  params?: DiscoverParams,
+  options?: { enabled?: boolean },
+) {
+  return useInfiniteQuery({
+    queryKey: [...QUERY_KEYS.DISCOVER.LIST, params],
+    queryFn: ({ pageParam }) =>
+      DiscoverService.getDiscoverProfiles({ ...params, cursor: String(pageParam) }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) =>
+      lastPage.meta.hasNextPage ? (lastPageParam as number) + 1 : undefined,
+    staleTime: 30 * 1000,
     enabled:
       (options?.enabled ?? true) && typeof window !== "undefined" && Boolean(getAccessToken()),
   })

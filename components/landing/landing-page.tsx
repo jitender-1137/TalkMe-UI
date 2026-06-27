@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { MessageCircle, Users, Newspaper, Compass, Shield, Zap } from "lucide-react"
 import { FaqJsonLd } from "@/components/seo/json-ld"
+import { EnterAppLink } from "./enter-app-link"
 import { siteConfig } from "@/lib/seo/site"
 
 // Server component (NO "use client") — all of this copy ships in the initial
@@ -86,12 +87,11 @@ export function LandingPage() {
           in one place, right from your browser.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Link
-            href="/?app=1"
+          <EnterAppLink
             className="rounded-xl bg-primary px-7 py-3.5 text-base font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
           >
             Start chatting free
-          </Link>
+          </EnterAppLink>
           <Link
             href="#features"
             className="rounded-xl border border-border bg-card px-7 py-3.5 text-base font-semibold transition hover:bg-secondary"
@@ -175,15 +175,19 @@ export function LandingPage() {
             Join TalkMe and start chatting in seconds. It&apos;s free, runs
             anywhere, and there&apos;s always someone to talk to.
           </p>
-          <Link
-            href="/?app=1"
+          <EnterAppLink
             className="mt-8 inline-block rounded-xl bg-primary px-8 py-3.5 text-base font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
           >
             Open TalkMe
-          </Link>
+          </EnterAppLink>
         </div>
         <footer className="mt-12 text-sm text-muted-foreground">
-          © {siteConfig.name}. Chat, meet new people &amp; make friends online.
+          <Link href="/blog" className="font-medium hover:text-foreground">
+            Guides &amp; tips
+          </Link>
+          <p className="mt-3">
+            © {siteConfig.name}. Chat, meet new people &amp; make friends online.
+          </p>
         </footer>
       </section>
     </main>

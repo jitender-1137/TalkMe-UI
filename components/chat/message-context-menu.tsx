@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useEffect, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { toast } from "sonner"
+import { useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import {
   Reply,
   Copy,
@@ -13,26 +13,26 @@ import {
   MoreHorizontal,
   SmilePlus,
   X,
-} from "lucide-react"
-import { cn } from "@/lib/utils"
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface MessageContextMenuProps {
-  isOpen: boolean
-  isSent: boolean
-  isMobile: boolean
+  isOpen: boolean;
+  isSent: boolean;
+  isMobile: boolean;
   /** Pixel position for desktop floating menu */
-  position?: { x: number; y: number }
-  onClose: () => void
-  onReply: () => void
-  onCopy: () => void
-  onDelete: () => void
-  onForward: () => void
-  onReact: (emoji?: string) => void
-  onPin: () => void
-  onInfo: () => void
+  position?: { x: number; y: number };
+  onClose: () => void;
+  onReply: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+  onForward: () => void;
+  onReact: (emoji?: string) => void;
+  onPin: () => void;
+  onInfo: () => void;
 }
 
-const EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"]
+const EMOJIS = ["❤️", "👍", "😂", "😮", "😢", "🙏"];
 
 export function MessageContextMenu({
   isOpen,
@@ -48,51 +48,57 @@ export function MessageContextMenu({
   onPin,
   onInfo,
 }: MessageContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click (desktop)
   useEffect(() => {
-    if (!isOpen || isMobile) return
+    if (!isOpen || isMobile) return;
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose()
+        onClose();
       }
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [isOpen, isMobile, onClose])
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen, isMobile, onClose]);
 
   // Close on Escape
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  }, [isOpen, onClose])
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isOpen, onClose]);
 
   // Close on right-click
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) return;
     const handler = (e: MouseEvent) => {
-      if (e.button === 2) { // Right-click button
-        onClose()
+      if (e.button === 2) {
+        // Right-click button
+        onClose();
       }
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [isOpen, onClose])
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen, onClose]);
 
   const actions = [
-    { icon: Reply,    label: "Reply",   action: onReply,   danger: false },
-    { icon: Forward,  label: "Forward", action: onForward, danger: false },
-    { icon: Copy,     label: "Copy",    action: onCopy,    danger: false },
-    { icon: Info,     label: "Info",    action: onInfo,    danger: false },
-    { icon: Star,     label: "Star",    action: onPin,     danger: false },
-    { icon: Trash2,   label: "Delete",  action: onDelete,  danger: true  },
-    { icon: MoreHorizontal, label: "More...", action: () => toast.info("More options"), danger: false },
-  ]
+    { icon: Reply, label: "Reply", action: onReply, danger: false },
+    { icon: Forward, label: "Forward", action: onForward, danger: false },
+    { icon: Copy, label: "Copy", action: onCopy, danger: false },
+    { icon: Info, label: "Info", action: onInfo, danger: false },
+    { icon: Star, label: "Star", action: onPin, danger: false },
+    { icon: Trash2, label: "Delete", action: onDelete, danger: true },
+    {
+      icon: MoreHorizontal,
+      label: "More...",
+      action: () => toast.info("More options"),
+      danger: false,
+    },
+  ];
 
   // ---- MOBILE: bottom-sheet ----
   if (isMobile) {
@@ -130,7 +136,10 @@ export function MessageContextMenu({
                 {EMOJIS.map((emoji) => (
                   <button
                     key={emoji}
-                    onClick={() => { onReact(emoji); onClose() }}
+                    onClick={() => {
+                      onReact(emoji);
+                      onClose();
+                    }}
                     className="text-2xl p-2 hover:scale-125 transition-transform active:scale-95 rounded-full active:bg-white/10"
                     aria-label={`React with ${emoji}`}
                   >
@@ -138,7 +147,10 @@ export function MessageContextMenu({
                   </button>
                 ))}
                 <button
-                  onClick={() => { onReact(); onClose() }}
+                  onClick={() => {
+                    onReact();
+                    onClose();
+                  }}
                   className="p-2 hover:scale-125 transition-transform rounded-full active:bg-white/10"
                   aria-label="More reactions"
                 >
@@ -151,10 +163,13 @@ export function MessageContextMenu({
                 {actions.map(({ icon: Icon, label, action, danger }) => (
                   <button
                     key={label}
-                    onClick={() => { action(); onClose() }}
+                    onClick={() => {
+                      action();
+                      onClose();
+                    }}
                     className={cn(
                       "w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-left transition-all active:scale-[0.98] active:bg-white/5",
-                      danger ? "text-destructive" : "text-foreground"
+                      danger ? "text-destructive" : "text-foreground",
                     )}
                   >
                     <Icon className="h-5 w-5 shrink-0" />
@@ -177,48 +192,48 @@ export function MessageContextMenu({
           </>
         )}
       </AnimatePresence>
-    )
+    );
   }
 
   // ---- DESKTOP: floating menu with viewport bounds checking ----
   const getAdjustedPosition = () => {
-    const menuWidth = 240
-    const menuHeight = actions.length * 45 + 10 // approximate height with padding
-    const padding = 12
-    
-    let adjustedX = (position?.x ?? 0)
-    let adjustedY = (position?.y ?? 0)
-    
+    const menuWidth = 240;
+    const menuHeight = actions.length * 45 + 10; // approximate height with padding
+    const padding = 12;
+
+    let adjustedX = position?.x ?? 0;
+    let adjustedY = position?.y ?? 0;
+
     // Adjust horizontal position if menu goes off-screen
     if (adjustedX + menuWidth + padding > window.innerWidth) {
-      adjustedX = window.innerWidth - menuWidth - padding
+      adjustedX = window.innerWidth - menuWidth - padding;
     }
     if (adjustedX < padding) {
-      adjustedX = padding
+      adjustedX = padding;
     }
-    
+
     // Adjust vertical position - try showing below first, then above if needed
-    const spaceBelow = window.innerHeight - adjustedY
-    const spaceAbove = adjustedY
-    
+    const spaceBelow = window.innerHeight - adjustedY;
+    const spaceAbove = adjustedY;
+
     if (spaceBelow >= menuHeight + padding) {
       // Enough space below - show menu below the click
-      adjustedY = adjustedY
+      adjustedY = adjustedY;
     } else if (spaceAbove >= menuHeight + padding) {
       // Not enough space below but enough above - show menu above
-      adjustedY = adjustedY - menuHeight - 5
+      adjustedY = adjustedY - menuHeight - 5;
     } else {
       // Not enough space either way - prioritize showing above the click
-      adjustedY = Math.max(padding, adjustedY - menuHeight - 5)
+      adjustedY = Math.max(padding, adjustedY - menuHeight - 5);
     }
-    
+
     // Final clamp to ensure menu stays within viewport
-    adjustedY = Math.max(padding, Math.min(adjustedY, window.innerHeight - menuHeight - padding))
-    
-    return { x: adjustedX, y: adjustedY }
-  }
-  
-  const adjustedPos = getAdjustedPosition()
+    adjustedY = Math.max(padding, Math.min(adjustedY, window.innerHeight - menuHeight - padding));
+
+    return { x: adjustedX, y: adjustedY };
+  };
+
+  const adjustedPos = getAdjustedPosition();
 
   return (
     <AnimatePresence>
@@ -247,18 +262,19 @@ export function MessageContextMenu({
               {actions.map(({ icon: Icon, label, action, danger }, index) => (
                 <div key={label}>
                   <button
-                    onClick={() => { action(); onClose() }}
+                    onClick={() => {
+                      action();
+                      onClose();
+                    }}
                     className={cn(
                       "w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-white/10 transition-colors",
-                      danger ? "text-destructive hover:bg-destructive/10" : "text-foreground"
+                      danger ? "text-destructive hover:bg-destructive/10" : "text-foreground",
                     )}
                   >
                     <Icon className="h-5 w-5 shrink-0" />
                     <span className="text-sm font-medium">{label}</span>
                   </button>
-                  {index === 4 && (
-                    <div className="h-px bg-white/10 my-0" />
-                  )}
+                  {index === 4 && <div className="h-px bg-white/10 my-0" />}
                 </div>
               ))}
             </div>
@@ -266,5 +282,5 @@ export function MessageContextMenu({
         </>
       )}
     </AnimatePresence>
-  )
+  );
 }

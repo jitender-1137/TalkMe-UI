@@ -60,6 +60,7 @@ export interface Post {
   liked: boolean
   bookmarked: boolean
   timestamp: Date
+  shortCode?: string // for shareable /post/{shortCode} links
 }
 
 export interface UserProfile {

@@ -12,6 +12,8 @@ import { MessageInput } from "@/components/chat/message-input";
 import { CameraModal } from "@/components/chat/camera-modal";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useVisualViewport } from "@/hooks/use-visual-viewport";
 import type { Stranger, StrangerMessage } from "./types";
 
 interface StrangerChatScreenProps {
@@ -37,9 +39,15 @@ export function StrangerChatScreen({
   onRevealMedia,
   onHideMedia,
 }: StrangerChatScreenProps) {
-  const { status } = useMatchStore();
+  const { status, partnerReconnecting } = useMatchStore();
   const { sendEvent } = useWebSocket();
   const isDisconnected = status === "disconnected";
+
+  // Mobile keyboard handling — match the main chat-area: on mobile the screen becomes
+  // a fixed overlay glued to the visual viewport, so opening the keyboard keeps the
+  // header pinned and slides the conversation up above the keyboard.
+  const isMobile = useIsMobile();
+  const { height: vvHeight, offsetTop: vvTop } = useVisualViewport();
 
   const [isUploading, setIsUploading] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -238,7 +246,13 @@ export function StrangerChatScreen({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-background relative">
+    <div
+      className={cn(
+        "flex flex-col bg-background overflow-hidden",
+        isMobile ? "fixed inset-x-0 top-0 z-[60]" : "relative h-full min-h-0",
+      )}
+      style={isMobile ? { height: vvHeight, top: vvTop } : undefined}
+    >
       {/* Header */}
       <StrangerChatHeader
         stranger={stranger}
@@ -274,6 +288,21 @@ export function StrangerChatScreen({
               />
             ))}
           </AnimatePresence>
+
+          {/* Reconnecting notice — partner dropped but is within the grace window. */}
+          {partnerReconnecting && !isDisconnected && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex justify-center my-4"
+            >
+              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-5 py-2.5 rounded-full text-sm font-semibold shadow-md flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                {stranger.anonymousName} is reconnecting…
+              </div>
+            </motion.div>
+          )}
 
           {/* Disconnection notice */}
           {isDisconnected && (

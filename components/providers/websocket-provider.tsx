@@ -18,7 +18,8 @@ import { setBadge } from "@/lib/badge/badge"
 import { X } from "lucide-react"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { useLivePresenceStore } from "@/lib/presence/live-status-store"
-import { getTabFromHash } from "@/lib/navigation/url-hash"
+import { getTabFromHash, parseHash } from "@/lib/navigation/url-hash"
+import { showBrowserNotification } from "@/lib/notifications/browser-notify"
 import { displayContent } from "@/lib/shared-post"
 import { db, mapResponseToLocalMessage, mapResponseToLocalChat, normalizeMessageStatus, putChatSafely } from "@/src/api/db"
 
@@ -367,6 +368,33 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           break
         }
 
+        case "message_deleted": {
+          // Sender deleted a message for everyone → tombstone it on this side too.
+          const deletedId: string | undefined = eventData?.messageId
+          if (deletedId) {
+            const existing = await db.messages.get(deletedId)
+            if (existing) {
+              await db.messages.update(deletedId, {
+                content: "This message was deleted",
+                deleted: 1,
+                isDeleted: true,
+                attachments: [],
+                mediaId: undefined,
+                reactions: [],
+              })
+            }
+            // Keep the chat-list last-message preview in sync if it points here.
+            const chat = await db.chats.get(chatId)
+            const lm: any = chat?.lastMessage
+            if (lm && (lm.id === deletedId || lm.messageId === deletedId)) {
+              await db.chats.update(chatId, {
+                lastMessage: { ...lm, content: "This message was deleted", isDeleted: true, deleted: 1, attachments: [] },
+              })
+            }
+          }
+          break
+        }
+
         case "messages_delivered": {
           // Update all sent messages to delivered status on the sender's side
           await db.transaction("rw", [db.messages, db.chats], async () => {
@@ -579,6 +607,29 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             playNotificationSound()
           }
         }
+      }
+
+      // Browser-level notification when the tab is backgrounded / minimized. Separate
+      // from push (this works while the page is alive & the socket connected) and gated
+      // by the Desktop Notifications setting + OS permission. showBrowserNotification
+      // no-ops while the page is visible — the in-app toast below covers the foreground.
+      if (isFromOther && !isMuted) {
+        const isGroup = chatForMuteCheck?.chatType === "GROUP" || (chatForMuteCheck as any)?.type === "group"
+        const otherParticipant = chatForMuteCheck?.otherUser ?? chatForMuteCheck?.participants?.find((p) => p.id !== ownProfileRef.current?.id)
+        const sender = isGroup
+          ? (payload.senderName || chatForMuteCheck?.name || "Group Chat")
+          : (otherParticipant?.name || payload.senderName || "Someone")
+        const snippet = (payload.content ? displayContent(payload.content) : "") || "Sent an attachment"
+        const avatar = isGroup
+          ? (payload.senderAvatar || chatForMuteCheck?.avatar)
+          : (otherParticipant?.avatar || payload.senderAvatar)
+        void showBrowserNotification({
+          title: isGroup ? `${sender}` : `Message from ${sender}`,
+          body: snippet,
+          icon: avatar || "/icon-192.png",
+          tag: `chat:${chatId}`,
+          data: { chatId, url: `/?chat=${encodeURIComponent(chatId)}#messages` },
+        })
       }
 
       // Toast notification trigger for messages from other users (only for non-active and non-muted chats)
@@ -1010,6 +1061,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           if (event && handlersRef.current[event]) {
             handlersRef.current[event].forEach((handler) => handler(payload))
           }
+
+          // Browser notification for an incoming stranger message while backgrounded.
+          if (event === "MESSAGE_RECEIVED" || event === "GIF_RECEIVED" || event === "IMAGE_RECEIVED") {
+            void showBrowserNotification({
+              title: "New message",
+              body: event === "MESSAGE_RECEIVED" ? (payload?.content || "") : "Sent an attachment",
+              tag: "match-chat",
+              data: { url: "/#match/quick" },
+            })
+          }
         } catch (err) {
           console.error("[STOMP] Match payload parse error:", err)
         }
@@ -1209,6 +1270,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             if (settings.sound && settings.groupTone !== "none") {
               playNotificationSound()
             }
+            // Browser notification while the tab is backgrounded / minimized.
+            void showBrowserNotification({
+              title: `Message from ${payload.sender || "Stranger"}`,
+              body: displayContent(payload.content || "") || "New message",
+              tag: `lobby:${payload.sender || "stranger"}`,
+              data: { url: "/#match/lobby" },
+            })
           }
 
           // Fire registered handlers (sound notifications etc.)
@@ -1343,6 +1411,26 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
     document.addEventListener("visibilitychange", onVisibility)
     return () => document.removeEventListener("visibilitychange", onVisibility)
+  }, [sendEvent])
+
+  // Genuine tab/window close from the Connect tab: notify others INSTANTLY rather than
+  // letting them linger as "present" until the server-side disconnect-grace backstop
+  // fires. We can't perfectly distinguish a close from a background, but `pagehide` with
+  // persisted=false is the real unload path — a backgrounding PWA fires persisted=true
+  // (bfcache) or plain visibilitychange, which we deliberately ignore so the grace +
+  // reconnect path keeps the lobby/match alive. Best-effort: the STOMP frame may not
+  // flush during unload, but the grace reaper guarantees eventual cleanup regardless.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onPageHide = (e: PageTransitionEvent) => {
+      if (e.persisted) return
+      if (getTabFromHash(window.location.hash) !== "match") return
+      const { segments } = parseHash(window.location.hash)
+      if (segments.includes("lobby")) sendEvent("lobby/leave", {})
+      if (segments.includes("quick")) sendEvent("EXIT_CHAT", {})
+    }
+    window.addEventListener("pagehide", onPageHide)
+    return () => window.removeEventListener("pagehide", onPageHide)
   }, [sendEvent])
 
   const hasMarkedDeliveredRef = useRef(false)

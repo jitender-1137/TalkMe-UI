@@ -149,6 +149,7 @@ export const ENDPOINTS = {
     LIST: "/posts/feed",
     CREATE: "/posts",
     BY_ID: (postId: string) => `/posts/${postId}`,
+    BY_CODE: (code: string) => `/posts/by-code/${code}`,
     UPDATE: (postId: string) => `/posts/${postId}`,
     DELETE: (postId: string) => `/posts/${postId}`,
     LIKE: (postId: string) => `/posts/${postId}/like`,
@@ -159,6 +160,8 @@ export const ENDPOINTS = {
     CREATE_COMMENT: (postId: string) => `/posts/${postId}/comments`,
     EDIT_COMMENT: (postId: string, commentId: string) => `/posts/${postId}/comments/${commentId}`,
     DELETE_COMMENT: (postId: string, commentId: string) => `/posts/${postId}/comments/${commentId}`,
+    LIKE_COMMENT: (postId: string, commentId: string) => `/posts/${postId}/comments/${commentId}/like`,
+    UNLIKE_COMMENT: (postId: string, commentId: string) => `/posts/${postId}/comments/${commentId}/like`,
     USER: (userId: string) => `/posts/user/${userId}`,
   },
 

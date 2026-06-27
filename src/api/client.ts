@@ -162,10 +162,15 @@ apiClient.interceptors.request.use(
     // Dynamically set baseURL on every request to prevent static compilation caching
     config.baseURL = getBaseUrl();
 
-    // Attach access token if available
+    // Attach access token if available — unless the caller opted out via
+    // `skipAuth` (e.g. signup, where a stale guest token must NOT ride along and
+    // associate the request with the guest session).
+    const skipAuth = (config as any).skipAuth === true;
     const token = getAccessToken();
-    if (token) {
+    if (token && !skipAuth) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else if (skipAuth) {
+      delete config.headers.Authorization;
     }
 
     // Attach CSRF token for state-changing requests

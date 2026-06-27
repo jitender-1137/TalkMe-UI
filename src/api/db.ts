@@ -114,6 +114,74 @@ class TalkMeDatabase extends Dexie {
 
 export const db = new TalkMeDatabase();
 
+/**
+ * Key under which the local DB records which user it currently holds data for.
+ * Used to enforce per-account isolation on a shared browser: the cached chats,
+ * messages, and media in IndexedDB are NOT namespaced per user, so they must be
+ * wiped whenever the owner changes.
+ */
+const DB_OWNER_KEY = "owner_user_id";
+
+/**
+ * Wipe ALL locally cached user data (chats, messages, media blobs, users,
+ * sync cursors, lobby state). Call on logout — and on login when the previous
+ * owner differs — so one account can never read another's data on the same
+ * browser.
+ */
+export async function wipeLocalData(): Promise<void> {
+  try {
+    await Promise.all(db.tables.map((t) => t.clear()));
+  } catch (e) {
+    // If clearing tables fails (e.g. a schema/version error left the DB in a
+    // bad state), fall back to deleting the whole database. Better to lose the
+    // cache than to leak another user's data.
+    console.error("[db] wipeLocalData: clear failed, deleting database", e);
+    try {
+      await db.delete();
+      await db.open();
+    } catch (e2) {
+      console.error("[db] wipeLocalData: delete failed", e2);
+    }
+  }
+}
+
+/** The user id the local cache currently belongs to, or null if unset. */
+export async function getDbOwner(): Promise<string | null> {
+  try {
+    const row = await db.lobby_store.get(DB_OWNER_KEY);
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ensure the local cache belongs to `userId`. If it currently belongs to a
+ * different user (or to no one after an unclean exit), wipe everything before
+ * stamping the new owner. Returns true if a wipe happened.
+ *
+ * This is the load-bearing guard: clean logout is never guaranteed (crash,
+ * token expiry, hard refresh, closed tab), so isolation MUST also be enforced
+ * at login time, not only at logout.
+ */
+export async function ensureDbOwner(userId: string): Promise<boolean> {
+  const current = await getDbOwner();
+  let wiped = false;
+  if (current !== userId) {
+    if (current !== null) {
+      // A different (or stale) owner held this cache — purge before reuse.
+      await wipeLocalData();
+      wiped = true;
+    }
+    try {
+      await db.lobby_store.put({ key: DB_OWNER_KEY, value: userId });
+    } catch (e) {
+      console.error("[db] ensureDbOwner: failed to stamp owner", e);
+    }
+  }
+  return wiped;
+}
+
 export function normalizeMessageStatus(status: string): string {
   if (!status) return "sent";
   const s = status.toLowerCase();

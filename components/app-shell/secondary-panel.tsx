@@ -525,7 +525,17 @@ const ConversationItem = memo(function ConversationItem({
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-semibold text-sm text-foreground truncate">{displayName}</span>
+          <span
+            className={cn(
+              "font-semibold text-sm truncate",
+              // Tint female 1:1 contacts' names light pink — same as discover & lobby.
+              !isGroup && otherParticipant?.gender?.toUpperCase() === "FEMALE"
+                ? "text-pink-300"
+                : "text-foreground",
+            )}
+          >
+            {displayName}
+          </span>
           <span className="text-xs text-muted-foreground shrink-0">{lastMessageTime}</span>
         </div>
         <div className="flex items-center justify-between gap-2 mt-0.5">
@@ -760,7 +770,7 @@ export function SecondaryPanel() {
           viewArchived
             ? undefined
             : [
-                { id: "all", label: "All", badge: filterCounts.all },
+                { id: "all", label: "All" },
                 { id: "unread", label: "Unread", badge: filterCounts.unread },
                 { id: "pinned", label: "Pinned", badge: filterCounts.pinned },
                 { id: "groups", label: "Groups", badge: filterCounts.groups },
@@ -787,7 +797,7 @@ export function SecondaryPanel() {
               >
                 <Users className={HEADER_ICON} />
                 {pendingRequestsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-none px-1 ring-2 ring-card">
+                  <span className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-1 ring-2 ring-card">
                     {pendingRequestsCount > 99 ? "99+" : pendingRequestsCount}
                   </span>
                 )}
@@ -806,9 +816,9 @@ export function SecondaryPanel() {
               >
                 <Plus className={HEADER_ICON} />
               </button>
-              <button aria-label="More options" className={HEADER_ICON_BTN}>
+              {/* <button aria-label="More options" className={HEADER_ICON_BTN}>
                 <MoreHorizontal className={HEADER_ICON} />
-              </button>
+              </button> */}
             </div>
           )
         }

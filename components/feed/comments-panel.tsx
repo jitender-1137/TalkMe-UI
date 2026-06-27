@@ -15,13 +15,29 @@ import { cn, getAvatarUrl } from "@/lib/utils"
 import { useProfile } from "@/src/api/hooks/useProfile"
 import {
   useComments,
+  useCommentReplies,
   useCreateComment,
   useEditComment,
   useDeleteComment,
+  useLikeComment,
+  useUnlikeComment,
 } from "@/src/api/hooks/useFeed"
 import type { PostCommentDTO } from "@/src/api/services/post.service"
 
 const QUICK_EMOJIS = ["❤️", "🙌", "🔥", "👏", "😢", "😍", "😮", "😂"]
+
+// Render comment text with leading/inline @mentions highlighted (Instagram-style).
+function renderWithMentions(text: string) {
+  return text.split(/(@[A-Za-z0-9_.]+)/g).map((part, i) =>
+    part.startsWith("@") ? (
+      <span key={i} className="text-sky-500 font-medium">
+        {part}
+      </span>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  )
+}
 
 interface CommentsPanelProps {
   postId: string
@@ -44,7 +60,13 @@ export function CommentsPanel({
   className,
 }: CommentsPanelProps) {
   const [commentText, setCommentText] = useState("")
+  // The thread we're currently replying into: rootId = the top-level comment id
+  // (replies are one level deep, so a reply-to-a-reply still attaches to the root).
+  const [replyTo, setReplyTo] = useState<{ rootId: string; username: string } | null>(null)
+  // Top-level comment ids whose replies are expanded.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const { data: ownProfile } = useProfile()
   const myUsername = ownProfile?.username
@@ -61,6 +83,8 @@ export function CommentsPanel({
   const createComment = useCreateComment()
   const editComment = useEditComment()
   const deleteComment = useDeleteComment()
+  const likeComment = useLikeComment()
+  const unlikeComment = useUnlikeComment()
 
   // Load more when the user nears the bottom.
   const handleScroll = () => {
@@ -71,12 +95,35 @@ export function CommentsPanel({
     }
   }
 
+  const toggleExpand = (id: string) =>
+    setExpanded((s) => {
+      const next = new Set(s)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+
+  // Begin replying to `username` within thread `rootId`. Pre-fills the @mention,
+  // expands the thread, and focuses the input.
+  const startReply = (rootId: string, username: string) => {
+    setReplyTo({ rootId, username })
+    setCommentText((t) => (t.startsWith(`@${username} `) ? t : `@${username} `))
+    setExpanded((s) => new Set(s).add(rootId))
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
+  const cancelReply = () => {
+    setReplyTo(null)
+    setCommentText("")
+  }
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     const text = commentText.trim()
     if (!text) return
-    createComment.mutate({ postId, content: text })
+    createComment.mutate({ postId, content: text, parentId: replyTo?.rootId })
+    if (replyTo) setExpanded((s) => new Set(s).add(replyTo.rootId))
     setCommentText("")
+    setReplyTo(null)
   }
 
   return (
@@ -95,17 +142,35 @@ export function CommentsPanel({
         ) : (
           <div className="space-y-1">
             {comments.map((c) => (
-              <CommentRow
-                key={c.id}
-                comment={c}
-                isOwn={!!myUsername && c.username === myUsername}
-                onUserClick={() => onUserClick?.(c.userId)}
-                onReply={() =>
-                  setCommentText((t) => (t.includes(`@${c.username}`) ? t : `@${c.username} ${t}`))
-                }
-                onEdit={(text) => editComment.mutate({ postId, commentId: c.id, content: text })}
-                onDelete={() => deleteComment.mutate({ postId, commentId: c.id })}
-              />
+              <div key={c.id}>
+                <CommentRow
+                  comment={c}
+                  isOwn={!!myUsername && c.username === myUsername}
+                  onUserClick={() => onUserClick?.(c.userId)}
+                  onReply={() => startReply(c.id, c.username)}
+                  onEdit={(text) => editComment.mutate({ postId, commentId: c.id, content: text })}
+                  onDelete={() => deleteComment.mutate({ postId, commentId: c.id })}
+                  onToggleLike={() =>
+                    (c.likedByMe ? unlikeComment : likeComment).mutate({ postId, commentId: c.id })
+                  }
+                />
+                {c.replyCount > 0 && (
+                  <RepliesThread
+                    postId={postId}
+                    parentId={c.id}
+                    replyCount={c.replyCount}
+                    expanded={expanded.has(c.id)}
+                    onToggle={() => toggleExpand(c.id)}
+                    myUsername={myUsername}
+                    onUserClick={onUserClick}
+                    onStartReply={startReply}
+                    editComment={editComment}
+                    deleteComment={deleteComment}
+                    likeComment={likeComment}
+                    unlikeComment={unlikeComment}
+                  />
+                )}
+              </div>
             ))}
             {isFetchingNextPage && (
               <div className="flex justify-center py-3">
@@ -130,6 +195,23 @@ export function CommentsPanel({
         ))}
       </div>
 
+      {/* "Replying to" indicator */}
+      {replyTo && (
+        <div className="shrink-0 flex items-center justify-between px-4 py-1.5 border-t border-border/60 bg-muted/40">
+          <span className="text-xs text-muted-foreground">
+            Replying to <span className="font-semibold text-foreground">@{replyTo.username}</span>
+          </span>
+          <button
+            type="button"
+            onClick={cancelReply}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Cancel reply"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Input */}
       <form
         onSubmit={submit}
@@ -140,9 +222,16 @@ export function CommentsPanel({
           <AvatarFallback>{(ownProfile?.name || "U").charAt(0)}</AvatarFallback>
         </Avatar>
         <Input
+          ref={inputRef}
           value={commentText}
           onChange={(e) => setCommentText(e.target.value)}
-          placeholder={authorUsername ? `Add a comment for ${authorUsername}` : "Add a comment…"}
+          placeholder={
+            replyTo
+              ? `Reply to @${replyTo.username}…`
+              : authorUsername
+                ? `Add a comment for ${authorUsername}`
+                : "Add a comment…"
+          }
           className="flex-1 h-10 rounded-full bg-muted border-0 text-sm"
         />
         <Button
@@ -166,21 +255,27 @@ export function CommentsPanel({
 function CommentRow({
   comment,
   isOwn,
+  isReply = false,
   onUserClick,
   onReply,
   onEdit,
   onDelete,
+  onToggleLike,
 }: {
   comment: PostCommentDTO
   isOwn: boolean
+  isReply?: boolean
   onUserClick?: () => void
   onReply?: () => void
   onEdit: (content: string) => void
   onDelete: () => void
+  onToggleLike: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.content)
-  const [liked, setLiked] = useState(false)
+  // Like state is driven by the (optimistically-updated) comment from the cache.
+  const liked = !!comment.likedByMe
+  const likesCount = comment.likesCount ?? 0
 
   const saveEdit = () => {
     const next = draft.trim()
@@ -191,7 +286,7 @@ function CommentRow({
   return (
     <div className="flex gap-3 py-2">
       <Avatar
-        className={cn("h-9 w-9 shrink-0", onUserClick && "cursor-pointer")}
+        className={cn(isReply ? "h-7 w-7" : "h-9 w-9", "shrink-0", onUserClick && "cursor-pointer")}
         onClick={onUserClick}
       >
         <AvatarImage src={getAvatarUrl(comment.profileImage ?? undefined)} />
@@ -238,7 +333,9 @@ function CommentRow({
           </div>
         ) : (
           <>
-            <p className="text-sm mt-0.5 whitespace-pre-wrap break-words">{comment.content}</p>
+            <p className="text-sm mt-0.5 whitespace-pre-wrap break-words">
+              {renderWithMentions(comment.content)}
+            </p>
             <div className="flex items-center gap-4 mt-1">
               <button
                 onClick={onReply}
@@ -273,11 +370,105 @@ function CommentRow({
 
       {!editing && (
         <button
-          onClick={() => setLiked((v) => !v)}
-          className="shrink-0 self-start mt-1 text-muted-foreground hover:text-foreground"
+          onClick={onToggleLike}
+          aria-pressed={liked}
+          aria-label={liked ? "Unlike comment" : "Like comment"}
+          className="shrink-0 self-start mt-1 flex flex-col items-center gap-0.5 text-muted-foreground hover:text-foreground"
         >
           <Heart className={cn("h-4 w-4", liked && "fill-rose-500 text-rose-500")} />
+          {likesCount > 0 && <span className="text-[11px] leading-none">{likesCount}</span>}
         </button>
+      )}
+    </div>
+  )
+}
+
+type CommentMutation = { mutate: (vars: any) => void }
+
+function RepliesThread({
+  postId,
+  parentId,
+  replyCount,
+  expanded,
+  onToggle,
+  myUsername,
+  onUserClick,
+  onStartReply,
+  editComment,
+  deleteComment,
+  likeComment,
+  unlikeComment,
+}: {
+  postId: string
+  parentId: string
+  replyCount: number
+  expanded: boolean
+  onToggle: () => void
+  myUsername?: string
+  onUserClick?: (userId?: string | null) => void
+  onStartReply: (rootId: string, username: string) => void
+  editComment: CommentMutation
+  deleteComment: CommentMutation
+  likeComment: CommentMutation & { mutate: (v: any) => void }
+  unlikeComment: CommentMutation
+}) {
+  const { data, hasNextPage, isFetchingNextPage, fetchNextPage, isLoading } = useCommentReplies(
+    postId,
+    parentId,
+    expanded,
+  )
+  const replies = data?.pages.flatMap((p) => p.items) ?? []
+
+  return (
+    <div className="pl-11">
+      <button
+        onClick={onToggle}
+        className="flex items-center gap-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+      >
+        <span className="h-px w-6 bg-border" />
+        {expanded ? "Hide replies" : `View ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`}
+      </button>
+
+      {expanded && (
+        <div>
+          {isLoading && replies.length === 0 ? (
+            <div className="flex justify-center py-2">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            replies.map((r) => (
+              <CommentRow
+                key={r.id}
+                comment={r}
+                isReply
+                isOwn={!!myUsername && r.username === myUsername}
+                onUserClick={() => onUserClick?.(r.userId)}
+                onReply={() => onStartReply(parentId, r.username)}
+                onEdit={(text) =>
+                  editComment.mutate({ postId, commentId: r.id, content: text, parentId })
+                }
+                onDelete={() => deleteComment.mutate({ postId, commentId: r.id, parentId })}
+                onToggleLike={() =>
+                  (r.likedByMe ? unlikeComment : likeComment).mutate({
+                    postId,
+                    commentId: r.id,
+                    parentId,
+                  })
+                }
+              />
+            ))
+          )}
+          {hasNextPage && (
+            <button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="flex items-center gap-3 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
+            >
+              <span className="h-px w-6 bg-border" />
+              {isFetchingNextPage ? "Loading…" : "View more replies"}
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

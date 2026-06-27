@@ -41,6 +41,7 @@ export function SharedPostOpener() {
   const mapped: PostDetailModalPost | null = post
     ? {
         id: post.id,
+        shortCode: (post as any).shortCode,
         content: post.content,
         mediaUrls: (post.media || []).map((m: any) => ({
           url: m?.mediaUrl ?? m?.url ?? (typeof m === "string" ? m : ""),

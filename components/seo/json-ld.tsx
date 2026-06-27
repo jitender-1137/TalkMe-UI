@@ -93,3 +93,59 @@ export function FaqJsonLd({
     />
   )
 }
+
+export function ArticleJsonLd({
+  title,
+  description,
+  url,
+  datePublished,
+}: {
+  title: string
+  description: string
+  url: string
+  datePublished: string
+}) {
+  return (
+    <JsonLd
+      data={{
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        headline: title,
+        description,
+        url,
+        datePublished,
+        dateModified: datePublished,
+        image: absoluteUrl("/opengraph-image"),
+        author: { "@type": "Organization", name: siteConfig.legalName, url: siteConfig.url },
+        publisher: {
+          "@type": "Organization",
+          name: siteConfig.legalName,
+          logo: { "@type": "ImageObject", url: absoluteUrl("/icon-512.png") },
+        },
+        mainEntityOfPage: { "@type": "WebPage", "@id": url },
+      }}
+    />
+  )
+}
+
+/** Breadcrumb trail — helps Google show the page's position in search results. */
+export function BreadcrumbJsonLd({
+  items,
+}: {
+  items: { name: string; url: string }[]
+}) {
+  return (
+    <JsonLd
+      data={{
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: items.map((it, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          name: it.name,
+          item: it.url,
+        })),
+      }}
+    />
+  )
+}

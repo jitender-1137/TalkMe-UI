@@ -45,6 +45,15 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
+declare global {
+  interface Window {
+    /** Deferred `beforeinstallprompt`, captured by an inline script in
+     *  app/layout.tsx before React mounts so it is never missed. `tm:bip` fires
+     *  when it lands. */
+    __tmBip: BeforeInstallPromptEvent | null
+  }
+}
+
 /** Logged in == we currently hold a (non-expired) access token in memory. */
 function isLoggedIn(): boolean {
   return !!getAccessToken()
@@ -96,14 +105,27 @@ export function InstallFullscreenPrompt() {
     const ios = detectIOS()
     setIsIOS(ios)
 
-    // Android/Chromium: capture the install event whenever it arrives so the
-    // button can trigger it. It may fire before or after our show timer.
+    // The install event usually fires BEFORE this component mounts, so the inline
+    // script in layout already captured it on window.__tmBip. Pick it up now…
+    const adopt = () => {
+      const ev = window.__tmBip
+      if (ev) {
+        deferredRef.current = ev
+        setCanInstall(true)
+      }
+    }
+    adopt()
+
+    // …and keep listening: "tm:bip" (from the inline script) covers a late
+    // arrival, and the direct event is a belt-and-suspenders fallback.
     const onBeforeInstall = (e: Event) => {
       e.preventDefault()
+      window.__tmBip = e as BeforeInstallPromptEvent
       deferredRef.current = e as BeforeInstallPromptEvent
       setCanInstall(true)
     }
     window.addEventListener("beforeinstallprompt", onBeforeInstall)
+    window.addEventListener("tm:bip", adopt)
 
     // If the app gets installed (via our button or the browser's own UI), hide.
     const onInstalled = () => setInstalled(true)
@@ -135,6 +157,7 @@ export function InstallFullscreenPrompt() {
 
     return () => {
       window.removeEventListener("beforeinstallprompt", onBeforeInstall)
+      window.removeEventListener("tm:bip", adopt)
       window.removeEventListener("appinstalled", onInstalled)
       clearTimeout(initial)
       clearInterval(interval)
@@ -147,7 +170,7 @@ export function InstallFullscreenPrompt() {
   }, [haptic])
 
   const install = useCallback(async () => {
-    const deferred = deferredRef.current
+    const deferred = deferredRef.current ?? window.__tmBip
     if (!deferred) return
     haptic("impactMedium")
     setInstalling(true)
@@ -155,6 +178,7 @@ export function InstallFullscreenPrompt() {
       await deferred.prompt()
       const choice = await deferred.userChoice.catch(() => ({ outcome: "dismissed" as const }))
       deferredRef.current = null
+      window.__tmBip = null
       setCanInstall(false)
       if (choice.outcome === "accepted") {
         haptic("success")

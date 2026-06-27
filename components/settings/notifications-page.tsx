@@ -13,6 +13,7 @@ import {
   setPushOptOut,
 } from "@/lib/push/push-manager";
 import { detectInstallationType } from "@/lib/pwa/install-detection";
+import { useDesktopNotifications } from "@/hooks/use-desktop-notifications";
 
 /** #profile/notification — sound, vibration, push and per-category alert preferences. */
 export function NotificationsPage() {
@@ -30,6 +31,15 @@ export function NotificationSettingsSection() {
   const [pushSupported] = useState(() => isPushSupported());
   const [pushOn, setPushOn] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
+
+  // Desktop (browser) notifications — shared hook so this page and the Connect-tab
+  // drawer use identical permission-gated logic and can't diverge.
+  const {
+    enabled: desktopEnabled,
+    supported: desktopSupported,
+    secure: secureContext,
+    setEnabled: setDesktopEnabled,
+  } = useDesktopNotifications();
 
   useEffect(() => {
     if (!pushSupported) return;
@@ -145,13 +155,18 @@ export function NotificationSettingsSection() {
             <div className="space-y-0.5">
               <Label className="text-sm font-medium">Desktop Notifications</Label>
               <p className="text-xs text-muted-foreground">
-                Show previews and banner alerts on your desktop
+                {desktopSupported
+                  ? "Banner alerts when a message arrives and the app isn't focused"
+                  : secureContext
+                    ? "Your browser doesn't support notifications"
+                    : "Requires a secure connection (https). Open the site over https to enable."}
               </p>
             </div>
             <Switch
               id="desktop-notifications-switch"
-              checked={notificationSettings.desktop}
-              onCheckedChange={(val) => updateNotificationSettings({ desktop: val })}
+              disabled={!desktopSupported}
+              checked={desktopEnabled}
+              onCheckedChange={setDesktopEnabled}
             />
           </div>
         </div>

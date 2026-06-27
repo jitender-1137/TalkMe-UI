@@ -706,7 +706,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             initial={{ opacity: 0, y: -50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            className="fixed top-4 left-4 right-4 md:left-auto md:right-10 z-[120] max-w-sm w-full bg-[#121b22] text-white border border-white/10 shadow-2xl rounded-2xl p-4 flex items-center justify-between"
+            className="fixed top-4 left-4 right-4 md:left-auto md:right-10 z-[120] md:w-full md:max-w-sm bg-[#121b22] text-white border border-white/10 shadow-2xl rounded-2xl p-4 flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full overflow-hidden bg-neutral-800 flex items-center justify-center shrink-0 border border-white/5">

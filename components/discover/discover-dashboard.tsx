@@ -43,7 +43,7 @@ import {
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useDiscoverProfiles,
+  useDiscoverProfilesInfinite,
   useLikeDiscoverProfile,
   useUnlikeDiscoverProfile,
 } from "@/src/api/hooks/useDiscover";
@@ -308,6 +308,9 @@ export function DiscoverDashboard() {
   // True when a temporary country was carried over on mount — stops the
   // user-country default from overriding it.
   const hadTempCountry = useRef(getDiscoverTempCountry() != null);
+  // Sentinel at the bottom of the list — when it scrolls into view we load the
+  // next page (infinite scroll).
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const { data: ownProfile } = useProfile();
   const userCountry = ownProfile?.country ?? null;
@@ -373,8 +376,11 @@ export function DiscoverDashboard() {
     data: discoverData,
     isLoading,
     isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
     refetch,
-  } = useDiscoverProfiles(
+  } = useDiscoverProfilesInfinite(
     isSearching
       ? { q: query.trim() }
       : {
@@ -435,11 +441,15 @@ export function DiscoverDashboard() {
   // is stable, so the backend's order is preserved within each group.
   const livePresence = useLivePresenceStore((s) => s.byUser);
   const people = useMemo(() => {
-    const raw = discoverData?.items ?? [];
+    // Flatten all loaded pages, de-duping by id — server-side presence reordering
+    // between page fetches can otherwise repeat a user across page boundaries.
+    const raw = discoverData?.pages.flatMap((p) => p.items) ?? [];
+    const seen = new Set<string>();
+    const unique = raw.filter((p: any) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
     const isOnline = (p: any) =>
       (livePresence[p.id]?.status ?? (p.isOnline ? "online" : "offline")) === "online";
-    return [...raw].sort((a, b) => Number(isOnline(b)) - Number(isOnline(a)));
-  }, [discoverData?.items, livePresence]);
+    return unique.sort((a, b) => Number(isOnline(b)) - Number(isOnline(a)));
+  }, [discoverData?.pages, livePresence]);
 
   // Subscribe to the displayed people's presence so their online dots update in
   // real time (sticky so the contacts sync won't drop these non-contacts). The
@@ -453,6 +463,24 @@ export function DiscoverDashboard() {
     if (!peopleUsernames) return;
     peopleUsernames.split(",").forEach((u) => subscribeToPresence(u, true));
   }, [peopleUsernames, subscribeToPresence]);
+
+  // Infinite scroll: load the next page when the bottom sentinel approaches the
+  // viewport. rootMargin pre-fetches ~400px early so new people slot in
+  // seamlessly before the user hits the end.
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const handleLike = (person: DiscoverProfile) => {
     if (person.isLiked) {
@@ -720,6 +748,17 @@ export function DiscoverDashboard() {
                   />
                 ),
               )}
+            </div>
+          )}
+
+          {/* Infinite-scroll sentinel + loading footer */}
+          {!isLoading && people.length > 0 && (
+            <div ref={loadMoreRef} className="flex items-center justify-center py-6">
+              {isFetchingNextPage ? (
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              ) : !hasNextPage ? (
+                <span className="text-xs text-muted-foreground">You've reached the end</span>
+              ) : null}
             </div>
           )}
         </div>

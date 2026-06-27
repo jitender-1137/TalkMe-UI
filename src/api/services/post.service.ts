@@ -13,6 +13,10 @@ export interface PostCommentDTO {
   profileImage?: string | null
   content: string
   createdAt: string
+  likesCount: number
+  likedByMe: boolean
+  parentId?: string | null
+  replyCount: number
 }
 
 export const PostService = {
@@ -30,6 +34,17 @@ export const PostService = {
       data: Post
       timestamp: string
     }>(ENDPOINTS.POSTS.BY_ID(postId))
+    return unwrapResponse(response)
+  },
+
+  /** Fetch a single post by its shareable short code (Instagram-style link). */
+  getPostByCode: async (code: string): Promise<Post> => {
+    const response = await apiClient.get<{
+      success: boolean
+      message: string
+      data: Post
+      timestamp: string
+    }>(ENDPOINTS.POSTS.BY_CODE(code))
     return unwrapResponse(response)
   },
 
@@ -100,15 +115,32 @@ export const PostService = {
     return unwrapPaginatedResponse<PostCommentDTO>(response)
   },
 
-  /** Add a comment to a post. */
-  createComment: async (postId: string, content: string): Promise<PostCommentDTO> => {
+  /** Add a comment to a post (pass parentId to post it as a reply). */
+  createComment: async (
+    postId: string,
+    content: string,
+    parentId?: string,
+  ): Promise<PostCommentDTO> => {
     const response = await apiClient.post<{
       success: boolean
       message: string
       data: PostCommentDTO
       timestamp: string
-    }>(ENDPOINTS.POSTS.CREATE_COMMENT(postId), { content })
+    }>(ENDPOINTS.POSTS.CREATE_COMMENT(postId), { content, parentId })
     return unwrapResponse(response)
+  },
+
+  /** Fetch a page of replies for a comment. */
+  getReplies: async (
+    postId: string,
+    commentId: string,
+    page = 0,
+    size = 10,
+  ): Promise<PaginatedResponse<PostCommentDTO>> => {
+    const response = await apiClient.get<any>(ENDPOINTS.POSTS.COMMENTS(postId) + `/${commentId}/replies`, {
+      params: { page, size },
+    })
+    return unwrapPaginatedResponse<PostCommentDTO>(response)
   },
 
   /** Edit one of the current user's comments. */
@@ -125,6 +157,16 @@ export const PostService = {
   /** Delete a comment. */
   deleteComment: async (postId: string, commentId: string): Promise<void> => {
     await apiClient.delete(ENDPOINTS.POSTS.DELETE_COMMENT(postId, commentId))
+  },
+
+  /** Like a comment. */
+  likeComment: async (postId: string, commentId: string): Promise<void> => {
+    await apiClient.post(ENDPOINTS.POSTS.LIKE_COMMENT(postId, commentId))
+  },
+
+  /** Unlike a comment. */
+  unlikeComment: async (postId: string, commentId: string): Promise<void> => {
+    await apiClient.delete(ENDPOINTS.POSTS.UNLIKE_COMMENT(postId, commentId))
   },
 
   /** Fetch a specific user's posts. */

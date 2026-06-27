@@ -19,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, getAvatarUrl } from "@/lib/utils"
+import { toast } from "sonner"
+import { copyPostLink } from "@/lib/post-link"
 import { useUrlModal } from "@/lib/navigation/use-url-modal"
 import type { Post } from "./types"
 import { useProfile } from "@/src/api/hooks/useProfile"
@@ -149,7 +151,14 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>Copy link</DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={async () => {
+                const ok = await copyPostLink(post.shortCode)
+                toast[ok ? "success" : "error"](ok ? "Link copied" : "Couldn't copy link")
+              }}
+            >
+              Copy link
+            </DropdownMenuItem>
             <DropdownMenuItem>Report post</DropdownMenuItem>
             <DropdownMenuItem>Mute user</DropdownMenuItem>
           </DropdownMenuContent>
@@ -315,6 +324,7 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
         <PostDetailModal
           post={{
             id: post.id,
+            shortCode: post.shortCode,
             content: post.content,
             mediaUrls: (post.media || []).map((m: any) => ({
               url: typeof m === "string" ? m : m.url,

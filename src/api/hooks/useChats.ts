@@ -5,7 +5,7 @@ import { ChatService } from "../services/chat.service"
 import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
 import type { Chat, CreateChatPayload, MuteChatPayload } from "../types"
-import { getAccessToken } from "../token-store"
+import { getAccessToken, isGuestToken } from "../token-store"
 import { useLiveQuery } from "dexie-react-hooks"
 import { db, mapResponseToLocalChat, putChatSafely } from "../db"
 import { shouldSync } from "../sync-throttle"
@@ -36,11 +36,14 @@ export function useAuthToken(): string | null {
   return token;
 }
 
-/** Returns true when the cached session belongs to a guest user. */
+/** Returns true when the current session belongs to a guest user. */
 function useIsGuest(): boolean {
   const qc = useQueryClient()
   const me = qc.getQueryData<any>(QUERY_KEYS.AUTH.ME)
-  return me?.isGuest === true
+  // Prefer the token's own guest claim — known the instant we have a token, before
+  // /auth/me resolves — so a guest refresh never briefly looks like a full user and
+  // fires the chats sync. Fall back to the cached profile.
+  return isGuestToken() || me?.isGuest === true
 }
 
 // ── Query: chat list (Dexie local cache + background API sync) ──────────────────

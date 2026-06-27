@@ -63,6 +63,31 @@ export function isAccessTokenExpired(): boolean {
   return Date.now() >= tokenExpiresAt
 }
 
+/** Decode a JWT payload client-side (NO signature check — a UI hint only). */
+function decodeJwtPayload(token: string | null): Record<string, any> | null {
+  if (!token) return null
+  try {
+    const part = token.split(".")[1]
+    if (!part) return null
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"))
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * True when the CURRENT access token is a guest-session token (its `isGuest` claim).
+ *
+ * Read straight from the token so callers don't race the /auth/me query that
+ * populates the guest flag in the React Query cache: the moment we have a token we
+ * already know if it's a guest, so guest sessions never momentarily look like full
+ * users and fire full-user-only requests (chats, friends, /users/me, …).
+ */
+export function isGuestToken(): boolean {
+  return decodeJwtPayload(getAccessToken())?.isGuest === true
+}
+
 export function getTokenExpiresAt(): number | null {
   return tokenExpiresAt
 }

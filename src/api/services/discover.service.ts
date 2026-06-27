@@ -1,6 +1,6 @@
 import apiClient from "../client"
 import { ENDPOINTS } from "../endpoints"
-import { unwrapResponse } from "../response-handler"
+import { unwrapResponse, unwrapPaginatedResponse } from "../response-handler"
 import type { DiscoverProfile, SuggestedPerson } from "../types/social.types"
 import type { PaginatedResponse } from "../types/api.types"
 import type { User } from "../types/user.types"
@@ -25,10 +25,13 @@ export const DiscoverService = {
     const response = await apiClient.get<{
       success: boolean
       message: string
-      data: PaginatedResponse<DiscoverProfile>
+      data: unknown
       timestamp: string
     }>(ENDPOINTS.DISCOVER.LIST, { params })
-    return unwrapResponse(response)
+    // Backend returns { items, pagination:{ cursor, hasNext, ... } }; normalize to
+    // the standard { items, meta } shape so callers (incl. infinite scroll) get
+    // a reliable `meta.hasNextPage`.
+    return unwrapPaginatedResponse<DiscoverProfile>(response)
   },
 
   /** Like a discover profile. */

@@ -383,7 +383,7 @@ export function AppLayout({
           )}
         >
           {/* Large Title Area (Logo + Title on the left, action buttons on the right - SAME ROW) */}
-          <div className="relative overflow-hidden md:px-6 pr-1 pl-4 flex items-center justify-between min-h-21">
+          <div className="relative overflow-hidden md:px-1 pr-1 pl-1 flex items-center justify-between min-h-21">
             {/* Decorative backdrop (opt-in) */}
             {headerBackdrop && (
               <div className="pointer-events-none absolute inset-0 z-0">{headerBackdrop}</div>

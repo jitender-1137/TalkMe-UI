@@ -21,6 +21,8 @@ import { BubbleBody, BubbleShell } from "@/components/chat/bubble-body";
 import type { MediaAttachment } from "@/components/chat/types";
 import type { ChatUser } from "./types";
 import { useScrollRestore } from "@/lib/navigation/scroll-restore";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useVisualViewport } from "@/hooks/use-visual-viewport";
 
 // Helper to detect if a message content is a media URL (GIF/sticker)
 const isMediaUrl = (content: string) => {
@@ -143,13 +145,11 @@ export function LobbyDashboard() {
   };
 
   const handleCloseChat = () => {
-    // Route through the single history entry pushed for the mobile chat screen
-    // (useBackDismiss) so the in-app back button matches the OS Back button. On
-    // desktop there is no such entry → close via state.
-    if (typeof window !== "undefined" && (window.history.state as any)?.__backDismiss) {
-      window.history.back();
-      return;
-    }
+    // The chat is registered as a URL overlay (#match/lobby/chat) in
+    // ConnectDashboard. Clearing selectedUser flips that overlay closed, which
+    // consumes its history entry via history.back() — so the in-app back button
+    // and the OS Back button land on the same #match/lobby entry, with the lobby
+    // list (still mounted) keeping its scroll position.
     setSelectedUser(null);
   };
 
@@ -211,7 +211,7 @@ export function LobbyDashboard() {
               <MessageSquare className="w-4 h-4" />
               <span>Inbox</span>
               {inboxUnreadCount > 0 && (
-                <span className="rounded-full min-w-5 bg-pink-500 text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="rounded-full min-w-5 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                   {inboxUnreadCount}
                 </span>
               )}
@@ -455,6 +455,12 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
   const { guestUser, isGuestMatch } = useAuth();
   const myUsername = ownProfile?.username || (isGuestMatch && guestUser?.name) || "Guest";
   const partnerUsername = user.username || user.name || "Guest";
+
+  // Mobile keyboard handling — match the main chat-area: on mobile the panel becomes
+  // a fixed overlay glued to the visual viewport, so opening the keyboard keeps the
+  // header pinned and slides the conversation up above the keyboard.
+  const isMobile = useIsMobile();
+  const { height: vvHeight, offsetTop: vvTop } = useVisualViewport();
   const { messages, sendMessage, sendTypingStatus, isPartnerTyping } = useChat(partnerUsername);
   const blockUser = useLobbyStore((state) => state.blockUser);
   const isBlocked = useLobbyStore((state) => state.blockedUsers.includes(partnerUsername));
@@ -539,7 +545,13 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col h-full bg-muted relative">
+    <div
+      className={cn(
+        "flex flex-col bg-muted overflow-hidden",
+        isMobile ? "fixed inset-x-0 top-0 z-[60]" : "relative flex-1 min-h-0 h-full",
+      )}
+      style={isMobile ? { height: vvHeight, top: vvTop } : undefined}
+    >
       {/* Chat Header */}
       <header className="flex items-center justify-between p-2 md:p-4 bg-card border-b border-border shrink-0">
         <div className="flex items-center gap-3">

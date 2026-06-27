@@ -9,11 +9,14 @@ interface MatchState {
   stranger: Stranger | null
   messages: StrangerMessage[]
   searchTime: number
-  
+  /** Partner's socket dropped; held within the reconnect grace window (shows a banner). */
+  partnerReconnecting: boolean
+
   // Actions
   setStatus: (status: MatchStatus) => void
   setFilters: (filters: Partial<MatchFilters>) => void
   setStranger: (stranger: Stranger | null) => void
+  setPartnerReconnecting: (reconnecting: boolean) => void
   addMessage: (message: StrangerMessage) => void
   revealMedia: (messageId: string) => void
   clearMessages: () => void
@@ -34,14 +37,17 @@ export const useMatchStore = create<MatchState>((set) => ({
   stranger: null,
   messages: [],
   searchTime: 0,
-  
+  partnerReconnecting: false,
+
   setStatus: (status) => set({ status }),
-  
+
   setFilters: (filters) => set((state) => ({
     filters: { ...state.filters, ...filters }
   })),
-  
+
   setStranger: (stranger) => set({ stranger }),
+
+  setPartnerReconnecting: (partnerReconnecting) => set({ partnerReconnecting }),
   
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, message]
@@ -62,6 +68,7 @@ export const useMatchStore = create<MatchState>((set) => ({
     stranger: null,
     messages: [],
     searchTime: 0,
+    partnerReconnecting: false,
   }),
   
   incrementSearchTime: () => set((state) => ({

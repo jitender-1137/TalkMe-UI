@@ -38,6 +38,7 @@ export interface PostMediaResponse {
 
 export interface Post {
   id: string
+  shortCode?: string
   user: User
   content: string
   media: PostMediaResponse[]

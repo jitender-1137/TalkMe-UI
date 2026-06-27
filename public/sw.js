@@ -89,6 +89,12 @@ self.addEventListener('push', (event) => {
     // Same tag for the same message → de-duplicates; renotify re-alerts on updates
     tag: data.messageId || chatId || 'talkme',
     renotify: true,
+    // Make sure the OS plays its notification sound and vibrates (mobile). A service
+    // worker can't play a custom audio file, so the alert sound is the OS one — this
+    // ensures we never request a silent notification. (Desktop also needs the per-app
+    // "Play sound for notifications" enabled in the OS notification settings.)
+    silent: false,
+    vibrate: [120, 60, 120],
     timestamp: data.timestamp ? (Date.parse(data.timestamp) || Date.now()) : Date.now(),
     data: {
       chatId: chatId,

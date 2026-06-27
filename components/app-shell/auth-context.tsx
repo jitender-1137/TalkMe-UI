@@ -9,8 +9,10 @@ import {
   type ReactNode,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { useLogin, useSignup, useLogout, useGuestLogin, useMe } from "@/src/api/hooks/useLogin"
+import { useLogin, useSignup, useLogout, useGuestLogin, useMe, mapAuthUserToUser } from "@/src/api/hooks/useLogin"
+import { QUERY_KEYS } from "@/src/api/query-keys"
 import { proactiveTokenRefresh, getAccessToken } from "@/src/api/client"
+import { wipeLocalData } from "@/src/api/db"
 
 // ── Public types (re-exported for existing consumers) ────────────────────────
 export interface User {
@@ -95,11 +97,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: meData.email,
         avatar: meData.avatar ?? undefined,
       })
+      // Guests have no separate /users/me profile to fetch — their full profile
+      // arrives with /auth/me. Seed the profile cache so useProfile() (gated off for
+      // guests) serves from here instead of making a redundant second "me" request.
+      if (meData.isGuest) {
+        queryClient.setQueryData(QUERY_KEYS.PROFILE.SELF, mapAuthUserToUser(meData))
+      }
     } else if (isError) {
       setIsAuthenticated(false)
       setUser(null)
     }
-  }, [meData, isError])
+  }, [meData, isError, queryClient])
 
   // Proactive token refresh — skip for guest users (ephemeral sessions)
   useEffect(() => {
@@ -126,6 +134,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (prev) {
           setShowLoginModal(true)
           queryClient.clear()
+          // Session died WITHOUT a clean logout (token expired / invalidated /
+          // superseded). Wipe the local IndexedDB now — otherwise the previous
+          // user's chats and messages sit readable on disk (e.g. via DevTools)
+          // until someone logs in. Fire-and-forget; rendering is already gated.
+          void wipeLocalData()
         }
         return false
       })
@@ -186,11 +199,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginAsGuest = useCallback(
     (name: string, age: number, gender: string, captchaToken?: string, website?: string) => {
-      // Optimistic local update first so UI responds immediately
-      setIsGuestMatch(true)
-      setGuestUser({ name, age, gender })
-
-      guestLoginMutation.mutate({ name, age, gender, captchaToken, website })
+      // Only enter the guest (connect/match) session once the server confirms the
+      // guest login. Setting this optimistically meant a failed login still
+      // switched to the connect tab — so gate it on success and roll back on error.
+      guestLoginMutation.mutate(
+        { name, age, gender, captchaToken, website },
+        {
+          onSuccess: () => {
+            setIsGuestMatch(true)
+            setGuestUser({ name, age, gender })
+          },
+          onError: () => {
+            setIsGuestMatch(false)
+            setGuestUser(null)
+          },
+        },
+      )
     },
     [guestLoginMutation],
   )

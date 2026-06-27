@@ -12,7 +12,10 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  Link as LinkIcon,
 } from "lucide-react";
+import { toast } from "sonner";
+import { copyPostLink } from "@/lib/post-link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +43,7 @@ import { InstagramVideo } from "./instagram-video";
 /** Normalized post shape the modal renders — built by callers from their data. */
 export interface PostDetailModalPost {
   id: string;
+  shortCode?: string;
   content?: string;
   mediaUrls: { url: string; type: "image" | "video" }[];
   author: { id: string; name: string; avatar?: string | null };
@@ -198,7 +202,7 @@ export function PostDetailModal({
                 })}
               </p>
             </div>
-            {isOwner && (
+            {(post.shortCode || isOwner) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -210,15 +214,29 @@ export function PostDetailModal({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="z-[320]">
-                  <DropdownMenuItem onClick={startEditCaption}>
-                    <Pencil className="h-4 w-4 mr-2" /> Edit caption
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={handleDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" /> Delete post
-                  </DropdownMenuItem>
+                  {post.shortCode && (
+                    <DropdownMenuItem
+                      onClick={async () => {
+                        const ok = await copyPostLink(post.shortCode)
+                        toast[ok ? "success" : "error"](ok ? "Link copied" : "Couldn't copy link")
+                      }}
+                    >
+                      <LinkIcon className="h-4 w-4 mr-2" /> Copy link
+                    </DropdownMenuItem>
+                  )}
+                  {isOwner && (
+                    <>
+                      <DropdownMenuItem onClick={startEditCaption}>
+                        <Pencil className="h-4 w-4 mr-2" /> Edit caption
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handleDelete}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" /> Delete post
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

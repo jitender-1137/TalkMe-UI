@@ -15,6 +15,7 @@ import Dexie from "dexie"
 import { db, mapResponseToLocalMessage, normalizeMessageStatus } from "../db"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useAuthToken } from "./useChats"
+import { useProfile } from "./useProfile"
 
 // Per-chatId in-flight guard tracked outside React to survive re-renders
 const syncInFlight = new Map<string, boolean>()
@@ -43,6 +44,53 @@ export async function getLocalMinSequence(chatId: string): Promise<number> {
     .between([chatId, Dexie.minKey], [chatId, Dexie.maxKey])
     .first()
   return oldest?.sequenceNumber ?? 0
+}
+
+/**
+ * Rebuild a chat's last-message preview from the newest message still stored
+ * locally — but ONLY when the chat-list currently points at `removedMessageId`
+ * (the message just deleted). Without this, deleting the latest message leaves
+ * the chat list showing a stale/now-gone preview until the next sync. The rebuilt
+ * preview carries the new last message's delivery status so its tick is correct.
+ */
+async function refreshChatLastMessageAfterDelete(chatId: string, removedMessageId: string) {
+  const chat = await db.chats.get(chatId)
+  if (!chat) return
+  const lm: any = chat.lastMessage
+  const pointedHere =
+    chat.lastMessageId === removedMessageId ||
+    (lm && (lm.id === removedMessageId || lm.messageId === removedMessageId))
+  if (!pointedHere) return
+
+  const newest = await db.messages
+    .where("[chatId+sequenceNumber]")
+    .between([chatId, Dexie.minKey], [chatId, Dexie.maxKey])
+    .reverse()
+    .first()
+
+  if (!newest) {
+    // Nothing left in this chat.
+    await db.chats.update(chatId, { lastMessageId: undefined, lastMessagePreview: "", lastMessage: null })
+    return
+  }
+
+  const isTombstone = newest.deleted === 1 || newest.isDeleted
+  const preview = isTombstone ? "This message was deleted" : newest.content || "Media attachment"
+  await db.chats.update(chatId, {
+    lastMessageId: newest.messageId,
+    lastMessagePreview: preview,
+    updatedAt: newest.createdAt || chat.updatedAt,
+    lastMessage: {
+      id: newest.messageId,
+      content: isTombstone ? "This message was deleted" : newest.content || "",
+      senderId: newest.senderId,
+      senderName: newest.senderName || "",
+      type: newest.messageType || "TEXT",
+      timestamp: newest.createdAt || new Date().toISOString(),
+      isDeleted: isTombstone,
+      status: normalizeMessageStatus(newest.status || "sent"),
+    },
+  })
 }
 
 // ── Query: infinite message list (Dexie local cache + background API sync) ──────────
@@ -176,6 +224,30 @@ export function useMessages(chatId: string) {
         const newMessages = Array.from(byId.values())
 
         if (!active) return
+
+        // Reconcile server-side DELETIONS within the freshly-fetched recent window:
+        // any locally-stored, server-confirmed message whose sequence falls inside
+        // the window's range but is ABSENT from the server response was removed or
+        // hidden for us server-side (the sender deleted-for-everyone while we were
+        // offline, or a delete-for-me synced from another device). Drop the stale
+        // local copy so it doesn't linger. Optimistic ("sending") and out-of-window
+        // messages are left untouched.
+        if (recent.items.length > 0) {
+          const serverIds = new Set(recent.items.map((m: any) => m.id))
+          const seqs = recent.items.map((m: any) => m.sequenceNumber || 0)
+          const minSeq = Math.min(...seqs)
+          const maxSeq = Math.max(...seqs)
+          const localInWindow = await db.messages
+            .where("[chatId+sequenceNumber]")
+            .between([chatId, minSeq], [chatId, maxSeq])
+            .toArray()
+          const staleIds = localInWindow
+            .filter((m) => m.status !== "sending" && !serverIds.has(m.messageId))
+            .map((m) => m.messageId)
+          if (staleIds.length > 0) {
+            await db.messages.bulkDelete(staleIds)
+          }
+        }
 
         if (newMessages.length > 0) {
           await db.transaction("rw", [db.messages, db.sync_state, db.chats], async () => {
@@ -441,19 +513,34 @@ export function useEditMessage(chatId: string) {
 
 // ── Mutation: delete message ──────────────────────────────────────────────────
 export function useDeleteMessage(chatId: string) {
+  const { data: ownProfile } = useProfile()
+  const currentUserId = ownProfile?.id
+
   return useMutation({
     mutationFn: (messageId: string) => MessageService.deleteMessage(chatId, messageId),
     onSuccess: async (_data, messageId) => {
-      // Update locally in Dexie
       const existing = await db.messages.get(messageId)
       if (existing) {
-        await db.messages.update(messageId, {
-          content: "This message was deleted",
-          deleted: 1,
-          isDeleted: true,
-          attachments: [],
-          mediaId: undefined,
-        })
+        const isOwnMessage = !!currentUserId && existing.senderId === currentUserId
+        if (isOwnMessage) {
+          // Deleting your OWN message = delete for everyone → leave a tombstone.
+          // The recipient is updated in real time via the message_deleted WS event.
+          await db.messages.update(messageId, {
+            content: "This message was deleted",
+            deleted: 1,
+            isDeleted: true,
+            attachments: [],
+            mediaId: undefined,
+            reactions: [],
+          })
+        } else {
+          // Deleting someone ELSE's message = delete for me → remove it from this
+          // user's view entirely. The backend keeps it for the sender and filters
+          // it out of this user's history, so it won't resurface on sync.
+          await db.messages.delete(messageId)
+        }
+        // Refresh the chat-list preview (+ status tick) if this was the last message.
+        await refreshChatLastMessageAfterDelete(chatId, messageId)
       }
       showSuccessToast("Message deleted")
     },

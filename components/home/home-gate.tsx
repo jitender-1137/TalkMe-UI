@@ -36,7 +36,20 @@ export function HomeGate({ landing }: { landing: ReactNode }) {
       const hash = window.location.hash
       const isAppDeepLink = hash !== "" && hash !== "#features"
 
-      if (params.get("app") === "1") {
+      // Shareable post link: /post/{shortCode}. The static export has no such
+      // page (Spring's SPA fallback serves index.html here), so we detect it on
+      // the client: stash the code for PendingPostOpener, enter the app (login
+      // first if needed), and normalize the URL to "/".
+      const postMatch = window.location.pathname.match(/^\/post\/([^/?#]+)/)
+
+      if (postMatch) {
+        const code = decodeURIComponent(postMatch[1])
+        sessionStorage.setItem("tm_pending_post_code", code)
+        window.dispatchEvent(new CustomEvent("post:open-code", { detail: { code } }))
+        enter = true
+        localStorage.setItem(ENTERED_KEY, "1")
+        window.history.replaceState(null, "", "/")
+      } else if (params.get("app") === "1") {
         enter = true
         // Persist entry and strip the param so the URL stays clean ("/") and
         // the canonical/shareable URL has no query string.
@@ -52,6 +65,15 @@ export function HomeGate({ landing }: { landing: ReactNode }) {
       // localStorage unavailable (private mode / SSR-like env) — stay on landing.
     }
     if (enter) setShowApp(true)
+  }, [])
+
+  // A landing CTA clicked while we're already mounted on "/" can't rely on a
+  // remount (soft navigation keeps this component alive), so it asks us to swap
+  // in the app directly via this event. See components/landing/enter-app-link.
+  useEffect(() => {
+    const onEnter = () => setShowApp(true)
+    window.addEventListener("tm:enter-app", onEnter)
+    return () => window.removeEventListener("tm:enter-app", onEnter)
   }, [])
 
   return showApp ? <AppShell /> : <>{landing}</>

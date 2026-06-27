@@ -10,6 +10,7 @@ import { ChatSearchSidebar } from "./chat-search-sidebar"
 import { useChatContext } from "./chat-context"
 import * as ContextMenu from "./message-context-menu"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useVisualViewport } from "@/hooks/use-visual-viewport"
 import { cn } from "@/lib/utils"
 import { displayContent } from "@/lib/shared-post"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
@@ -125,35 +126,12 @@ export function ChatArea({
   const { registerHandler, sendEvent, subscribeToPresence } = useWebSocket()
   const [partnerTyping, setPartnerTyping] = useState(false)
   const [partnerRecording, setPartnerRecording] = useState<"recording" | "recording_video" | null>(null)
-  const [viewportHeight, setViewportHeight] = useState<string>("100dvh")
-  const [viewportOffsetTop, setViewportOffsetTop] = useState<number>(0)
-
   // Keep the chat screen glued to the *visual* viewport (the area not covered by
-  // the on-screen keyboard) — WhatsApp-style. When the keyboard opens, the visual
-  // viewport shrinks (height) and, on iOS, shifts down (offsetTop). We drive the
-  // fixed container's height AND top from those values so the header stays on
-  // top, the messages area shrinks, and the input sits just above the keyboard
-  // instead of being hidden behind it.
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.visualViewport) return
-
-    const vv = window.visualViewport
-    const update = () => {
-      setViewportHeight(`${vv.height}px`)
-      setViewportOffsetTop(vv.offsetTop)
-    }
-
-    vv.addEventListener("resize", update)
-    vv.addEventListener("scroll", update)
-
-    // Initial call
-    update()
-
-    return () => {
-      vv.removeEventListener("resize", update)
-      vv.removeEventListener("scroll", update)
-    }
-  }, [])
+  // the on-screen keyboard) — WhatsApp-style. Driving the fixed container's height
+  // AND top from these keeps the header pinned, shrinks the messages area, and rides
+  // the input just above the keyboard instead of hiding it behind. Shared with the
+  // lobby + quick-match chats via useVisualViewport().
+  const { height: viewportHeight, offsetTop: viewportOffsetTop } = useVisualViewport()
 
   // Track active chat ID globally for WebSocket message notifications
   useEffect(() => {

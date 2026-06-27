@@ -185,6 +185,7 @@ export function NewsDashboard() {
     liked: post.isLiked,
     bookmarked: post.isBookmarked,
     timestamp: new Date(post.createdAt),
+    shortCode: (post as any).shortCode,
   }));
 
   // Client-side feed search: match caption or author name.

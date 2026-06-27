@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AuthService } from "../services/auth.service"
 import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
-import { getAccessToken } from "../token-store"
+import { getAccessToken, isGuestToken } from "../token-store"
+import { ensureDbOwner, wipeLocalData } from "../db"
 import { removePushSubscription } from "@/lib/push/push-manager"
 import type {
   LoginCredentials,
@@ -19,15 +20,16 @@ import type {
   User,
 } from "../types"
 
-/** Returns true when the cached session belongs to a guest user. */
+/** Returns true when the current session belongs to a guest user. */
 function useIsGuest(): boolean {
   const qc = useQueryClient()
   const me = qc.getQueryData<any>(QUERY_KEYS.AUTH.ME)
-  return me?.isGuest === true
+  // Token claim first (race-free, see token-store.isGuestToken), cache as fallback.
+  return isGuestToken() || me?.isGuest === true
 }
 
 // Helper to map AuthUser to User for profile caching
-const mapAuthUserToUser = (authUser: AuthUser): User => {
+export const mapAuthUserToUser = (authUser: AuthUser): User => {
   return {
     id: authUser.id,
     name: authUser.name,
@@ -69,7 +71,10 @@ export function useLogin() {
 
   return useMutation<LoginResponse, Error, LoginCredentials>({
     mutationFn: AuthService.login,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      // Enforce per-account isolation BEFORE any cached data can render: if the
+      // local DB still holds a previous user's chats/messages/media, wipe it.
+      await ensureDbOwner(data.user.id)
       queryClient.setQueryData(QUERY_KEYS.AUTH.ME, data.user)
       queryClient.setQueryData(QUERY_KEYS.PROFILE.SELF, mapAuthUserToUser(data.user))
       showSuccessToast("Welcome back!", `Signed in as ${data.user.name}`)
@@ -84,7 +89,8 @@ export function useSignup() {
 
   return useMutation<SignupResponse, Error, SignupCredentials>({
     mutationFn: AuthService.signup,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await ensureDbOwner(data.user.id)
       queryClient.setQueryData(QUERY_KEYS.AUTH.ME, data.user)
       queryClient.setQueryData(QUERY_KEYS.PROFILE.SELF, mapAuthUserToUser(data.user))
       showSuccessToast("Account created!", `Welcome, ${data.user.name}`)
@@ -99,7 +105,8 @@ export function useGuestLogin() {
 
   return useMutation({
     mutationFn: (payload: GuestLoginPayload) => AuthService.loginAsGuest(payload),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await ensureDbOwner(data.user.id)
       queryClient.setQueryData(QUERY_KEYS.AUTH.ME, data.user)
       queryClient.setQueryData(QUERY_KEYS.PROFILE.SELF, mapAuthUserToUser(data.user))
     },
@@ -122,11 +129,20 @@ export function useLogout() {
       ])
       return AuthService.logout()
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Purge ALL locally cached data so the next user on this browser can't
+      // read the signed-out user's chats, messages, or media.
+      await wipeLocalData()
       queryClient.clear()
       showSuccessToast("Signed out successfully")
     },
-    onError: showErrorToast,
+    onError: async () => {
+      // Even if the server logout call fails, the user intends to sign out on
+      // THIS device — local data must still be wiped so it can't leak.
+      await wipeLocalData()
+      queryClient.clear()
+      showErrorToast(new Error("Signed out locally (server logout failed)"))
+    },
   })
 }
 

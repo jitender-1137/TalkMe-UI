@@ -5,7 +5,7 @@ import { UserService } from "../services/user.service"
 import { QUERY_KEYS } from "../query-keys"
 import { showSuccessToast, showErrorToast } from "../error-handler"
 import type { UpdateProfilePayload, PrivacySettings, AppSettings } from "../types"
-import { getAccessToken } from "../token-store"
+import { getAccessToken, isGuestToken } from "../token-store"
 
 // ── Query: own profile ────────────────────────────────────────────────────────
 export function useProfile() {
@@ -13,7 +13,10 @@ export function useProfile() {
     queryKey: QUERY_KEYS.PROFILE.SELF,
     queryFn: UserService.getProfile,
     staleTime: 5 * 60 * 1000,
-    enabled: typeof window !== "undefined" && Boolean(getAccessToken()),
+    // Skip the /users/me round-trip for guests: their full profile already arrives
+    // with /auth/me and is seeded into this cache (see AuthProvider), so this query
+    // just reads from cache. Full users still fetch the richer profile endpoint.
+    enabled: typeof window !== "undefined" && Boolean(getAccessToken()) && !isGuestToken(),
   })
 }
 

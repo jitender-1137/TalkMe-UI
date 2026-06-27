@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useTheme } from "next-themes";
 import { useUrlModal } from "@/lib/navigation/use-url-modal";
+import { useDesktopNotifications } from "@/hooks/use-desktop-notifications";
 import { SafetyTipsModal } from "./safety-tips-modal";
 import { HEADER_ICON_BTN, HEADER_ICON } from "@/components/ui/header-button";
 
@@ -117,10 +118,18 @@ export function ConnectDashboard() {
   const setShowSettings = useLobbyStore((state) => state.setShowSettings);
   const notificationSettings = useLobbyStore((state) => state.notificationSettings);
   const updateNotificationSettings = useLobbyStore((state) => state.updateNotificationSettings);
+  // Shared, permission-gated desktop-notification control (same logic as Settings).
+  const {
+    enabled: desktopNotifEnabled,
+    supported: desktopNotifSupported,
+    secure: desktopNotifSecure,
+    setEnabled: setDesktopNotifEnabled,
+  } = useDesktopNotifications();
   const blockedUsers = useLobbyStore((state) => state.blockedUsers);
   const unblockUser = useLobbyStore((state) => state.unblockUser);
   const clearAllData = useLobbyStore((state) => state.clearAllData);
   const lobbySelectedUser = useLobbyStore((state) => state.selectedUser);
+  const setLobbySelectedUser = useLobbyStore((state) => state.setSelectedUser);
   const lobbyTab = useLobbyStore((state) => state.activeTab);
   const { theme, setTheme } = useTheme();
   const { status } = useMatchStore();
@@ -134,6 +143,16 @@ export function ConnectDashboard() {
   // hideNav:false — these are tab-like views, not modals, so keep the bottom nav.
   useUrlModal(view === "lobby", () => setView("connect"), "lobby", { hideNav: false });
   useUrlModal(view === "quick", () => setView("connect"), "quick", { hideNav: false });
+
+  // Opening a lobby chat pushes a third segment (#match/lobby → #match/lobby/chat)
+  // so Back returns to the lobby list — which stays mounted, so its scroll
+  // position is preserved. hideNav:false keeps it consistent with the lobby view.
+  useUrlModal(
+    view === "lobby" && !!lobbySelectedUser,
+    () => setLobbySelectedUser(null),
+    "chat",
+    { hideNav: false },
+  );
 
   // Keep the URL in step with an active match: starting from the lobby jumps to
   // the quick-match flow (#match/quick); ending it returns to the landing.
@@ -199,12 +218,17 @@ export function ConnectDashboard() {
                     Desktop Notifications
                   </Label>
                   <p className="text-[11px] text-muted-foreground leading-normal">
-                    Show native push alerts for incoming activity
+                    {desktopNotifSupported
+                      ? "Banner alerts when a message arrives and the app isn't focused"
+                      : desktopNotifSecure
+                        ? "Your browser doesn't support notifications"
+                        : "Requires https — open the site over a secure connection to enable"}
                   </p>
                 </div>
                 <Switch
-                  checked={notificationSettings.desktop}
-                  onCheckedChange={(val) => updateNotificationSettings({ desktop: val })}
+                  disabled={!desktopNotifSupported}
+                  checked={desktopNotifEnabled}
+                  onCheckedChange={setDesktopNotifEnabled}
                 />
               </div>
             </div>

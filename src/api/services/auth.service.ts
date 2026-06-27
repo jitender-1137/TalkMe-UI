@@ -50,7 +50,7 @@ export const AuthService = {
       message: string
       data: SignupResponse
       timestamp: string
-    }>(ENDPOINTS.AUTH.SIGNUP, credentials)
+    }>(ENDPOINTS.AUTH.SIGNUP, credentials, { skipAuth: true } as any)
 
     const data = unwrapResponse(response)
     setAccessToken(data.tokens.accessToken, data.tokens.expiresIn)

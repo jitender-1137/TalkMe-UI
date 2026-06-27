@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { ZoomPreventer } from '@/components/zoom-preventer'
 import { NativeEnv } from '@/components/app-shell/native-env'
 import { SharedPostOpener } from '@/components/feed/shared-post-opener'
+import { PendingPostOpener } from '@/components/feed/pending-post-opener'
 import { InstallFullscreenPrompt } from '@/components/pwa/install-fullscreen-prompt'
 import { PwaRegister } from '@/components/pwa-register'
 import { OrganizationJsonLd, WebSiteJsonLd, SoftwareAppJsonLd } from '@/components/seo/json-ld'
@@ -122,6 +123,19 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-background" suppressHydrationWarning>
       <body className="font-sans antialiased overflow-hidden overscroll-none touch-manipulation">
+        {/* Capture Chrome/Android's `beforeinstallprompt` as EARLY as possible —
+            it commonly fires before React mounts, so a listener attached inside a
+            component would miss it and the one-tap Install button would never show
+            (falling back to manual steps). This inline script runs at parse time,
+            stashes the deferred event on window.__tmBip, and emits "tm:bip" so the
+            install popup can light up its Install button. See
+            components/pwa/install-fullscreen-prompt.tsx. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){window.__tmBip=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__tmBip=e;try{window.dispatchEvent(new Event('tm:bip'))}catch(_){}}); window.addEventListener('appinstalled',function(){window.__tmBip=null;});})();",
+          }}
+        />
         <OrganizationJsonLd />
         <WebSiteJsonLd />
         <SoftwareAppJsonLd />
@@ -137,6 +151,7 @@ export default function RootLayout({
                     {children}
                   </ConfirmProvider>
                   <SharedPostOpener />
+                  <PendingPostOpener />
                   <InstallFullscreenPrompt />
                   <Toaster />
                 </CreatePostProvider>

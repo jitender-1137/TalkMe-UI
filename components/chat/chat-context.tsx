@@ -4,7 +4,7 @@ import { createContext, useContext, useState, ReactNode } from 'react'
 import type { ChatContact, MediaAttachment } from '@/components/chat/types'
 
 export interface ProfileModalState {
-  contact: ChatContact
+  contact: ChatContact | null
   userId?: string | null
   sharedMedia?: MediaAttachment[]
 }

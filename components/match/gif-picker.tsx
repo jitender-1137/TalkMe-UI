@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Search, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { buildGiphyUrl } from "@/lib/giphy"
+import { isBlockedGifQuery, isCleanGifRating } from "@/lib/moderation/gif-filter"
 
 interface GifPickerProps {
   onSelect: (gifUrl: string) => void
@@ -15,9 +16,20 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
   const [query, setQuery] = useState("")
   const [gifs, setGifs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [blocked, setBlocked] = useState(false)
 
   useEffect(() => {
     let active = true
+
+    // Refuse explicit searches outright (same guard as the main chat GIF picker).
+    if (isBlockedGifQuery(query)) {
+      setBlocked(true)
+      setGifs([])
+      setIsLoading(false)
+      return
+    }
+    setBlocked(false)
+
     const fetchGifs = async () => {
       setIsLoading(true)
       try {
@@ -25,7 +37,11 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
         const res = await fetch(url)
         const json = await res.json()
         if (active) {
-          const urls = json.data?.map((item: any) => item.images?.fixed_height?.url) || []
+          // Rating cap on the request + drop any item above the cap (defense in depth).
+          const urls = (json.data || [])
+            .filter((item: any) => isCleanGifRating(item))
+            .map((item: any) => item.images?.fixed_height?.url)
+            .filter(Boolean)
           setGifs(urls)
         }
       } catch (err) {
@@ -70,7 +86,16 @@ export function GifPicker({ onSelect, onClose }: GifPickerProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
-        {isLoading ? (
+        {blocked ? (
+          <div className="flex flex-col items-center justify-center h-full text-center px-4 py-12 gap-1">
+            <span className="text-sm font-medium text-muted-foreground">
+              This search isn’t allowed
+            </span>
+            <span className="text-xs text-muted-foreground/80">
+              Explicit content is blocked — try a different keyword.
+            </span>
+          </div>
+        ) : isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary mb-2" />
             <span className="text-xs">Loading GIFs...</span>

@@ -188,7 +188,7 @@ export function StrangerChatScreen({
 
     setIsUploading(true);
     try {
-      const response = await UploadService.uploadFile(file, "image");
+      const response = await UploadService.uploadFile(file, "image", { context: "stranger" });
       if (response && response.url) {
         // Send image message
         onSendMessage("", "image", {
@@ -225,7 +225,7 @@ export function StrangerChatScreen({
 
     setIsUploading(true);
     try {
-      const response = await UploadService.uploadFile(file, "image");
+      const response = await UploadService.uploadFile(file, "image", { context: "stranger" });
       if (response && response.url) {
         onSendMessage("", "image", {
           type: "image",
@@ -285,6 +285,8 @@ export function StrangerChatScreen({
                 onHideMedia={() => onHideMedia(message.id)}
                 onAcceptImageRequest={() => onSendMessage("__IMAGE_ACCEPT__", "text")}
                 onRejectImageRequest={() => onSendMessage("__IMAGE_REJECT__", "text")}
+                onAcceptConsent={() => onSendMessage("__CONSENT_ACCEPT__", "text")}
+                onDeclineConsent={() => onSendMessage("__CONSENT_DECLINE__", "text")}
               />
             ))}
           </AnimatePresence>
@@ -392,7 +394,7 @@ export function StrangerChatScreen({
 
       <MessageInput
         onSend={handleSend}
-        disabled={isDisconnected || isUploading}
+        disabled={isDisconnected || isUploading || partnerReconnecting}
         onTyping={handleTyping}
         onAttachClick={handleAttachClick}
         onSendMediaDirectly={handleSendMediaDirectly}

@@ -1,4 +1,4 @@
-export type MessageStatus = "sending" | "sent" | "delivered" | "seen" | "failed"
+export type MessageStatus = "uploading" | "sending" | "sent" | "delivered" | "seen" | "failed" | "blocked"
 
 export type MessageType = "text" | "image" | "video" | "audio" | "document" | "sticker"
 
@@ -16,6 +16,8 @@ export interface ReplyTo {
   senderName: string
   content: string
   type: MessageType
+  /** Thumbnail/preview URL when the parent is media (image/video/sticker). */
+  mediaUrl?: string
 }
 
 export interface MediaAttachment {

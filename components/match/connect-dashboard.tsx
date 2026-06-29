@@ -140,8 +140,10 @@ export function ConnectDashboard() {
   useUrlModal(showSafety, () => setShowSafety(false), "safety-tips");
 
   // Lobby & Quick-Match push their own history entry so Back returns to #match.
-  // hideNav:false — these are tab-like views, not modals, so keep the bottom nav.
-  useUrlModal(view === "lobby", () => setView("connect"), "lobby", { hideNav: false });
+  // The Lobby is a full-screen connected experience → hide the bottom nav while in
+  // it (the lobby header's own Back returns to the connect landing). Quick-Match
+  // keeps the nav (tab-like landing; it hides on its own once a match is active).
+  useUrlModal(view === "lobby", () => setView("connect"), "lobby", { hideNav: true });
   useUrlModal(view === "quick", () => setView("connect"), "quick", { hideNav: false });
 
   // Opening a lobby chat pushes a third segment (#match/lobby → #match/lobby/chat)

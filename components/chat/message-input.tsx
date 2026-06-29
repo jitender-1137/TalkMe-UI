@@ -22,7 +22,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { buildGiphyUrl } from "@/lib/giphy";
+import { isBlockedGifQuery, isCleanGifRating } from "@/lib/moderation/gif-filter";
 import { useChatPrefs } from "@/lib/chat/chat-prefs-store";
+import { replyHasThumbnail, replyPreviewLabel } from "@/lib/chat/reply-preview";
 import type { ReplyTo, PendingAttachment } from "./types";
 
 interface MessageInputProps {
@@ -37,6 +39,10 @@ interface MessageInputProps {
   onCancelAttachment?: () => void;
   onRecordComplete?: (file: File) => void;
   onSendMediaDirectly?: (url: string, type: "image" | "sticker") => void;
+  /** Text to repopulate the composer with (e.g. a moderation-rejected message to edit). */
+  restoreDraft?: string | null;
+  /** Called once `restoreDraft` has been consumed so the parent can clear it. */
+  onRestoreConsumed?: () => void;
 }
 
 const attachmentOptions = [
@@ -386,6 +392,8 @@ export function MessageInput({
   onCancelAttachment,
   onRecordComplete,
   onSendMediaDirectly,
+  restoreDraft,
+  onRestoreConsumed,
 }: MessageInputProps) {
   const enterToSend = useChatPrefs((s) => s.enterToSend);
   const [message, setMessage] = useState("");
@@ -415,6 +423,8 @@ export function MessageInput({
   const [loadingGifs, setLoadingGifs] = useState(false);
   const [gifOffset, setGifOffset] = useState(0);
   const [hasMoreGifs, setHasMoreGifs] = useState(true);
+  // True when the current GIF search was refused for referencing explicit content.
+  const [gifBlocked, setGifBlocked] = useState(false);
   const isLoadingRef = useRef(false);
 
   // Reset pagination when search query changes
@@ -447,11 +457,44 @@ export function MessageInput({
     }
   }, [message]);
 
+  // Repopulate the composer with a hard-rejected (non-clean) message so the user can
+  // edit it. Only fill an EMPTY input so a freshly-typed draft isn't clobbered; place
+  // the cursor at the end and focus for immediate editing. Consume it so the parent
+  // can clear the trigger and a later rejection can restore again.
+  useEffect(() => {
+    if (!restoreDraft) return;
+    const current = inputRef.current?.value ?? message;
+    if (!current.trim()) {
+      setMessage(restoreDraft);
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (el) {
+          el.focus();
+          const end = el.value.length;
+          el.setSelectionRange(end, end);
+        }
+      });
+    }
+    onRestoreConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreDraft]);
+
   // Debounced GIF search effect
   useEffect(() => {
     if (!showEmojiPicker || activePickerTab !== "gif") return;
 
     let active = true;
+
+    // Refuse explicit searches outright — never query Giphy for them.
+    if (isBlockedGifQuery(gifQuery)) {
+      setGifBlocked(true);
+      setGifs([]);
+      setHasMoreGifs(false);
+      setLoadingGifs(false);
+      isLoadingRef.current = false;
+      return;
+    }
+    setGifBlocked(false);
 
     const fetchGifs = async () => {
       if (active) {
@@ -464,7 +507,11 @@ export function MessageInput({
         const res = await fetch(url);
         const data = await res.json();
         if (active && data && data.data) {
-          const newUrls = data.data.map((item: any) => item.images.fixed_height.url);
+          // Defense-in-depth: drop any item whose own rating is above our cap, in
+          // case the request-level rating filter is ever ignored/bypassed.
+          const newUrls = data.data
+            .filter((item: any) => isCleanGifRating(item))
+            .map((item: any) => item.images.fixed_height.url);
           setGifs((prev) => (gifOffset === 0 ? newUrls : [...prev, ...newUrls]));
           setHasMoreGifs(data.data.length === 16);
         }
@@ -860,7 +907,16 @@ export function MessageInput({
           {/* GIF TAB CONTENT */}
           {activePickerTab === "gif" && (
             <div className="space-y-2">
-              {loadingGifs && gifOffset === 0 ? (
+              {gifBlocked ? (
+                <div className="flex flex-col items-center justify-center gap-1 py-16 px-6 text-center">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    This search isn’t allowed
+                  </p>
+                  <p className="text-xs text-muted-foreground/80">
+                    Try a different keyword — explicit content is blocked.
+                  </p>
+                </div>
+              ) : loadingGifs && gifOffset === 0 ? (
                 <div className="flex items-center justify-center py-16">
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 </div>
@@ -949,8 +1005,16 @@ export function MessageInput({
               <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
                 <div className="flex-1 min-w-0 border-l-4 border-primary pl-2">
                   <p className="text-xs font-semibold text-primary">{replyTo.senderName}</p>
-                  <p className="text-xs text-muted-foreground truncate">{replyTo.content}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {replyPreviewLabel(replyTo)}
+                  </p>
                 </div>
+                {replyHasThumbnail(replyTo) && (
+                  <div className="h-10 w-10 shrink-0 rounded overflow-hidden bg-black/10">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={replyTo.mediaUrl} alt="" className="h-full w-full object-cover" />
+                  </div>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1057,7 +1121,8 @@ export function MessageInput({
                 variant="ghost"
                 size="icon"
                 data-emoji-keep
-                className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center"
+                disabled={disabled}
+                className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                 onClick={() => {
                   setShowEmojiPicker(!showEmojiPicker);
                   setShowAttachMenu(false);
@@ -1110,7 +1175,8 @@ export function MessageInput({
                 variant="ghost"
                 size="icon"
                 data-attach-keep
-                className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center"
+                disabled={disabled}
+                className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                 onClick={() => {
                   setShowAttachMenu(!showAttachMenu);
                   setShowEmojiPicker(false);
@@ -1166,7 +1232,8 @@ export function MessageInput({
               {message.trim() || pendingAttachment ? (
                 <Button
                   size="icon"
-                  className="h-9 w-9 bg-primary hover:bg-primary/90 rounded-full flex items-center justify-center"
+                  disabled={disabled}
+                  className="h-9 w-9 bg-primary hover:bg-primary/90 rounded-full flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                   onClick={handleSend}
                 >
                   <Send className="h-4.5 w-4.5 text-primary-foreground" />
@@ -1175,7 +1242,8 @@ export function MessageInput({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center"
+                  disabled={disabled}
+                  className="h-9 w-9 hover:bg-muted-foreground/10 rounded-full flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none"
                   onClick={startRecording}
                 >
                   <Mic className="h-5 w-5 text-muted-foreground hover:text-foreground transition-colors" />

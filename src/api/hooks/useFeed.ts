@@ -16,6 +16,16 @@ export function useFeed() {
   })
 }
 
+/** List of users who liked a post — only fetches while `enabled` (modal open). */
+export function usePostLikes(postId: string, enabled = true) {
+  return useQuery({
+    queryKey: QUERY_KEYS.POSTS.LIKES(postId),
+    queryFn: () => PostService.getPostLikes(postId),
+    enabled: typeof window !== "undefined" && Boolean(postId) && enabled,
+    staleTime: 30 * 1000,
+  })
+}
+
 /** Fetch a single post by id — used to open a shared post from chat.
  *  Pass null to stay idle (no request). 404 (deleted post) surfaces as error. */
 export function usePost(postId: string | null) {

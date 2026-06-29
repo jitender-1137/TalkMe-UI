@@ -25,6 +25,7 @@ import {
   Settings,
   User,
   Users,
+  RefreshCw,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -492,7 +493,7 @@ export function SettingsPage() {
             <>
               <SettingsHeaderBanner />
 
-              <div className="px-4 py-4 space-y-6 max-w-2xl mx-auto">
+              <div className="px-4 max-w-2xl mx-auto">
                 {/* Account */}
                 <section>
                   <h3 className="px-1 mb-2.5 text-lg font-bold text-foreground">Account</h3>
@@ -559,6 +560,12 @@ export function SettingsPage() {
                       label="My QR Code"
                       tile="from-pink-500 to-rose-600"
                       onClick={() => setShowQrModal(true)}
+                    />
+                    <SettingRow
+                      icon={RefreshCw}
+                      label="Refresh App"
+                      tile="from-emerald-500 to-teal-600"
+                      onClick={() => window.location.reload()}
                     />
                   </div>
                 </section>

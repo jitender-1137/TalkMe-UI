@@ -33,6 +33,17 @@ const saveSessionMessage = async (sessionId: string, msg: any) => {
   }
 };
 
+// Patch an already-stored message (used to flag a held explicit message in-place).
+const patchSessionMessage = async (sessionId: string, id: string, patch: any) => {
+  try {
+    const sdb = getSessionDb(sessionId);
+    const existing = await sdb.table("messages").get(id);
+    if (existing) await sdb.table("messages").put({ ...existing, ...patch });
+  } catch (err) {
+    console.error("Failed to patch session message:", err);
+  }
+};
+
 const clearSessionDb = async (sessionId: string) => {
   try {
     await Dexie.delete(`random-chat-${sessionId}`);
@@ -54,6 +65,7 @@ export function MatchDashboard({
     searchTime,
     setStatus,
     setStranger,
+    setStrangerTyping,
     clearMessages,
     resetMatch,
     incrementSearchTime,
@@ -192,6 +204,7 @@ export function MatchDashboard({
     const unbindMsgReceived = registerHandler("MESSAGE_RECEIVED", (payload: any) => {
       console.log("[Matchmaker] MESSAGE_RECEIVED received:", payload);
       if (payload) {
+        setStrangerTyping(false); // a delivered message means they stopped typing
         saveSessionMessage(sessionId, {
           id: payload.id,
           content: payload.content,
@@ -203,6 +216,54 @@ export function MatchDashboard({
           isFromStranger: true,
         });
       }
+    });
+
+    // Partner's typing signal (anonymous — only the boolean travels).
+    const unbindTyping = registerHandler("STRANGER_TYPING", (payload: any) => {
+      setStrangerTyping(!!payload?.isTyping);
+    });
+
+    // Our explicit message was held pending 18+ consent. Flag that exact bubble
+    // in-place (danger styling) instead of firing a toast each time.
+    const unbindExplicitHeld = registerHandler("EXPLICIT_HELD", (payload: any) => {
+      if (payload?.clientId) {
+        patchSessionMessage(sessionId, payload.clientId, {
+          blocked: true,
+          consentStatus: payload.status,
+          consentLimitReached: !!payload.limitReached,
+        });
+      }
+    });
+
+    // Peer asked us for 18+ consent — render an Accept/Decline banner in the thread.
+    const unbindConsentReq = registerHandler("CONSENT_REQUEST_RECEIVED", () => {
+      saveSessionMessage(sessionId, {
+        id: `consent-req-${Date.now()}`,
+        content: "__CONSENT_REQUEST__",
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isFromStranger: true,
+      });
+    });
+
+    const unbindConsentGranted = registerHandler("CONSENT_GRANTED", () => {
+      saveSessionMessage(sessionId, {
+        id: `consent-ok-${Date.now()}`,
+        content: "__CONSENT_GRANTED__",
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isFromStranger: true,
+      });
+    });
+
+    const unbindConsentDeclined = registerHandler("CONSENT_DECLINED", (payload: any) => {
+      saveSessionMessage(sessionId, {
+        id: `consent-no-${Date.now()}`,
+        content: payload?.limitReached ? "__CONSENT_LIMIT__" : "__CONSENT_DECLINED__",
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        isFromStranger: true,
+      });
     });
 
     const unbindGifReceived = registerHandler("GIF_RECEIVED", (payload: any) => {
@@ -274,13 +335,18 @@ export function MatchDashboard({
 
     return () => {
       unbindMsgReceived();
+      unbindTyping();
+      unbindExplicitHeld();
+      unbindConsentReq();
+      unbindConsentGranted();
+      unbindConsentDeclined();
       unbindGifReceived();
       unbindImgReceived();
       unbindImgReq();
       unbindImgAccepted();
       unbindImgDeclined();
     };
-  }, [registerHandler, stranger?.sessionId]);
+  }, [registerHandler, stranger?.sessionId, setStrangerTyping]);
 
   // Reactive message list from IndexedDB using useLiveQuery
   const messages =
@@ -330,6 +396,10 @@ export function MatchDashboard({
         sendEvent("ACCEPT_IMAGE_REQUEST", {});
       } else if (content === "__IMAGE_REJECT__") {
         sendEvent("DECLINE_IMAGE_REQUEST", {});
+      } else if (content === "__CONSENT_ACCEPT__") {
+        sendEvent("ACCEPT_CONSENT", {});
+      } else if (content === "__CONSENT_DECLINE__") {
+        sendEvent("DECLINE_CONSENT", {});
       } else {
         if (type === "image") {
           const isGif = media?.url?.includes("giphy") || media?.url?.includes(".gif");
@@ -342,8 +412,11 @@ export function MatchDashboard({
             saveSessionMessage(sessionId, formatMsg(`img-${Date.now()}`, "", false, mediaPayload));
           }
         } else {
-          sendEvent("SEND_MESSAGE", { content });
-          saveSessionMessage(sessionId, formatMsg(`msg-${Date.now()}`, content, false));
+          // Client id is echoed back by the server if the message is held for
+          // 18+ consent, so we can flag this exact bubble in-place.
+          const clientId = `msg-${Date.now()}`;
+          sendEvent("SEND_MESSAGE", { content, clientId });
+          saveSessionMessage(sessionId, formatMsg(clientId, content, false));
         }
       }
     },
@@ -574,7 +647,7 @@ export function MatchDashboard({
               onStart?.();
               startSearch();
             }}
-            className="w-full mt-4 h-12 rounded-2xl bg-white text-violet-700 hover:bg-white/90 font-semibold text-base shadow-sm"
+            className="w-full mt-4 h-12 rounded-2xl bg-[#5542a5] border-black text-white hover:bg-white/10 font-semibold text-base shadow-sm"
           >
             Start
           </Button>

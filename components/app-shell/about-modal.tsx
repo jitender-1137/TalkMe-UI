@@ -25,7 +25,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[100vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

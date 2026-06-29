@@ -31,6 +31,7 @@ import type { Contact } from "@/src/api/types";
 import type { PresenceStatus } from "@/lib/presence";
 import { useLivePresence } from "@/lib/presence/live-status-store";
 import { UserProfileModal } from "@/components/chat/user-profile-modal";
+import { useProfileViewer } from "@/components/profile/use-profile-viewer";
 
 type FilterId = "all" | "online" | "close";
 type ViewMode = "list" | "grid";
@@ -210,6 +211,7 @@ function FriendItem({
 }) {
   const unfriendMutation = useRemoveContact();
   const blockMutation = useBlockUser();
+  const { openPhoto } = useProfileViewer();
 
   const liveById = useLivePresence(friend.id);
   const liveByUserId = useLivePresence(friend.userId);
@@ -290,11 +292,20 @@ function FriendItem({
     return (
       <div className="relative flex flex-col items-center gap-2 p-4 rounded-2xl border border-border/60 bg-card/50">
         <div className="absolute top-1.5 right-1.5">{menu}</div>
-        <button onClick={onProfileClick} className="cursor-pointer" aria-label="View profile">
+        <button
+          onClick={() => openPhoto(friend.avatar, friend.gender)}
+          className="cursor-pointer"
+          aria-label="View photo"
+        >
           {avatar}
         </button>
         <div className="text-center min-w-0 w-full">
-          <p className="font-semibold text-sm text-foreground truncate">{friend.name}</p>
+          <button
+            onClick={onProfileClick}
+            className="font-semibold text-sm text-foreground truncate hover:underline cursor-pointer max-w-full"
+          >
+            {friend.name}
+          </button>
           <p className="text-xs text-muted-foreground truncate">{username}</p>
         </div>
         {closeBadge}
@@ -320,9 +331,9 @@ function FriendItem({
   return (
     <div className="flex items-center gap-3 p-2.5 rounded-2xl border border-border/60 bg-card/50">
       <button
-        onClick={onProfileClick}
+        onClick={() => openPhoto(friend.avatar, friend.gender)}
         className="shrink-0 cursor-pointer"
-        aria-label="View profile"
+        aria-label="View photo"
       >
         {avatar}
       </button>

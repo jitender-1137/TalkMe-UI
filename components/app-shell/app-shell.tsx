@@ -26,7 +26,7 @@ import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { UserProfileModal } from "@/components/chat/user-profile-modal"
 import { getTabFromHash } from "@/lib/navigation/url-hash"
 import { ScrollRestoreProvider } from "@/lib/navigation/scroll-restore"
-import { useBackDismiss } from "@/hooks/use-back-dismiss"
+import { useUrlModal } from "@/lib/navigation/use-url-modal"
 import { NotificationSetup } from "@/components/providers/notification-setup"
 
 function AppShellContent() {
@@ -109,14 +109,14 @@ function AppShellContent() {
   }, [chatReturnTab])
 
   // ── Native-style Back for the mobile chat screen ───────────────────────────
-  // On mobile, an open conversation (or a lobby/match chat) is a screen pushed
-  // on top of the current tab. `useBackDismiss` pushes ONE history entry when it
-  // opens; pressing Back pops that entry and runs `closeChatScreen`, which
-  // closes the chat and returns to the tab it was opened from (e.g. Discover or
-  // News set `chatReturnTab`; the Chats list sets none → stays on Chats).
-  const isChatScreenOpen =
-    (selectedConversationId !== null && !showMobileSecondaryPanel) ||
-    (activeTab === "match" && lobbySelectedUser !== null)
+  // A conversation is always viewed on the Chats tab (Discover/News/Friends switch
+  // to it and remember `chatReturnTab`). It gets a nested URL segment so the hash
+  // becomes #chats/messages while a chat is open and Back (button or swipe) returns
+  // to #chats — closeChatScreen restores the originating tab when there is one.
+  // (The lobby chat is intentionally NOT handled here — ConnectDashboard owns its
+  // #match/lobby/chat overlay; see the note by the useUrlModal call below.)
+  const isConversationOpen =
+    activeTab === "chats" && selectedConversationId !== null && !showMobileSecondaryPanel
 
   const closeChatScreen = () => {
     if (lobbySelectedUserRef.current !== null) {
@@ -131,7 +131,12 @@ function AppShellContent() {
     setChatReturnTab(null)
   }
 
-  useBackDismiss(isChatScreenOpen, closeChatScreen)
+  // #chats → #chats/messages on open; Back closes the conversation (→ #chats).
+  useUrlModal(isConversationOpen, closeChatScreen, "messages")
+  // The lobby chat's Back is owned SOLELY by ConnectDashboard's nested
+  // "#match/lobby/chat" overlay. We must NOT also drive it from here — a second
+  // history entry + popstate handler made one swipe-back consume two entries,
+  // skipping #match/lobby and jumping straight to #match.
 
   // Contact profile modal is now driven purely by state (no hash / history).
   // Closing it never touches the browser history, so it can never add a back

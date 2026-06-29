@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, getAvatarUrl } from "@/lib/utils"
+import { useProfileViewer } from "@/components/profile/use-profile-viewer"
 import { useProfile } from "@/src/api/hooks/useProfile"
 import {
   useComments,
@@ -108,7 +109,15 @@ export function CommentsPanel({
     setReplyTo({ rootId, username })
     setCommentText((t) => (t.startsWith(`@${username} `) ? t : `@${username} `))
     setExpanded((s) => new Set(s).add(rootId))
-    setTimeout(() => inputRef.current?.focus(), 0)
+    // Focus the input and drop the caret at the END (after the "@username " prefix),
+    // not the start. Runs after the controlled value is committed to the DOM.
+    setTimeout(() => {
+      const el = inputRef.current
+      if (!el) return
+      el.focus()
+      const end = el.value.length
+      el.setSelectionRange(end, end)
+    }, 0)
   }
 
   const cancelReply = () => {
@@ -273,6 +282,7 @@ function CommentRow({
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(comment.content)
+  const { openPhoto } = useProfileViewer()
   // Like state is driven by the (optimistically-updated) comment from the cache.
   const liked = !!comment.likedByMe
   const likesCount = comment.likesCount ?? 0
@@ -286,8 +296,8 @@ function CommentRow({
   return (
     <div className="flex gap-3 py-2">
       <Avatar
-        className={cn(isReply ? "h-7 w-7" : "h-9 w-9", "shrink-0", onUserClick && "cursor-pointer")}
-        onClick={onUserClick}
+        className={cn(isReply ? "h-7 w-7" : "h-9 w-9", "shrink-0", "cursor-pointer")}
+        onClick={() => openPhoto(comment.profileImage ?? undefined)}
       >
         <AvatarImage src={getAvatarUrl(comment.profileImage ?? undefined)} />
         <AvatarFallback>{(comment.name || comment.username || "?").charAt(0)}</AvatarFallback>

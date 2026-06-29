@@ -56,6 +56,19 @@ export interface LocalMessage {
   parentMessage?: any;
   replyTo?: any;
   isDeleted?: boolean;
+  // Content-moderation state mirrored from the server.
+  moderationStatus?: "CLEAN" | "BLOCKED_PENDING_CONSENT" | "RELEASED";
+}
+
+/** Per-chat explicit-content consent state (mirrors the server). */
+export interface LocalConsentState {
+  chatId: string; // primary key
+  status: "NONE" | "PENDING" | "GRANTED" | "DECLINED";
+  requestedByUserId?: string;
+  requestedAt?: string;
+  grantedAt?: string;
+  /** Consecutive declines mirrored from the server; at 3 no request is allowed. */
+  declineCount?: number;
 }
 
 export interface LocalMedia {
@@ -91,6 +104,7 @@ class TalkMeDatabase extends Dexie {
   sync_state!: Table<LocalSyncState, string>;
   users!: Table<LocalUser, string>;
   lobby_store!: Table<{ key: string; value: string }, string>;
+  consent_state!: Table<LocalConsentState, string>;
 
   constructor() {
     super("TalkMeDatabase");
@@ -108,6 +122,16 @@ class TalkMeDatabase extends Dexie {
       sync_state: "chatId",
       users: "userId, username",
       lobby_store: "key"
+    });
+    // v3: per-chat explicit-content consent state (additive — Dexie auto-creates it).
+    this.version(3).stores({
+      chats: "chatId, updatedAt",
+      messages: "messageId, chatId, sequenceNumber, createdAt, [chatId+sequenceNumber]",
+      media: "mediaId, chatId, messageId",
+      sync_state: "chatId",
+      users: "userId, username",
+      lobby_store: "key",
+      consent_state: "chatId"
     });
   }
 }
@@ -197,7 +221,12 @@ export function normalizeMessageStatus(status: string): string {
  */
 export function mapResponseToLocalMessage(chatId: string, m: any): LocalMessage {
   const isDeleted = m.isDeleted || m.content === "This message was deleted" || false;
-  
+  const moderationStatus = m.moderationStatus || "CLEAN";
+  // A message held pending 18+ consent always renders as the "blocked" bubble for
+  // its sender (the only one who can see it) — regardless of its delivery status —
+  // so a self read-receipt can't flip it to "seen".
+  const held = moderationStatus === "BLOCKED_PENDING_CONSENT";
+
   // Resolve mediaId if message has attachments
   let mediaId: string | undefined;
   if (m.attachments && m.attachments.length > 0) {
@@ -213,7 +242,7 @@ export function mapResponseToLocalMessage(chatId: string, m: any): LocalMessage 
     sequenceNumber: m.sequenceNumber || 0,
     content: m.content || "",
     messageType: m.messageType || m.type || "TEXT",
-    status: normalizeMessageStatus(m.status),
+    status: held ? "blocked" : normalizeMessageStatus(m.status),
     createdAt: m.createdAt || m.timestamp || new Date().toISOString(),
     editedAt: m.isEdited ? new Date().toISOString() : undefined,
     deleted: isDeleted ? 1 : 0,
@@ -226,7 +255,8 @@ export function mapResponseToLocalMessage(chatId: string, m: any): LocalMessage 
     attachments: m.attachments || [],
     parentMessage: m.parentMessage || null,
     replyTo: m.replyTo || null,
-    isDeleted: isDeleted
+    isDeleted: isDeleted,
+    moderationStatus
   };
 }
 

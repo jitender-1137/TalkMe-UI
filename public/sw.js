@@ -99,7 +99,9 @@ self.addEventListener('push', (event) => {
     data: {
       chatId: chatId,
       messageId: data.messageId,
-      url: chatId ? ('/?chat=' + encodeURIComponent(chatId) + '#messages') : '/',
+      // Honor an explicit deep link (ephemeral match/lobby pushes set this); otherwise
+      // route to the conversation by chatId, falling back to the app root.
+      url: data.url || (chatId ? ('/?chat=' + encodeURIComponent(chatId) + '#messages') : '/'),
     },
   };
 

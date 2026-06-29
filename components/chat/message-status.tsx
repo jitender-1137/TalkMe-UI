@@ -1,7 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Check, CheckCheck, Clock, AlertCircle } from "lucide-react"
+import { Check, CheckCheck, Clock, AlertCircle, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { MessageStatus } from "./types"
 
@@ -32,6 +32,9 @@ export function MessageStatusIcon({ status, className, onRetry }: MessageStatusI
       animate={{ scale: 1, opacity: 1 }}
       className={cn("inline-flex items-center", className)}
     >
+      {status === "uploading" && (
+        <Loader2 className="h-3 w-3 text-muted-foreground/70 animate-spin" />
+      )}
       {status === "sending" && (
         <Clock className="h-3 w-3 text-muted-foreground/70" />
       )}

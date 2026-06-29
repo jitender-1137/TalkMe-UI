@@ -26,6 +26,8 @@ interface Overlay {
   onClose: () => void
   /** Whether this overlay should hide the bottom nav while open. */
   blocking: boolean
+  /** URL segment — for debugging the back-stack only. */
+  segment: string
 }
 
 const stack: Overlay[] = []
@@ -33,7 +35,18 @@ let nextId = 1
 // Set when WE call history.back() programmatically (UI close), so the resulting
 // popstate isn't double-handled.
 let skipNextPop = false
-let listening = false
+
+/** Opt-in back-stack tracing: localStorage.setItem("tm_nav_debug","1"). */
+function navDebug(...args: unknown[]) {
+  try {
+    if (typeof window !== "undefined" && window.localStorage?.getItem("tm_nav_debug") === "1") {
+      console.debug("[nav]", ...args)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+const segs = () => stack.map((o) => o.segment)
 
 // ── Subscription: lets the bottom nav (and others) react to overlay changes ──
 const listeners = new Set<() => void>()
@@ -50,16 +63,23 @@ function hasBlockingOverlay() {
 }
 
 function ensureListener() {
-  if (listening || typeof window === "undefined") return
-  listening = true
+  if (typeof window === "undefined") return
+  // Window-level guard so the listener is registered exactly ONCE even if this
+  // module is evaluated more than once (HMR, split chunks). Two listeners would each
+  // pop the stack on a single Back press → close two overlays at once (e.g. a single
+  // swipe-back collapsing chat AND lobby straight to #match).
+  if ((window as any).__tmOverlayListening) return
+  ;(window as any).__tmOverlayListening = true
   window.addEventListener("popstate", () => {
     if (skipNextPop) {
       skipNextPop = false
+      navDebug("popstate (skipped — our own back)")
       return
     }
     // Back/forward by the user → close the topmost overlay only.
     const top = stack.pop()
     notify()
+    navDebug("popstate → closed", top?.segment, "| remaining:", segs())
     if (top) top.onClose()
   })
 }
@@ -73,10 +93,11 @@ function pushOverlay(
   ensureListener()
   const id = nextId++
   const depth = stack.length // nesting level (0 = first overlay)
-  stack.push({ id, onClose, blocking })
+  stack.push({ id, onClose, blocking, segment })
   notify()
   const base = (window.location.hash || "").replace(/\/+$/, "")
   pushHash(base ? `${base}/${segment}` : `#${segment}`)
+  navDebug("push", segment, "| stack:", segs())
   return { id, depth }
 }
 
@@ -88,6 +109,7 @@ function pushOverlay(
  * the modals pushed is simply left below the new tab entry (Back returns there).
  */
 export function clearOverlays() {
+  navDebug("clearOverlays | was:", segs())
   stack.length = 0
   notify()
 }
@@ -96,8 +118,9 @@ export function clearOverlays() {
 function removeOverlay(id: number) {
   const idx = stack.findIndex((o) => o.id === id)
   if (idx === -1) return
-  stack.splice(idx, 1)
+  const [removed] = stack.splice(idx, 1)
   notify()
+  navDebug("removeOverlay (UI close) →", removed?.segment, "| remaining:", segs())
   skipNextPop = true
   if (typeof window !== "undefined") window.history.back()
 }

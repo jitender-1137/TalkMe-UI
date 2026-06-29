@@ -3,7 +3,7 @@
 import { forwardRef, useState, useCallback, useRef, memo } from "react";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Reply } from "lucide-react";
+import { Reply, ShieldAlert } from "lucide-react";
 import { MessageStatusIcon } from "./message-status";
 import { BubbleBody, BubbleShell } from "./bubble-body";
 import { MessageReactions } from "./message-reactions";
@@ -24,10 +24,16 @@ interface ChatBubbleProps {
   onReply?: (message: Message) => void;
   onRetry?: (message: Message) => void;
   onOpenMessageMenu?: (e: PointerEvent | MouseEvent, message: Message) => void;
+  /** Sender taps this to ask the recipient for consent to exchange 18+ content. */
+  onRequestConsent?: (message: Message) => void;
+  /** True once a consent request is already pending — hides the re-request action. */
+  consentPending?: boolean;
+  /** True once 3 consecutive declines hit the cap — no further request is allowed. */
+  consentLimitReached?: boolean;
 }
 
 const ChatBubbleImpl = forwardRef<HTMLDivElement, ChatBubbleProps>(
-  ({ message, onReactionClick, onReply, onRetry, onOpenMessageMenu }, ref) => {
+  ({ message, onReactionClick, onReply, onRetry, onOpenMessageMenu, onRequestConsent, consentPending, consentLimitReached }, ref) => {
     const isMobile = useIsMobile();
     const [isPressed, setIsPressed] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
@@ -106,6 +112,57 @@ const ChatBubbleImpl = forwardRef<HTMLDivElement, ChatBubbleProps>(
       );
     }
 
+    // Explicit message withheld pending consent. Only the sender ever sees this
+    // (the recipient never receives held content) — show their text dimmed with a
+    // "not delivered" notice and a one-time "Request consent" action.
+    if (status === "blocked") {
+      return (
+        <div ref={ref} className={cn("flex py-1", isSent ? "justify-end" : "justify-start")}>
+          <div className="max-w-[78%] px-3.5 py-3 rounded-[20px] rounded-br-md bg-amber-500/[0.07] border border-amber-500/25">
+            <div className="flex items-center gap-1.5 text-amber-600/90 dark:text-amber-400/80">
+              <ShieldAlert className="h-4 w-4 shrink-0" />
+              <span className="text-[12px] font-semibold">Not delivered · needs 18+ consent</span>
+            </div>
+            <p className="mt-1 text-sm text-foreground/60 whitespace-pre-wrap break-words">{content}</p>
+
+            {consentPending ? (
+              <div className="mt-2 flex items-center gap-2 text-[12px] font-medium text-amber-600/90 dark:text-amber-400/80">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500/50" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500/70" />
+                </span>
+                18+ consent requested — waiting for a response…
+              </div>
+            ) : consentLimitReached ? (
+              <p className="mt-2 text-[12px] text-muted-foreground">
+                18+ consent unavailable (declined 3×)
+              </p>
+            ) : (
+              // Un-ignorable CTA in the app's theme color: a soft sheen sweep + a
+              // gentle scale pulse with a themed shadow — noticeable, not harsh.
+              <motion.button
+                onClick={() => onRequestConsent?.(message)}
+                initial={{ backgroundPosition: "0% 50%" }}
+                animate={{
+                  backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+                  scale: [1, 1.035, 1],
+                }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.96 }}
+                className="mt-2.5 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-semibold text-primary-foreground
+                           bg-gradient-to-r from-primary via-primary/80 to-primary bg-[length:200%_100%]
+                           shadow-md shadow-primary/30 cursor-pointer"
+              >
+                <ShieldAlert className="h-3.5 w-3.5" />
+                Request 18+ consent
+              </motion.button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <>
         <div
@@ -165,6 +222,7 @@ const ChatBubbleImpl = forwardRef<HTMLDivElement, ChatBubbleProps>(
                       isSent={isSent}
                       chatId={(message as any).chatId}
                       messageId={message.id}
+                      uploading={status === "uploading"}
                     />
                   )}
                   {sharedPost ? (

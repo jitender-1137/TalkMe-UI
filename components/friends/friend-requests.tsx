@@ -13,6 +13,7 @@ import {
 } from "@/src/api/hooks/useContacts";
 import { useSuggestedFriends } from "@/src/api/hooks/useDiscover";
 import { useNavigation } from "@/components/app-shell/navigation-context";
+import { useProfileViewer } from "@/components/profile/use-profile-viewer";
 import type { FriendRequest } from "@/src/api/types";
 
 const formatRelativeTime = (dateStr: string | undefined | null) => {
@@ -31,6 +32,8 @@ export function FriendRequests({ searchQuery }: { searchQuery: string }) {
   const acceptMutation = useAcceptContactRequest();
   const declineMutation = useDeclineContactRequest();
   const { setActiveTab } = useNavigation();
+  // Convention: tap the photo → image modal; tap the name → profile modal.
+  const { openPhoto, openProfile } = useProfileViewer();
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = q
@@ -93,6 +96,8 @@ export function FriendRequests({ searchQuery }: { searchQuery: string }) {
               <RequestRow
                 key={req.id}
                 request={req}
+                onOpenPhoto={() => openPhoto(req.sender?.avatar, req.sender?.gender)}
+                onOpenProfile={() => openProfile({ userId: req.sender?.id })}
                 onAccept={() => acceptMutation.mutate(req.id)}
                 onReject={() => declineMutation.mutate(req.id)}
                 busy={
@@ -113,11 +118,15 @@ export function FriendRequests({ searchQuery }: { searchQuery: string }) {
 
 function RequestRow({
   request,
+  onOpenPhoto,
+  onOpenProfile,
   onAccept,
   onReject,
   busy,
 }: {
   request: FriendRequest;
+  onOpenPhoto: () => void;
+  onOpenProfile: () => void;
   onAccept: () => void;
   onReject: () => void;
   busy: boolean;
@@ -136,22 +145,44 @@ function RequestRow({
       exit={{ opacity: 0, scale: 0.96 }}
       className="flex items-center gap-3 p-2.5 rounded-2xl border border-border/60 bg-card/50"
     >
-      <Avatar className="h-12 w-12 shrink-0 ring-2 ring-primary/10">
-        <AvatarImage src={getAvatarUrl(request.sender?.avatar, request.sender?.gender)} />
-        <AvatarFallback>{name.charAt(0)}</AvatarFallback>
-      </Avatar>
+      {/* Photo → image modal. */}
+      <button
+        type="button"
+        onClick={onOpenPhoto}
+        aria-label={`View ${name}'s photo`}
+        className="shrink-0 rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
+        <Avatar className="h-12 w-12 ring-2 ring-primary/10">
+          <AvatarImage src={getAvatarUrl(request.sender?.avatar, request.sender?.gender)} />
+          <AvatarFallback>{name.charAt(0)}</AvatarFallback>
+        </Avatar>
+      </button>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1">
-          <span className="font-semibold text-sm text-foreground truncate">{name}</span>
-          {request.sender?.verified && (
-            <BadgeCheck className="h-4 w-4 text-primary fill-primary/20 shrink-0" />
-          )}
+      {/* Name → profile modal. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpenProfile}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpenProfile();
+          }
+        }}
+        className="flex-1 min-w-0 cursor-pointer rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1">
+            <span className="font-semibold text-sm text-foreground truncate hover:underline">{name}</span>
+            {request.sender?.verified && (
+              <BadgeCheck className="h-4 w-4 text-primary fill-primary/20 shrink-0" />
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground truncate">
+            {username}
+            {timeAgo && <span> · {timeAgo}</span>}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground truncate">
-          {username}
-          {timeAgo && <span> · {timeAgo}</span>}
-        </p>
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
@@ -179,6 +210,7 @@ function RequestRow({
 function PeopleYouMayKnow({ onViewAll }: { onViewAll: () => void }) {
   const { data: suggestionsData } = useSuggestedFriends();
   const addContact = useAddContact();
+  const { openPhoto, openProfile } = useProfileViewer();
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({});
   const [added, setAdded] = useState<Record<string, boolean>>({});
 
@@ -220,13 +252,24 @@ function PeopleYouMayKnow({ onViewAll }: { onViewAll: () => void }) {
               >
                 <X className="h-3.5 w-3.5" />
               </button>
-              <Avatar className="h-14 w-14 ring-2 ring-primary/10">
-                <AvatarImage src={getAvatarUrl(person.avatar, person.gender)} />
-                <AvatarFallback>{person.name.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <p className="mt-2 font-semibold text-sm text-foreground truncate max-w-full">
+              <button
+                type="button"
+                onClick={() => openPhoto(person.avatar, person.gender)}
+                aria-label={`View ${person.name}'s photo`}
+                className="rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              >
+                <Avatar className="h-14 w-14 ring-2 ring-primary/10">
+                  <AvatarImage src={getAvatarUrl(person.avatar, person.gender)} />
+                  <AvatarFallback>{person.name.charAt(0)}</AvatarFallback>
+                </Avatar>
+              </button>
+              <button
+                type="button"
+                onClick={() => openProfile({ userId: person.id })}
+                className="mt-2 font-semibold text-sm text-foreground truncate max-w-full hover:underline cursor-pointer"
+              >
                 {person.name}
-              </p>
+              </button>
               <p className="text-[11px] text-muted-foreground truncate max-w-full">
                 @{person.username}
               </p>

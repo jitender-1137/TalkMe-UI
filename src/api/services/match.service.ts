@@ -14,6 +14,7 @@ export interface MatchSessionResponse {
     gender?: string | null
     country?: string | null
     city?: string | null
+    isGuest?: boolean | null
   }
   chatId: string // stranger chat room UUID
   isActive: boolean

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useCallback } from "react";
 import { MessageSquare, Users, ArrowLeft, X, Globe, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getAvatarUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useLobbyStore } from "./lobby-store";
@@ -185,7 +185,7 @@ export function LobbyDashboard() {
           </div> */}
 
           {/* Statistics Tabs */}
-          <div className="grid grid-cols-2 p-2 gap-2 bg-card border-b border-border shrink-0 md:static sticky top-[calc(env(safe-area-inset-top)+112px)] z-20">
+          <div className="grid grid-cols-2 p-2 gap-2 bg-card border-b border-border shrink-0 md:static sticky z-20">
             <button
               onClick={() => setActiveTab("lobby")}
               className={cn(
@@ -220,7 +220,7 @@ export function LobbyDashboard() {
 
           {/* Filter Bar (Lobby view only) */}
           {activeTab === "lobby" && (
-            <div className="d-flex justify-center py-0.5 bg-background shrink-0 flex items-center gap-0.5 overflow-x-auto select-none no-scrollbar md:static sticky top-[calc(env(safe-area-inset-top)+168px)] z-20">
+            <div className="d-flex justify-center py-0.5 bg-background shrink-0 flex items-center gap-0.5 overflow-x-auto select-none no-scrollbar md:static sticky z-20">
               <button
                 onClick={() => setGenderFilter("all")}
                 className={cn(
@@ -260,7 +260,7 @@ export function LobbyDashboard() {
           {/* Scrollable Container (User List or Inbox list) */}
           <div
             ref={listScrollRef}
-            className="flex-1 md:overflow-y-auto overflow-visible custom-scrollbar p-3 space-y-2"
+            className="flex-1 md:overflow-y-auto overflow-visible custom-scrollbar px-3"
           >
             {activeTab === "lobby" ? (
               isUsersLoading ? (
@@ -290,7 +290,7 @@ export function LobbyDashboard() {
                     )}
                   >
                     <Avatar className="w-10 h-10 border border-border shrink-0">
-                      <AvatarImage src={user.avatar} />
+                      <AvatarImage src={getAvatarUrl(user.avatar, user.gender)} />
                       <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
                         {(user.name || user.username || "Guest").slice(0, 2).toUpperCase()}
                       </AvatarFallback>
@@ -352,7 +352,7 @@ export function LobbyDashboard() {
                   )}
                 >
                   <Avatar className="w-10 h-10 border border-border shrink-0">
-                    <AvatarImage src={conv.user?.avatar} />
+                    <AvatarImage src={getAvatarUrl(conv.user?.avatar, conv.user?.gender)} />
                     <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
                       {(conv.user?.name || conv.user?.username || "Guest")
                         .slice(0, 2)
@@ -531,7 +531,7 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
   const handleSendAudio = useCallback(
     async (file: File) => {
       try {
-        const res = await UploadService.uploadFile(file, "audio", "lobby", () => {});
+        const res = await UploadService.uploadFile(file, "audio", { context: "lobby" });
         sendMessage(res.url);
       } catch (err) {
         toast.error("Failed to send audio message");
@@ -566,7 +566,7 @@ function PrivateChatPanel({ user, onBack }: PrivateChatPanelProps) {
           </Button>
 
           <Avatar className="w-10 h-10 border border-border shrink-0">
-            <AvatarImage src={user.avatar} />
+            <AvatarImage src={getAvatarUrl(user.avatar, user.gender)} />
             <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">
               {(user.name || user.username || "Guest").slice(0, 2).toUpperCase()}
             </AvatarFallback>

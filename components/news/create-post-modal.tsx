@@ -6,6 +6,7 @@ import { PostService } from "@/src/api/services/post.service"
 import { UploadService } from "@/src/api/services/upload.service"
 import { QUERY_KEYS } from "@/src/api/query-keys"
 import { validateUploadFile, validateVideoDuration } from "@/lib/upload/file-validation"
+import { checkImageNsfw, checkVideoNsfw } from "@/lib/moderation/nsfw-check"
 import { toast } from "sonner"
 import { X, Image as ImageIcon, ArrowLeft, Loader2 } from "lucide-react"
 
@@ -20,6 +21,7 @@ export default function CreatePostModal({ isOpen, onClose }: CreatePostModalProp
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [caption, setCaption] = useState("")
   const [isUploading, setIsUploading] = useState(false)
+  const [scanning, setScanning] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const queryClient = useQueryClient()
@@ -32,7 +34,7 @@ export default function CreatePostModal({ isOpen, onClose }: CreatePostModalProp
       try {
         // Upload media first
         const isVideo = selectedFile.type.startsWith("video/")
-        const uploadRes = await UploadService.uploadFile(selectedFile, isVideo ? "video" : "image")
+        const uploadRes = await UploadService.uploadFile(selectedFile, isVideo ? "video" : "image", { context: "post" })
         
         // Create post with media URL
         await PostService.createPost({
@@ -75,6 +77,17 @@ export default function CreatePostModal({ isOpen, onClose }: CreatePostModalProp
     const duration = await validateVideoDuration(file)
     if (!duration.ok) {
       toast(duration.message ?? "This video is too long.")
+      return
+    }
+
+    // Free client-side NSFW pre-check — the public feed hard-blocks explicit media.
+    // (The server re-checks authoritatively on createPost.)
+    const isVid = file.type.startsWith("video/")
+    setScanning(true)
+    const nsfw = isVid ? await checkVideoNsfw(file) : await checkImageNsfw(file)
+    setScanning(false)
+    if (nsfw.isNsfw) {
+      toast("This media can't be posted — it may contain explicit content.")
       return
     }
 
@@ -130,11 +143,16 @@ export default function CreatePostModal({ isOpen, onClose }: CreatePostModalProp
             <div className="flex flex-1 flex-col items-center justify-center p-6">
               <ImageIcon className="h-24 w-24 text-zinc-100 mb-4 stroke-1" />
               <h3 className="text-xl font-normal text-zinc-100 mb-6">Drag photos and videos here</h3>
-              <button 
+              <button
                 onClick={() => fileInputRef.current?.click()}
-                className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 active:bg-blue-700"
+                disabled={scanning}
+                className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60"
               >
-                Select from computer
+                {scanning ? (
+                  <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Scanning…</span>
+                ) : (
+                  "Select from computer"
+                )}
               </button>
               <input 
                 type="file" 

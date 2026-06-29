@@ -1,9 +1,10 @@
 "use client"
 
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { MessageService } from "../services/message.service"
-import { QUERY_KEYS } from "../query-keys"
-import { showErrorToast, showSuccessToast } from "../error-handler"
+import { MessageService } from "@/src/api"
+import { UploadService } from "../services/upload.service"
+import { QUERY_KEYS } from "@/src/api"
+import { showErrorToast, showSuccessToast } from "@/src/api"
 import type {
   SendMessagePayload,
   EditMessagePayload,
@@ -13,9 +14,11 @@ import type {
 import { useLiveQuery } from "dexie-react-hooks"
 import Dexie from "dexie"
 import { db, mapResponseToLocalMessage, normalizeMessageStatus } from "../db"
-import { useState, useCallback, useEffect, useRef, useMemo } from "react"
-import { useAuthToken } from "./useChats"
-import { useProfile } from "./useProfile"
+import { useUploadProgress } from "@/lib/chat/upload-progress-store"
+import { rememberPendingFile, forgetPendingFile } from "@/lib/chat/pending-upload-files"
+import { useState, useCallback, useEffect, useMemo } from "react"
+import { useAuthToken } from "@/src/api"
+import { useProfile } from "@/src/api"
 
 // Per-chatId in-flight guard tracked outside React to survive re-renders
 const syncInFlight = new Map<string, boolean>()
@@ -272,7 +275,7 @@ export function useMessages(chatId: string) {
             const latestMsg = sorted[0]
             const chat = await db.chats.get(chatId)
             // Only rewrite the chat's lastMessage when this sync actually produced a
-            // NEWER last message. This reconcile runs on every chat OPEN (it always
+            // NEWER last message. This reconciles runs on every chat OPEN (it always
             // refreshes the recent window), so unconditionally rebuilding lastMessage
             // from the messages endpoint clobbered the richer chat-list version
             // (delivery status / senderId) with a statusless one — making the
@@ -317,8 +320,8 @@ export function useMessages(chatId: string) {
 
   // Memoize the returned shape so its identity only changes when the underlying
   // messages change. `useLiveQuery` returns a stable `localMessages` reference
-  // between unrelated re-renders; without this memo we'd hand `ChatArea` a brand
-  // new object every render, recomputing `allMessages` and re-rendering the whole
+  // between unrelated re-renders; without this memo we'd hand `ChatArea` a brand-new
+  // object every render, recomputing `allMessages` and re-rendering the whole
   // message list on every keystroke/typing event → the flicker.
   const data = useMemo(
     () => ({ pages: [{ items: localMessages }], pageParams: [undefined] }),
@@ -356,11 +359,52 @@ export function useSearchChatMessages(chatId: string, query: string) {
 }
 
 // ── Mutation: send message ────────────────────────────────────────────────────
-export function useSendMessage(chatId: string) {
+interface UseSendMessageOptions {
+  /**
+   * Called when a send is HARD-REJECTED for non-clean content (group/feed, HTTP 422 /
+   * TM_490) and the text is long enough to be worth recovering — hands the original
+   * text back so the composer can repopulate it for editing.
+   */
+  restoreDraftToInput?: (content: string) => void
+}
+
+/** Min length before a moderation-rejected message is restored to the composer. */
+const RESTORE_MIN_LENGTH = 20
+
+export function useSendMessage(chatId: string, options?: UseSendMessageOptions) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (payload: SendMessagePayload) => MessageService.sendMessage(chatId, payload),
+    mutationFn: async (payload: SendMessagePayload) => {
+      // Optimistic-first media: onMutate has ALREADY rendered the bubble from the local
+      // preview with an "uploading" status. Now upload the file in the background and
+      // attach the real URL before posting. (GIF/sticker/audio-with-url skip this.)
+      if (payload.localFile && !payload.media) {
+        const cid = payload.clientId
+        const res = await UploadService.uploadFile(
+          payload.localFile,
+          (payload.type as any) || "document",
+          {
+            context: "conversation",
+            contextId: chatId,
+            // Per-message progress → this bubble's upload ring (see upload-progress-store).
+            onProgress: cid ? (pct) => useUploadProgress.getState().setProgress(cid, pct) : undefined,
+          },
+        )
+        // Hold the ring at 100% during the send POST; it's cleared in onSuccess/onError
+        // when the optimistic bubble is swapped for the real (sent) message — avoids a
+        // 100%→0% flicker in the gap between upload-done and post-done.
+        if (cid) useUploadProgress.getState().setProgress(cid, 100)
+        payload.media = {
+          url: res.url,
+          type: (payload.type as any) || "document",
+          fileName: payload.localFile.name,
+          fileSize: `${((res.size ?? payload.localFile.size) / (1024 * 1024)).toFixed(2)} MB`,
+          mimeType: res.mimeType ?? payload.localFile.type,
+        }
+      }
+      return MessageService.sendMessage(chatId, payload)
+    },
     onMutate: async (payload: SendMessagePayload) => {
       const ownProfile = queryClient.getQueryData<any>(QUERY_KEYS.PROFILE.SELF)
       // Stable idempotency key. Mutating `payload` here is intentional: React
@@ -374,19 +418,35 @@ export function useSendMessage(chatId: string) {
           : `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`)
       payload.clientId = clientId
       const tempId = clientId
-      
+      // Seed the upload ring at 0% immediately so the bubble shows a progress
+      // indicator from the first frame (before the first XHR progress tick).
+      if (payload.localFile) {
+        useUploadProgress.getState().setProgress(clientId, 0)
+        // Keep the original File in memory so a retry can RE-UPLOAD it rather than
+        // re-sending the un-reachable blob: preview URL (see handleRetry).
+        rememberPendingFile(clientId, payload.localFile)
+      }
+
       let replyToObj = null
       if (payload.replyToId) {
-        const parentMsg = await db.messages.get(payload.replyToId)
+        const parentMsg: any = await db.messages.get(payload.replyToId)
         if (parentMsg) {
+          // Carry the parent's media thumbnail + real type so the optimistic bubble's
+          // quote renders correctly for ANY parent type (not just text).
+          const att = parentMsg.attachments?.[0]
           replyToObj = {
             id: parentMsg.id,
             senderName: parentMsg.senderName,
             content: parentMsg.content,
-            type: parentMsg.type || "TEXT",
+            type: parentMsg.messageType || parentMsg.type || "TEXT",
+            mediaUrl: att?.fileUrl || att?.url || parentMsg.media?.url || undefined,
           }
         }
       }
+
+      // Optimistic media: the GIF/sticker remote URL, or the local blob preview while
+      // the file uploads in the background.
+      const optimisticMediaUrl = payload.media?.url || payload.localPreviewUrl
 
       const optimisticMessage = {
         id: tempId,
@@ -394,22 +454,26 @@ export function useSendMessage(chatId: string) {
         content: payload.content || "",
         type: payload.type || "text",
         messageType: payload.type || "text",
-        media: payload.media ? {
-          type: payload.media.type,
-          url: payload.media.url,
-          fileName: payload.media.fileName,
-          fileSize: payload.media.fileSize,
-          mimeType: payload.media.mimeType,
-          duration: payload.media.duration,
-          width: payload.media.width,
-          height: payload.media.height,
-        } : null,
+        // Stored as `attachments` (which mapResponseToLocalMessage preserves) so the
+        // media renders IMMEDIATELY — for an uploading image this is the local blob.
+        attachments: optimisticMediaUrl ? [{
+          fileUrl: optimisticMediaUrl,
+          url: optimisticMediaUrl,
+          type: payload.media?.type || payload.type || "image",
+          fileName: payload.media?.fileName || payload.localFile?.name,
+          fileSize: payload.media?.fileSize,
+          mimeType: payload.media?.mimeType || payload.localFile?.type,
+          duration: payload.media?.duration,
+          width: payload.media?.width,
+          height: payload.media?.height,
+        }] : [],
         senderId: ownProfile?.id || "current-user",
         senderName: ownProfile?.name || ownProfile?.username || "You",
         senderAvatar: ownProfile?.avatar || undefined,
         timestamp: new Date().toISOString(),
         createdAt: new Date().toISOString(),
-        status: "sending",
+        // Media still uploading → "uploading" (spinner); text/ready media → "sending".
+        status: payload.localFile ? "uploading" : "sending",
         reactions: [],
         replyTo: replyToObj,
         isDeleted: false,
@@ -421,11 +485,51 @@ export function useSendMessage(chatId: string) {
 
       return { tempId }
     },
-    onError: async (err, payload, context: any) => {
+    onError: async (err: any, payload, context: any) => {
       if (context?.tempId) {
-        // Keep the message visible but mark it FAILED (after auto-retries are
-        // exhausted) so it isn't silently lost. The user can tap to retry; the
-        // retry reuses the same clientId, so the server dedups it.
+        useUploadProgress.getState().clearProgress(context.tempId)
+      }
+
+      // Hard-reject for non-clean content (group/feed → HTTP 422 / TM_490). Retrying
+      // the SAME text can never succeed, so don't leave a dead "failed/retry" bubble:
+      // when the text is long enough to be worth recovering, remove the optimistic row
+      // and hand the original text back to the composer for editing. Short messages
+      // keep the failed bubble (easy to retype).
+      const status = err?.status ?? err?.response?.status
+
+      // File too large (HTTP 413 — per-type cap in UploadController, or Spring's
+      // multipart limit via GlobalExceptionHandler). Re-uploading the SAME oversized
+      // file can never succeed, so don't leave a "failed/retry" bubble (whose retry
+      // would deliver an un-uploaded file). Remove the optimistic row entirely and let
+      // the toast explain why ("Video is too large. Maximum size is 30 MB.").
+      if (status === 413) {
+        if (context?.tempId) {
+          forgetPendingFile(context.tempId)
+          await db.messages.delete(context.tempId)
+        }
+        showErrorToast(err)
+        return
+      }
+
+      const isModerationReject =
+        status === 422 || err?.code === "TM_490" || err?.response?.data?.code === "TM_490"
+      if (isModerationReject) {
+        const content = payload?.content || ""
+        if (content.trim().length > RESTORE_MIN_LENGTH && options?.restoreDraftToInput) {
+          if (context?.tempId) await db.messages.delete(context.tempId)
+          options.restoreDraftToInput(content)
+        } else if (context?.tempId) {
+          const existing = await db.messages.get(context.tempId)
+          if (existing) await db.messages.update(context.tempId, { status: "failed" })
+        }
+        showErrorToast(err)
+        return
+      }
+
+      // Other errors (network/server) — keep the message visible but mark it FAILED
+      // (after auto-retries are exhausted) so it isn't silently lost. The user can tap
+      // to retry; the retry reuses the same clientId, so the server dedups it.
+      if (context?.tempId) {
         const existing = await db.messages.get(context.tempId)
         if (existing) {
           await db.messages.update(context.tempId, { status: "failed" })
@@ -434,12 +538,25 @@ export function useSendMessage(chatId: string) {
       showErrorToast(err)
     },
     onSuccess: async (newMessage, payload, context: any) => {
+      // The optimistic bubble is about to be replaced by the real (sent) message —
+      // drop its upload-ring entry so the overlay disappears with the swap.
+      if (context?.tempId) {
+        useUploadProgress.getState().clearProgress(context.tempId)
+        // Upload succeeded — the file is on the server now; free the retry copy.
+        forgetPendingFile(context.tempId)
+      }
       await db.transaction("rw", [db.messages, db.sync_state, db.chats], async () => {
         // 1. Remove optimistic message
         if (context?.tempId) {
           await db.messages.delete(context.tempId)
         }
         
+        // A message held pending 18+ consent is kept ONLY for its sender (the server
+        // returns it just to them) and renders as an in-thread "not delivered · needs
+        // consent" bubble — status="blocked", set in mapResponseToLocalMessage. No
+        // toast. The recipient never receives it.
+        const held = (newMessage as any).moderationStatus === "BLOCKED_PENDING_CONSENT"
+
         // 2. Put real message into Dexie, carrying the optimistic clientId so the
         // UI keeps the SAME bubble (stable key) across the temp→real swap — no
         // remount, so the slide-in animation isn't replayed.
@@ -463,21 +580,34 @@ export function useSendMessage(chatId: string) {
         if (chat) {
           await db.chats.update(chatId, {
             lastMessageId: newMessage.id,
-            lastMessagePreview: newMessage.content || "Media attachment",
+            lastMessagePreview: held ? "🔒 Pending 18+ consent" : (newMessage.content || "Media attachment"),
             updatedAt: newMessage.createdAt || newMessage.timestamp || chat.updatedAt,
             lastMessage: {
               id: newMessage.id,
-              content: newMessage.content || "",
+              content: held ? "" : (newMessage.content || ""),
               senderId: newMessage.senderId,
               senderName: newMessage.senderName || "",
               type: newMessage.type || "TEXT",
               timestamp: newMessage.createdAt || newMessage.timestamp || new Date().toISOString(),
               isDeleted: newMessage.isDeleted || false,
-              status: normalizeMessageStatus(newMessage.status || "sent"),
+              status: held ? "blocked" : normalizeMessageStatus(newMessage.status || "sent"),
             },
           })
         }
       })
+
+      // Held pending 18+ consent (1:1 non-clean): keep the in-thread "needs consent"
+      // bubble AND hand the original text back to the composer (when long enough) so the
+      // user can edit out the flagged word instead of only waiting on consent — the same
+      // recovery the group hard-reject path gives. Done outside the Dexie transaction.
+      const heldPendingConsent =
+        (newMessage as any).moderationStatus === "BLOCKED_PENDING_CONSENT"
+      if (heldPendingConsent) {
+        const content = payload?.content || ""
+        if (content.trim().length > RESTORE_MIN_LENGTH && options?.restoreDraftToInput) {
+          options.restoreDraftToInput(content)
+        }
+      }
     },
     // Automatic retry for transient network failures only (no HTTP status).
     // Safe because sends are idempotent via clientId — a retry that actually

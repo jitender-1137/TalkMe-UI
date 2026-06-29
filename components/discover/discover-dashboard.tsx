@@ -68,6 +68,7 @@ import { useChatContext } from "@/components/chat/chat-context";
 import { useNavigation } from "@/components/app-shell/navigation-context";
 import type { DiscoverProfile } from "@/src/api/types";
 import { UserProfileModal } from "@/components/chat/user-profile-modal";
+import { useProfileViewer } from "@/components/profile/use-profile-viewer";
 
 /** Green star-burst badge with a bookmark glyph (matches the other tabs). */
 function DiscoverLogo() {
@@ -803,6 +804,7 @@ function PersonCard({
   isAddingFriend: boolean;
   isRemovingFriend: boolean;
 }) {
+  const { openPhoto } = useProfileViewer();
   const initials = person.name
     .split(" ")
     .map((n) => n[0])
@@ -827,7 +829,8 @@ function PersonCard({
     >
       {/* Avatar - Clickable */}
       <button
-        onClick={onProfileClick}
+        onClick={() => openPhoto(person.avatar || person.images?.[0], person.gender)}
+        aria-label={`View ${person.name}'s photo`}
         className="shrink-0 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 rounded-full"
       >
         <div className="relative">

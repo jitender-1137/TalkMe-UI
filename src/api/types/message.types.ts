@@ -1,4 +1,5 @@
-export type MessageStatus = "sending" | "sent" | "delivered" | "seen" | "failed"
+export type MessageStatus = "uploading" | "sending" | "sent" | "delivered" | "seen" | "failed" | "blocked"
+export type ModerationStatus = "CLEAN" | "BLOCKED_PENDING_CONSENT" | "RELEASED"
 export type MessageType = "text" | "image" | "video" | "audio" | "document" | "sticker" | "system"
 
 // ── Media attachment ──────────────────────────────────────────────────────────
@@ -28,6 +29,8 @@ export interface ReplyTo {
   senderName: string
   content: string
   type: MessageType
+  /** Thumbnail/preview URL when the parent is media (image/video/sticker). */
+  mediaUrl?: string
 }
 
 // ── Read receipt ──────────────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ export interface Message {
   timestamp: string
   editedAt: string | null
   deletedAt: string | null
+  moderationStatus?: ModerationStatus
 }
 
 // ── Send / Edit payloads ──────────────────────────────────────────────────────
@@ -81,6 +85,14 @@ export interface SendMessagePayload {
     width?: number
     height?: number
   }
+  /**
+   * Optimistic-first media send: when set, onMutate renders the bubble IMMEDIATELY
+   * using `localPreviewUrl` (a blob URL) with an "uploading" status, and the mutation
+   * uploads `localFile` in the background before posting. The composer is cleared up
+   * front, independent of the upload/network response. Stripped before the API call.
+   */
+  localFile?: File
+  localPreviewUrl?: string
 }
 
 export interface EditMessagePayload {

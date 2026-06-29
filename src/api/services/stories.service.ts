@@ -25,7 +25,7 @@ export const StoriesService = {
    */
   createStory: async (payload: CreateStoryPayload): Promise<Story> => {
     const mediaType = payload.file.type.startsWith("video") ? "video" : "image"
-    const upload = await UploadService.uploadFile(payload.file, mediaType)
+    const upload = await UploadService.uploadFile(payload.file, mediaType, { context: "story" })
 
     const response = await apiClient.post<{
       success: boolean

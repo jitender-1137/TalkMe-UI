@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, getAvatarUrl } from "@/lib/utils"
+import { useProfileViewer } from "@/components/profile/use-profile-viewer"
 import { toast } from "sonner"
 import { copyPostLink } from "@/lib/post-link"
 import { useUrlModal } from "@/lib/navigation/use-url-modal"
@@ -28,12 +29,11 @@ import { SharePostSheet } from "./share-post-sheet"
 import { InstagramVideo } from "./instagram-video"
 import { ProfileModal } from "./profile-modal"
 import { CommentsSheet } from "./comments-sheet"
+import { LikedBySheet } from "./liked-by-sheet"
 import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { useNavigation } from "@/components/app-shell/navigation-context"
 import { useChatContext } from "@/components/chat/chat-context"
-import { CommentsPanel } from "./comments-panel"
 import { PostDetailModal } from "./post-detail-modal"
-import { useIsMobile } from "@/hooks/use-mobile"
 
 interface FeedPostProps {
   post: Post
@@ -45,9 +45,8 @@ interface FeedPostProps {
 }
 
 export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAuthorClick }: FeedPostProps) {
-  const isMobile = useIsMobile()
-  const [commentsOpen, setCommentsOpen] = useState(false) // mobile sheet
-  const [inlineComments, setInlineComments] = useState(false) // desktop inline
+  const [commentsOpen, setCommentsOpen] = useState(false) // comments sheet
+  const [likesOpen, setLikesOpen] = useState(false) // "liked by" sheet
   const [imageIndex, setImageIndex] = useState(0)
   const [shareOpen, setShareOpen] = useState(false)
   const [profileUserId, setProfileUserId] = useState<string | null>(null)
@@ -58,7 +57,10 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
   // Each overlay gets its own URL segment and is closed by the Back button.
   // (ProfileModal self-registers its own `user/<id>` overlay.)
   useUrlModal(detailOpen, () => setDetailOpen(false), `post/${post.id}`)
-  useUrlModal(commentsOpen, () => setCommentsOpen(false), "comments")
+  // Capture the stack z-index so the sheet renders at its proper depth — and a
+  // profile opened FROM the sheet (next stack level) layers ABOVE it, not below.
+  const commentsZ = useUrlModal(commentsOpen, () => setCommentsOpen(false), "comments")
+  const likesZ = useUrlModal(likesOpen, () => setLikesOpen(false), "likes")
   useUrlModal(shareOpen, () => setShareOpen(false), "share")
 
   const { data: ownProfile } = useProfile()
@@ -66,6 +68,9 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
   const openOrCreateChat = useOpenOrCreateChat()
   const { setActiveTab } = useNavigation()
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext()
+
+  // Convention: photo → image modal; name → profile modal.
+  const { openPhoto } = useProfileViewer()
 
   // Open a user's profile card (from post author or a commenter).
   const openProfile = (userId?: string | null) => {
@@ -92,10 +97,8 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
 
   const commentCount = post.commentsCount ?? post.comments?.length ?? 0
 
-  const handleToggleComments = () => {
-    if (isMobile) setCommentsOpen(true)
-    else setInlineComments((v) => !v)
-  }
+  // Open the comments bottom sheet on every device (no more desktop inline append).
+  const handleToggleComments = () => setCommentsOpen(true)
 
   const handleLike = () => {
     onLike(post.id)
@@ -126,7 +129,7 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <Avatar
           className="h-11 w-11 rounded-2xl cursor-pointer"
-          onClick={() => openProfile(post.author.id)}
+          onClick={() => openPhoto(post.author.avatar, (post.author as any).gender)}
         >
           <AvatarImage src={getAvatarUrl(post.author.avatar)} className="rounded-2xl" />
           <AvatarFallback className="rounded-2xl">{post.author.name.charAt(0)}</AvatarFallback>
@@ -194,33 +197,42 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
         </div>
       )}
 
-      {/* Action pills */}
-      <div className="px-4 pt-1 pb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleLike}
-            className={cn(
-              "flex items-center gap-1.5 h-9 px-3 rounded-full border text-sm font-semibold transition-colors cursor-pointer",
-              post.liked
-                ? "border-rose-500/40 text-rose-500 bg-rose-500/5"
-                : "border-border text-foreground hover:bg-muted-foreground/10",
+      {/* Action bar — flat Instagram-style icons with inline counts. Tapping the
+          heart toggles the like; tapping the count opens the "liked by" list. */}
+      <div className="px-4 pt-1.5 pb-1 flex items-center justify-between">
+        <div className="flex items-center gap-5">
+          <div className="flex items-center gap-1.5">
+            <button onClick={handleLike} aria-label="Like" className="cursor-pointer">
+              <motion.span
+                animate={post.liked ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+                transition={{ duration: 0.3 }}
+                className="block"
+              >
+                <Heart
+                  className={cn(
+                    "h-[26px] w-[26px] transition-colors",
+                    post.liked ? "fill-rose-500 text-rose-500" : "text-foreground",
+                  )}
+                />
+              </motion.span>
+            </button>
+            {(post.likes ?? 0) > 0 && (
+              <button
+                onClick={() => setLikesOpen(true)}
+                className="text-[15px] font-semibold text-foreground hover:opacity-70 cursor-pointer"
+              >
+                {formatCount(post.likes ?? 0)}
+              </button>
             )}
-          >
-            <motion.span
-              animate={post.liked ? { scale: [1, 1.3, 1] } : { scale: 1 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Heart className={cn("h-5 w-5", post.liked && "fill-current")} />
-            </motion.span>
-            {formatCount(post.likes ?? 0)}
-          </button>
+          </div>
 
           <button
             onClick={handleToggleComments}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-full border border-border text-sm font-semibold text-foreground hover:bg-muted-foreground/10 transition-colors cursor-pointer"
+            aria-label="Comments"
+            className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground hover:opacity-70 cursor-pointer"
           >
-            <MessageCircle className="h-5 w-5" />
-            {formatCount(commentCount)}
+            <MessageCircle className="h-[26px] w-[26px] -scale-x-100" />
+            {commentCount > 0 && formatCount(commentCount)}
           </button>
 
           <button
@@ -228,38 +240,40 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
               setShareOpen(true)
               onShare(post.id)
             }}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-full border border-border text-sm font-semibold text-foreground hover:bg-muted-foreground/10 transition-colors cursor-pointer"
+            aria-label="Share"
+            className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground hover:opacity-70 cursor-pointer"
           >
-            <Send className="h-[18px] w-[18px]" />
-            {formatCount(post.shares ?? 0)}
+            <Send className="h-[23px] w-[23px]" />
+            {(post.shares ?? 0) > 0 && formatCount(post.shares ?? 0)}
           </button>
         </div>
 
         <button
           onClick={() => onBookmark(post.id)}
-          className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-full border transition-colors cursor-pointer",
-            post.bookmarked
-              ? "border-primary/40 text-primary bg-primary/5"
-              : "border-border text-foreground hover:bg-muted-foreground/10",
-          )}
+          aria-label="Save"
+          className="cursor-pointer text-foreground hover:opacity-70"
         >
-          <Bookmark className={cn("h-5 w-5", post.bookmarked && "fill-current")} />
+          <Bookmark className={cn("h-[26px] w-[26px]", post.bookmarked && "fill-current")} />
         </button>
       </div>
 
-      {/* Caption */}
+      {/* Caption + hashtags + date */}
       {post.content && (
         <div
-          className={cn("px-4", post.media.length === 0 && "cursor-pointer")}
+          className={cn("px-4 pt-1", post.media.length === 0 && "cursor-pointer")}
           onClick={post.media.length === 0 ? () => setDetailOpen(true) : undefined}
         >
           <p className="text-[15px] leading-relaxed whitespace-pre-wrap text-foreground">
             <span className="font-semibold mr-1.5">{post.author.username}</span>
-            {post.content}
+            {renderCaption(post.content)}
           </p>
         </div>
       )}
+      <div className="px-4 pt-1">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          {formatPostDate(post.timestamp ?? (post as any).createdAt)}
+        </span>
+      </div>
 
       {/* Inline comment composer */}
       <div className="px-4 py-3 flex items-center gap-2.5">
@@ -289,27 +303,24 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
         </button>
       </div>
 
-      {/* Desktop: comments shown directly inline */}
-      {!isMobile && inlineComments && (
-        <div className="border-t border-border h-[420px]">
-          <CommentsPanel
-            postId={post.id}
-            authorUsername={post.author.username}
-            onUserClick={openProfile}
-          />
-        </div>
-      )}
+      {/* Comments bottom sheet — same bordered modal on every device */}
+      <CommentsSheet
+        postId={post.id}
+        authorUsername={post.author.username}
+        open={commentsOpen}
+        onOpenChange={setCommentsOpen}
+        onUserClick={openProfile}
+        zIndex={commentsZ}
+      />
 
-      {/* Mobile: bottom sheet */}
-      {isMobile && (
-        <CommentsSheet
-          postId={post.id}
-          authorUsername={post.author.username}
-          open={commentsOpen}
-          onOpenChange={setCommentsOpen}
-          onUserClick={openProfile}
-        />
-      )}
+      <LikedBySheet
+        postId={post.id}
+        likeCount={post.likes ?? 0}
+        open={likesOpen}
+        onOpenChange={setLikesOpen}
+        onUserClick={openProfile}
+        zIndex={likesZ}
+      />
 
       <SharePostSheet post={post} open={shareOpen} onOpenChange={setShareOpen} />
 
@@ -389,5 +400,26 @@ function formatCount(count: number): string {
   if (count < 1000) return count.toString()
   if (count < 1000000) return `${(count / 1000).toFixed(1)}K`
   return `${(count / 1000000).toFixed(1)}M`
+}
+
+// Absolute date shown under the caption (Instagram-style, e.g. "1 JUNE").
+function formatPostDate(dateInput: Date | string): string {
+  const date = typeof dateInput === "string" ? new Date(dateInput) : dateInput
+  if (isNaN(date.getTime())) return ""
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "long" })
+}
+
+// Render caption text, highlighting #hashtags (and @mentions) in the accent color.
+function renderCaption(text: string) {
+  return text.split(/(\s+)/).map((tok, i) => {
+    if ((tok.startsWith("#") || tok.startsWith("@")) && tok.length > 1) {
+      return (
+        <span key={i} className="text-primary">
+          {tok}
+        </span>
+      )
+    }
+    return <span key={i}>{tok}</span>
+  })
 }
 

@@ -9,28 +9,66 @@ import { useImageViewer, useVideoPlayer } from "@/components/providers"
 import type { MediaAttachment } from "./types"
 import { useCachedMedia } from "@/src/api/hooks/use-cached-media"
 import { useChatPrefs } from "@/lib/chat/chat-prefs-store"
+import { useUploadProgress } from "@/lib/chat/upload-progress-store"
 
 interface MessageMediaProps {
   media: MediaAttachment
   isSent: boolean
   chatId?: string
   messageId?: string
+  /** True while THIS message's file is still uploading (optimistic status). */
+  uploading?: boolean
 }
 
-export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: MessageMediaProps) {
+/** WhatsApp-style determinate upload ring overlaid on the media thumbnail. */
+function UploadOverlay({ progress }: { progress?: number }) {
+  const pct = Math.max(0, Math.min(100, progress ?? 0))
+  const r = 18
+  const circumference = 2 * Math.PI * r
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
+      <div className="relative h-12 w-12">
+        <svg viewBox="0 0 48 48" className="h-12 w-12 -rotate-90">
+          <circle cx="24" cy="24" r={r} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+          <circle
+            cx="24"
+            cy="24"
+            r={r}
+            fill="none"
+            stroke="white"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - pct / 100)}
+            style={{ transition: "stroke-dashoffset 0.2s ease" }}
+          />
+        </svg>
+        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white">
+          {Math.round(pct)}%
+        </span>
+      </div>
+    </div>
+  )
+}
+
+export function MessageMedia({ media, isSent, chatId = "", messageId = "", uploading = false }: MessageMediaProps) {
   const { url: cachedUrl, thumbnail: cachedThumbnail, cacheVideo } = useCachedMedia(chatId, messageId, media)
   const { showImage } = useImageViewer()
   const { playVideo } = useVideoPlayer()
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const audioRef = useRef<HTMLAudioElement>(null)
+  // Live per-message upload progress (only set while this bubble's file uploads).
+  const uploadPct = useUploadProgress((s) => (messageId ? s.map[messageId] : undefined))
+  const showUpload = uploading || uploadPct !== undefined
 
   // Respect the "Media auto-download" preference: when off, photos/videos show a
-  // tap-to-load placeholder instead of fetching automatically.
+  // tap-to-load placeholder instead of fetching automatically. The sender's OWN
+  // media (and anything still uploading) is never gated — they always see it.
   const mediaAutoDownload = useChatPrefs((s) => s.mediaAutoDownload)
   const [loadRequested, setLoadRequested] = useState(false)
   const gateMedia =
-    !mediaAutoDownload && !loadRequested && (media.type === "image" || media.type === "video")
+    !mediaAutoDownload && !loadRequested && !isSent && !showUpload && (media.type === "image" || media.type === "video")
 
   if (gateMedia) {
     return (
@@ -81,7 +119,7 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
       <motion.button
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        onClick={() => showImage(cachedUrl || media.url)}
+        onClick={() => { if (!showUpload) showImage(cachedUrl || media.url) }}
         className="relative rounded-lg overflow-hidden max-w-[280px] mb-2 cursor-pointer hover:opacity-90 transition-opacity animate-fade-in"
       >
         <img
@@ -94,6 +132,7 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
             aspectRatio: media.width && media.height ? `${media.width}/${media.height}` : "4/3",
           }}
         />
+        {showUpload && <UploadOverlay progress={uploadPct} />}
       </motion.button>
     )
   }
@@ -106,6 +145,7 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
         animate={{ opacity: 1, scale: 1 }}
         className="relative rounded-lg overflow-hidden max-w-[280px] mb-2 group cursor-pointer"
         onClick={() => {
+          if (showUpload) return
           cacheVideo()
           playVideo(cachedUrl || media.url, cachedThumbnail || media.thumbnail || undefined)
         }}
@@ -127,11 +167,15 @@ export function MessageMedia({ media, isSent, chatId = "", messageId = "" }: Mes
             preload="metadata"
           />
         )}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
-          <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-            <Play className="h-6 w-6 text-foreground fill-current ml-0.5" />
+        {showUpload ? (
+          <UploadOverlay progress={uploadPct} />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
+            <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+              <Play className="h-6 w-6 text-foreground fill-current ml-0.5" />
+            </div>
           </div>
-        </div>
+        )}
         {media.duration && (
           <span className="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 rounded text-xs text-white font-medium">
             {formatDuration(media.duration)}

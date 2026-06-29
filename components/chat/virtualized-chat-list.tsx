@@ -19,6 +19,9 @@ interface VirtualizedChatListProps {
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onOpenMessageMenu?: (e: PointerEvent | MouseEvent, message: Message) => void;
+  onRequestConsent?: (message: Message) => void;
+  consentPending?: boolean;
+  consentLimitReached?: boolean;
 }
 
 function formatDateSeparator(date: Date) {
@@ -51,6 +54,9 @@ function VirtualizedChatListImpl({
   hasMore = false,
   isLoadingMore = false,
   onOpenMessageMenu,
+  onRequestConsent,
+  consentPending,
+  consentLimitReached,
 }: VirtualizedChatListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -288,6 +294,9 @@ function VirtualizedChatListImpl({
                 >
                   <ChatBubble
                     message={message}
+                    onRequestConsent={onRequestConsent}
+                    consentPending={consentPending}
+                    consentLimitReached={consentLimitReached}
                     onReactionClick={onReactionClick}
                     onReply={onReply}
                     onRetry={onRetry}

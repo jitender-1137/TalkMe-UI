@@ -8,7 +8,7 @@ import { useChats, useContactRequests, useNotifications } from "@/src/api/hooks"
 import { Button } from "@/components/ui/button"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { useInbox } from "@/components/lobby/hooks"
-import { LogOut } from "lucide-react"
+import { LogOut, RefreshCw } from "lucide-react"
 import { AvatarStatusBadge } from "@/components/presence"
 import { usePresenceStore } from "@/lib/presence"
 import {
@@ -94,6 +94,23 @@ export function DesktopSidebar() {
 
         {/* Bottom actions */}
         <div className="flex flex-col items-center gap-2 pb-4 border-t border-white/5 pt-4">
+          {/* Refresh the whole app (hard reload) — available to everyone. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => window.location.reload()}
+                aria-label="Refresh app"
+                className="w-12 h-12 rounded-xl text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+              >
+                <RefreshCw className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>
+              Refresh
+            </TooltipContent>
+          </Tooltip>
           {isGuest ? (
             <Tooltip>
               <TooltipTrigger asChild>

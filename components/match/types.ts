@@ -32,6 +32,11 @@ export interface StrangerMessage {
   time: string
   isFromStranger: boolean
   isRevealed?: boolean
+  /** Explicit text held pending 18+ consent — shown in-place with a danger flag, never delivered. */
+  blocked?: boolean
+  /** When blocked: the live consent state so the bubble can explain why (pending / declined / limit). */
+  consentStatus?: "PENDING" | "DECLINED" | "NONE"
+  consentLimitReached?: boolean
   media?: {
     type: "image" | "video"
     url: string

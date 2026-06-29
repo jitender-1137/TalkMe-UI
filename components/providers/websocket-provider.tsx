@@ -215,19 +215,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         // knows we're still connected, just inactive.
         client.publish({ destination: "/app/presence/visibility", body: "false" })
       } else if (event === "stranger_typing_started") {
-        if (strangerChatIdRef.current) {
-          client.publish({
-            destination: `/app/chat/${strangerChatIdRef.current}/typing`,
-            body: JSON.stringify(true)
-          })
-        }
+        // Anonymous match typing — relayed to the peer via the match channel (the
+        // 1:1 /app/chat/{id}/typing path leaks the username, breaking anonymity).
+        client.publish({ destination: "/app/match/typing", body: JSON.stringify(true) })
       } else if (event === "stranger_typing_stopped") {
-        if (strangerChatIdRef.current) {
-          client.publish({
-            destination: `/app/chat/${strangerChatIdRef.current}/typing`,
-            body: JSON.stringify(false)
-          })
-        }
+        client.publish({ destination: "/app/match/typing", body: JSON.stringify(false) })
+      } else if (event === "ACCEPT_CONSENT") {
+        client.publish({ destination: "/app/match/accept-consent" })
+      } else if (event === "DECLINE_CONSENT") {
+        client.publish({ destination: "/app/match/decline-consent" })
       } else if (event === "START_MATCHING") {
         client.publish({ destination: "/app/match/start" })
       } else if (event === "SEND_MESSAGE") {
@@ -392,6 +388,67 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
               })
             }
           }
+          break
+        }
+
+        case "consent_requested": {
+          // The other participant wants to exchange mature content. Mark PENDING so
+          // chat-area surfaces the accept dialog / persistent banner.
+          const requestedBy: string | undefined = eventData?.requestedBy
+          const existing = await db.consent_state.get(chatId)
+          await db.consent_state.put({
+            chatId,
+            status: "PENDING",
+            requestedByUserId: requestedBy ?? existing?.requestedByUserId,
+            requestedAt: new Date().toISOString(),
+            grantedAt: existing?.grantedAt,
+            declineCount: existing?.declineCount ?? 0,
+          })
+          handlersRef.current["consent_requested"]?.forEach((h) => h(eventData))
+          queryClient.invalidateQueries({ queryKey: ["consent", chatId] })
+          break
+        }
+
+        case "consent_granted": {
+          // Both sides agreed → future explicit messages flow. Pre-consent messages
+          // are intentionally NOT delivered (none are stored locally on the receiver).
+          await db.consent_state.put({
+            chatId,
+            status: "GRANTED",
+            grantedAt: new Date().toISOString(),
+            declineCount: 0, // granting clears the decline cap
+          })
+          handlersRef.current["consent_granted"]?.forEach((h) => h(eventData))
+          queryClient.invalidateQueries({ queryKey: ["consent", chatId] })
+          break
+        }
+
+        case "consent_declined": {
+          // The recipient declined → the requester can't send explicit content here.
+          // Mirror the server's consecutive-decline count so the 3-strike cap holds
+          // on the requester's side too.
+          const existing = await db.consent_state.get(chatId)
+          const declineCount =
+            typeof eventData?.declineCount === "number"
+              ? eventData.declineCount
+              : (existing?.declineCount ?? 0) + 1
+          await db.consent_state.put({
+            chatId,
+            status: "DECLINED",
+            requestedByUserId: existing?.requestedByUserId,
+            declineCount,
+          })
+          handlersRef.current["consent_declined"]?.forEach((h) => h(eventData))
+          queryClient.invalidateQueries({ queryKey: ["consent", chatId] })
+          break
+        }
+
+        case "consent_revoked": {
+          // Either party turned consent back off → reset to default. The revoker
+          // can't re-request (server-enforced); only the other party can.
+          await db.consent_state.put({ chatId, status: "NONE", requestedByUserId: undefined, declineCount: 0 })
+          handlersRef.current["consent_revoked"]?.forEach((h) => h(eventData))
+          queryClient.invalidateQueries({ queryKey: ["consent", chatId] })
           break
         }
 
@@ -598,7 +655,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       if (isFromOther && !isMuted) {
         const settings = useLobbyStore.getState().notificationSettings
         if (settings.sound) {
-          const isGroup = chatForMuteCheck?.chatType === "GROUP" || chatForMuteCheck?.type === "group"
+          const isGroup = chatForMuteCheck?.chatType === "GROUP" || (chatForMuteCheck as any)?.type === "group"
           const hasSound = isGroup 
             ? settings.groupTone !== "none" 
             : settings.messageTone !== "none"
@@ -634,7 +691,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       // Toast notification trigger for messages from other users (only for non-active and non-muted chats)
       if (isFromOther && !isActiveChat && !isMuted) {
-        const isGroup = chatForMuteCheck?.chatType === "GROUP" || chatForMuteCheck?.type === "group"
+        const isGroup = chatForMuteCheck?.chatType === "GROUP" || (chatForMuteCheck as any)?.type === "group"
         const otherParticipant = chatForMuteCheck?.otherUser ?? chatForMuteCheck?.participants?.find((p) => p.id !== ownProfileRef.current?.id)
         const sender = isGroup
           ? (payload.senderName || chatForMuteCheck?.name || "Group Chat")
@@ -1076,6 +1133,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       })
 
+      // On (re)connect, ask the server to replay any stranger-match messages buffered
+      // while this device was backgrounded/offline. Sent after the subscription above
+      // so the broker has it registered before the replay lands; replayed events carry
+      // their original ids, so the match store upserts them without duplicates. No-op
+      // server-side when nothing is buffered.
+      setTimeout(() => {
+        try {
+          if (client.connected) client.publish({ destination: "/app/match/resume" })
+        } catch { /* not connected — ignored */ }
+      }, 500)
+
       // Subscribe to live matchmaking online count (replaces 10s polling).
       // Server broadcasts { count } on every change; write straight to cache.
       client.subscribe("/topic/match/online", (message) => {
@@ -1432,6 +1500,35 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("pagehide", onPageHide)
     return () => window.removeEventListener("pagehide", onPageHide)
   }, [sendEvent])
+
+  // Instant reconnect on resume. When the page is backgrounded/suspended (mobile PWA,
+  // minimized window) the socket dies and STOMP's exponential backoff timer is frozen,
+  // so the next reconnect attempt can be scheduled far out. The moment we're visible
+  // again — or the network returns — kick an immediate fresh connect instead of waiting
+  // it out. Only act when the client WANTS to be connected (active) but currently isn't,
+  // so we never disturb a healthy or intentionally-stopped (logged-out) connection.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const reconnectNow = () => {
+      const c = stompClientRef.current as any
+      if (!c || !c.active || c.connected) return
+      try {
+        // deactivate→activate resets the backoff and connects right away.
+        Promise.resolve(c.deactivate())
+          .then(() => { try { c.activate() } catch { /* ignore */ } })
+          .catch(() => { /* ignore */ })
+      } catch { /* ignore */ }
+    }
+    const onVisible = () => { if (!document.hidden) reconnectNow() }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("online", reconnectNow)
+    window.addEventListener("focus", reconnectNow)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("online", reconnectNow)
+      window.removeEventListener("focus", reconnectNow)
+    }
+  }, [])
 
   const hasMarkedDeliveredRef = useRef(false)
 

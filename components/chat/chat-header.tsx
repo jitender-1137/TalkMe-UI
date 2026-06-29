@@ -1,54 +1,92 @@
-"use client"
+"use client";
 
-import { motion, AnimatePresence } from "framer-motion"
-import { Phone, Video, MoreHorizontal, ArrowLeft, Search, Menu, Trash2, BellOff, Ban, Image, UserCircle, UserPlus, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { AvatarStatusBadge } from "@/components/presence"
-import { useChatContext } from "./chat-context"
-import { useImageViewer } from "@/components/providers"
-import { BASE_URL } from "@/src/api/client"
-import { cn } from "@/lib/utils"
-import type { ChatContact, PresenceActivity } from "./types"
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Phone,
+  Video,
+  MoreHorizontal,
+  ArrowLeft,
+  Search,
+  Menu,
+  Trash2,
+  BellOff,
+  Ban,
+  Image,
+  UserCircle,
+  UserPlus,
+  X,
+  ShieldOff,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldX,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AvatarStatusBadge } from "@/components/presence";
+import { useChatContext } from "./chat-context";
+import { useProfileViewer } from "@/components/profile/use-profile-viewer";
+import { useImageViewer } from "@/components/providers";
+import { BASE_URL } from "@/src/api/client";
+import { cn } from "@/lib/utils";
+import type { ChatContact, PresenceActivity } from "./types";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 
 interface ChatHeaderProps {
-  contact: ChatContact
-  onBack?: () => void
-  showBackButton?: boolean
-  onProfileClick?: () => void
-  onAudioCall?: () => void
-  onVideoCall?: () => void
-  onSearchInChat?: () => void
-  onViewMedia?: () => void
-  onMuteNotifications?: () => void
-  onBlockContact?: () => void
-  onUnblockContact?: () => void
-  onClearChat?: () => void
-  onAddFriend?: () => void
-  onRemoveFriend?: () => void
-  isMuted?: boolean
+  contact: ChatContact;
+  onBack?: () => void;
+  showBackButton?: boolean;
+  onProfileClick?: () => void;
+  onAudioCall?: () => void;
+  onVideoCall?: () => void;
+  onSearchInChat?: () => void;
+  onViewMedia?: () => void;
+  onMuteNotifications?: () => void;
+  onBlockContact?: () => void;
+  onUnblockContact?: () => void;
+  onClearChat?: () => void;
+  onAddFriend?: () => void;
+  onRemoveFriend?: () => void;
+  isMuted?: boolean;
+  /**
+   * Live 18+ consent state for this 1:1 chat. When provided (1:1 only), the header
+   * shows a 4-state status badge and a dynamic ⋮ action. Omit for group chats.
+   */
+  consentStatus?: "NONE" | "PENDING" | "GRANTED" | "DECLINED";
+  /** True when I am the participant who sent the pending request (sender vs receiver UI). */
+  consentIsRequester?: boolean;
+  /** Turn previously-granted 18+ consent back off (GRANTED → NONE). */
+  onRevokeConsent?: () => void;
+  /** Open the accept/decline dialog (receiver, PENDING). */
+  onRespondConsent?: () => void;
 }
+
+/** Compact 4-state copy for the 18+ consent header badge + ⋮ menu. */
+const CONSENT_BADGE = {
+  NONE: { label: "18+", cls: "bg-white/5 text-muted-foreground", Icon: ShieldOff },
+  PENDING: { label: "18+", cls: "bg-amber-500/15 text-amber-500", Icon: ShieldAlert },
+  GRANTED: { label: "18+", cls: "bg-emerald-500/15 text-emerald-500", Icon: ShieldCheck },
+  DECLINED: { label: "18+", cls: "bg-red-500/15 text-red-500", Icon: ShieldX },
+} as const;
 
 function getActivityText(activity: PresenceActivity, lastSeen?: string): string {
   switch (activity) {
     case "typing":
-      return "typing..."
+      return "typing...";
     case "recording":
-      return "recording audio..."
+      return "recording audio...";
     case "recording_video":
-      return "recording video..."
+      return "recording video...";
     case "online":
-      return "Online"
+      return "Online";
     case "idle":
-      return "Away"
+      return "Away";
     case "offline":
-      return lastSeen ? `Last seen ${lastSeen}` : "Offline"
+      return lastSeen ? `Last seen ${lastSeen}` : "Offline";
   }
 }
 
@@ -58,18 +96,18 @@ function getPresenceStatus(activity: PresenceActivity): "online" | "idle" | "off
     case "recording":
     case "recording_video":
     case "online":
-      return "online"
+      return "online";
     case "idle":
-      return "idle"
+      return "idle";
     default:
-      return "offline"
+      return "offline";
   }
 }
 
-export function ChatHeader({ 
-  contact, 
-  onBack, 
-  showBackButton = false, 
+export function ChatHeader({
+  contact,
+  onBack,
+  showBackButton = false,
   onProfileClick,
   onAudioCall,
   onVideoCall,
@@ -82,11 +120,20 @@ export function ChatHeader({
   onAddFriend,
   onRemoveFriend,
   isMuted,
+  consentStatus,
+  consentIsRequester,
+  onRevokeConsent,
+  onRespondConsent,
 }: ChatHeaderProps) {
-  const { setShowMobileSecondaryPanel } = useChatContext()
-  const { showImage } = useImageViewer()
-  const activityText = getActivityText(contact.activity, contact.lastSeen)
-  const isActive = contact.activity === "typing" || contact.activity === "recording" || contact.activity === "recording_video"
+  const { setShowMobileSecondaryPanel } = useChatContext();
+  const { showImage } = useImageViewer();
+  const { openPhoto } = useProfileViewer();
+  const activityText = getActivityText(contact.activity, contact.lastSeen);
+  const consentBadge = consentStatus ? CONSENT_BADGE[consentStatus] : null;
+  const isActive =
+    contact.activity === "typing" ||
+    contact.activity === "recording" ||
+    contact.activity === "recording_video";
 
   return (
     <header className="flex items-center justify-between px-4 h-16 border-b border-white/10 bg-card shrink-0">
@@ -103,7 +150,8 @@ export function ChatHeader({
         )}
 
         <button
-          onClick={() => onProfileClick?.()}
+          onClick={() => openPhoto(contact.avatar, contact.gender)}
+          aria-label="View photo"
           className="relative w-10 h-10 rounded-full cursor-pointer hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary/50"
         >
           <AvatarStatusBadge
@@ -117,7 +165,27 @@ export function ChatHeader({
         </button>
 
         <div className="min-w-0">
-          <h2 className="font-semibold text-foreground truncate">{contact.name}</h2>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onProfileClick?.()}
+              className="font-semibold text-foreground truncate text-left cursor-pointer hover:underline focus:outline-none"
+            >
+              {contact.name}
+            </button>
+            {consentBadge && (
+              <span
+                title={consentBadge.label}
+                className={cn(
+                  "inline-flex items-center gap-1 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold max-w-[11rem] truncate",
+                  consentBadge.cls,
+                )}
+              >
+                <consentBadge.Icon className="h-3 w-3 shrink-0" />
+                {consentBadge.label}
+              </span>
+            )}
+          </div>
           <AnimatePresence mode="wait">
             <motion.p
               key={activityText}
@@ -127,7 +195,7 @@ export function ChatHeader({
               transition={{ duration: 0.15 }}
               className={cn(
                 "text-xs truncate",
-                isActive ? "text-primary font-medium" : "text-muted-foreground"
+                isActive ? "text-primary font-medium" : "text-muted-foreground",
               )}
             >
               {isActive && (
@@ -156,15 +224,31 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl hover:bg-white/10 active:scale-95 transition-all" onClick={onAudioCall} disabled={contact.isBlockedByMe || contact.hasBlockedMe}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-xl hover:bg-white/10 active:scale-95 transition-all"
+          onClick={onAudioCall}
+          disabled={contact.isBlockedByMe || contact.hasBlockedMe}
+        >
           <Phone className="h-5 w-5" />
         </Button>
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl hover:bg-white/10 active:scale-95 transition-all" onClick={onVideoCall} disabled={contact.isBlockedByMe || contact.hasBlockedMe}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-xl hover:bg-white/10 active:scale-95 transition-all"
+          onClick={onVideoCall}
+          disabled={contact.isBlockedByMe || contact.hasBlockedMe}
+        >
           <Video className="h-5 w-5" />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl hover:bg-white/10 active:scale-95 transition-all">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-xl hover:bg-white/10 active:scale-95 transition-all"
+            >
               <MoreHorizontal className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
@@ -185,6 +269,30 @@ export function ChatHeader({
               <BellOff className="h-4 w-4 mr-2" />
               {isMuted ? "Unmute notifications" : "Mute notifications"}
             </DropdownMenuItem>
+            {consentStatus === "PENDING" ? (
+              consentIsRequester ? (
+                <DropdownMenuItem disabled className="text-amber-500 opacity-80 font-semibold">
+                  <ShieldAlert className="h-4 w-4 mr-2 text-amber-500" />
+                  18+ Request Pending
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem
+                  onClick={onRespondConsent}
+                  className="text-amber-500 focus:text-amber-600 focus:bg-amber-500/10 font-semibold"
+                >
+                  <ShieldAlert className="h-4 w-4 mr-2 text-amber-500" />
+                  Respond to 18+ Request
+                </DropdownMenuItem>
+              )
+            ) : consentStatus === "GRANTED" ? (
+              <DropdownMenuItem
+                onClick={onRevokeConsent}
+                className="text-amber-500 focus:text-amber-600 focus:bg-amber-500/10 font-semibold"
+              >
+                <ShieldOff className="h-4 w-4 mr-2 text-amber-500" />
+                Revoke 18+ Consent
+              </DropdownMenuItem>
+            ) : null}
             {contact.isFriend === false && (
               <DropdownMenuItem onClick={onAddFriend}>
                 <UserPlus className="h-4 w-4 mr-2" />
@@ -217,5 +325,5 @@ export function ChatHeader({
         </DropdownMenu>
       </div>
     </header>
-  )
+  );
 }

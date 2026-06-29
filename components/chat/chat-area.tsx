@@ -9,12 +9,14 @@ import { CameraModal } from "./camera-modal"
 import { ChatSearchSidebar } from "./chat-search-sidebar"
 import { useChatContext } from "./chat-context"
 import * as ContextMenu from "./message-context-menu"
+import { EmojiReactionPanel } from "./emoji-reaction-panel"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useVisualViewport } from "@/hooks/use-visual-viewport"
 import { cn } from "@/lib/utils"
 import { displayContent } from "@/lib/shared-post"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
 import { toast } from "sonner"
+import { getPendingFile } from "@/lib/chat/pending-upload-files"
 import { Button } from "@/components/ui/button"
 import { BASE_URL, getMediaUrl } from "@/src/api/client"
 
@@ -29,8 +31,11 @@ import {
   useRemoveReaction,
 } from "@/src/api/hooks/useMessages"
 import { useWebSocket } from "@/components/providers/websocket-provider"
+import { useQueryClient } from "@tanstack/react-query"
+import { useChatConsent, useRequestConsent, useAcceptConsent, useDeclineConsent, useRevokeConsent } from "@/src/api/hooks/useConsent"
+import { ConsentRequestDialog } from "./consent-request-dialog"
+import { checkImageNsfw, checkVideoNsfw } from "@/lib/moderation/nsfw-check"
 import { useLivePresence } from "@/lib/presence/live-status-store"
-import { UploadService } from "@/src/api/services/upload.service"
 import { Loader2, MessageSquare, Video, Phone, Shield } from "lucide-react"
 
 function formatLastSeen(lastSeenStr?: string | null): string | undefined {
@@ -70,6 +75,9 @@ export function ChatArea({
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   const [replyTo, setReplyTo] = useState<ReplyTo | null>(null)
+  // Text handed back to the composer when a send is hard-rejected for non-clean
+  // content (so a long message isn't lost — the user can edit out the bad word).
+  const [restoreDraft, setRestoreDraft] = useState<string | null>(null)
   const { data: contacts } = useContacts()
 
   const [showCameraModal, setShowCameraModal] = useState(false)
@@ -78,8 +86,9 @@ export function ChatArea({
   const [messageMenuOpen, setMessageMenuOpen] = useState(false)
   const [messageMenuPos, setMessageMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
+  // Full emoji picker for the context-menu "+ more reactions" affordance.
+  const [reactionPickerFor, setReactionPickerFor] = useState<Message | null>(null)
   const [uploadType, setUploadType] = useState<"image" | "video" | "audio" | "document" | "camera">("image")
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null)
 
   // Reply state is per-conversation. The ChatArea instance is reused when the
@@ -94,6 +103,7 @@ export function ChatArea({
   // and surface as a phantom "typing"/online status on the newly opened chat.
   useEffect(() => {
     setReplyTo(null)
+    setRestoreDraft(null)
     setPendingAttachment(null)
     setPartnerTyping(false)
     setPartnerRecording(null)
@@ -108,7 +118,30 @@ export function ChatArea({
     isFetchingNextPage,
   } = useMessages(selectedConversationId || "")
 
-  const sendMessageMutation = useSendMessage(selectedConversationId || "")
+  const consent = useChatConsent(selectedConversationId || "")
+  const requestConsentMutation = useRequestConsent(selectedConversationId || "")
+  const acceptConsentMutation = useAcceptConsent(selectedConversationId || "")
+  const declineConsentMutation = useDeclineConsent(selectedConversationId || "")
+  const revokeConsentMutation = useRevokeConsent(selectedConversationId || "")
+  const [consentDialogOpen, setConsentDialogOpen] = useState(false)
+  const consentQueryClient = useQueryClient()
+
+  // A send the server withheld pending 18+ consent now shows IN the thread as a
+  // "not delivered · needs consent" bubble (with a Request-consent action) — no
+  // toast, no popup. Here we only refresh the consent flags so that bubble and the
+  // header badge reflect the latest state.
+  const handleModerationResult = useCallback(
+    (sent: any) => {
+      if (sent?.moderationStatus !== "BLOCKED_PENDING_CONSENT") return
+      if (selectedConversationId) {
+        consentQueryClient.invalidateQueries({ queryKey: ["consent", selectedConversationId] })
+      }
+    },
+    [selectedConversationId, consentQueryClient],
+  )
+  const sendMessageMutation = useSendMessage(selectedConversationId || "", {
+    restoreDraftToInput: (content) => setRestoreDraft(content),
+  })
   const deleteMessageMutation = useDeleteMessage(selectedConversationId || "")
   const reactToMessageMutation = useReactToMessage(selectedConversationId || "")
   const removeReactionMutation = useRemoveReaction(selectedConversationId || "")
@@ -151,6 +184,17 @@ export function ChatArea({
       markAsRead(selectedConversationId)
     }
   }, [selectedConversationId, markAsRead])
+
+  // An offline backlog (messages received while A was away) syncs into the chat a
+  // beat AFTER the on-open mark above — so the first mark misses it and the chat
+  // still shows unread until a second open. Re-mark whenever the open chat's live
+  // unread count is still > 0, so the VERY FIRST open reliably clears it.
+  const openChatUnread = chatDetail?.unreadCount ?? 0
+  useEffect(() => {
+    if (selectedConversationId && !isSecondaryActive && openChatUnread > 0) {
+      markAsRead(selectedConversationId)
+    }
+  }, [selectedConversationId, isSecondaryActive, openChatUnread, markAsRead])
 
   // Register WebSocket listeners for live typing indicators
   useEffect(() => {
@@ -206,6 +250,14 @@ export function ChatArea({
       cleanup3()
     }
   }, [registerHandler, selectedConversationId, ownProfile?.id])
+
+  // The receiver is NOT auto-prompted on open — a tap-to-respond banner above the
+  // composer (shown when awaitingMyAccept) opens the accept/decline dialog instead.
+
+  // Reset transient consent UI when switching chats.
+  useEffect(() => {
+    setConsentDialogOpen(false)
+  }, [selectedConversationId])
 
   // Map other participant details
   const isGroup = chatDetail?.chatType === "GROUP" || chatDetail?.type === "group"
@@ -267,8 +319,17 @@ export function ChatArea({
 
       // Resolve status: map backend status (READ, DELIVERED, SENT) to UI status (seen, delivered, sent)
       let status: any = "sent"
+      const lowerStatus = (m.status || "").toLowerCase()
       const rawStatus = (m.status || (m as any).status || "").toUpperCase()
-      if (rawStatus === "READ" || rawStatus === "SEEN") {
+      if (
+        lowerStatus === "blocked" ||
+        lowerStatus === "uploading" ||
+        lowerStatus === "sending" ||
+        lowerStatus === "failed"
+      ) {
+        // Local-only states (held-pending-consent / optimistic upload) — keep as-is.
+        status = lowerStatus
+      } else if (rawStatus === "READ" || rawStatus === "SEEN") {
         status = "seen"
       } else if (rawStatus === "DELIVERED") {
         status = "delivered"
@@ -303,11 +364,20 @@ export function ChatArea({
       if (parentMsg) {
         const parentIsSent = parentMsg.senderId === ownProfile?.id
         const parentSenderName = parentMsg.senderName || (parentIsSent ? "You" : contactName)
+        // Media thumbnail for the quote: optimistic replyTo carries media.url; the
+        // server's parentMessage carries fileUrl (+ attachments fallback).
+        const parentRawMedia =
+          parentMsg.media?.url ||
+          parentMsg.mediaUrl ||
+          parentMsg.fileUrl ||
+          parentMsg.attachments?.[0]?.fileUrl ||
+          parentMsg.attachments?.[0]?.url
         replyTo = {
           id: parentMsg.id,
           senderName: parentSenderName,
           content: displayContent(parentMsg.content),
           type: (parentMsg.type || parentMsg.messageType || "text").toLowerCase() as any,
+          mediaUrl: parentRawMedia ? getMediaUrl(parentRawMedia) : undefined,
         }
       }
 
@@ -356,94 +426,83 @@ export function ChatArea({
 
 
 
-  const handleSend = useCallback(async (content: string) => {
+  const handleSend = useCallback((content: string) => {
     if (!content.trim() && !pendingAttachment) return
 
-    try {
-      if (pendingAttachment) {
-        setUploadProgress(0)
-        const res = await UploadService.uploadFile(
-          pendingAttachment.file, 
-          pendingAttachment.type as any, 
-          selectedConversationId || "", 
-          (pct) => {
-            setUploadProgress(pct)
-          }
-        )
-        sendMessageMutation.mutate({
-          content: content.trim(),
-          type: pendingAttachment.type,
-          replyToId: replyTo?.id || undefined,
-          media: {
-            url: res.url,
-            type: pendingAttachment.type,
-            fileName: pendingAttachment.file.name,
-            // Use the uploaded file's size/mime (images are compressed in
-            // UploadService before upload) so metadata matches what's stored.
-            fileSize: `${((res.size ?? pendingAttachment.file.size) / (1024 * 1024)).toFixed(2)} MB`,
-            mimeType: res.mimeType ?? pendingAttachment.file.type,
-          },
-        })
-        setPendingAttachment(null)
-      } else {
-        sendMessageMutation.mutate({
-          content: content.trim(),
-          type: "text",
-          replyToId: replyTo?.id || undefined,
-        })
+    // Pre-flight size guard for non-image media. Images are compressed before upload,
+    // so their RAW size isn't the limit (the backend validates the compressed bytes and
+    // a 413 cleanly removes the bubble). Videos/audio/documents aren't compressed, so a
+    // too-large file would otherwise show an "uploading" bubble, fail after a long
+    // upload, and offer a broken retry. Reject it up-front: show an error and keep it
+    // OUT of the chat entirely (no bubble, no resend). Mirrors the backend 30 MB cap.
+    if (pendingAttachment && pendingAttachment.type !== "image" && pendingAttachment.file) {
+      const MAX_NON_IMAGE_BYTES = 30 * 1024 * 1024
+      if (pendingAttachment.file.size > MAX_NON_IMAGE_BYTES) {
+        const label =
+          pendingAttachment.type.charAt(0).toUpperCase() + pendingAttachment.type.slice(1)
+        toast.error(`${label} is too large. Maximum size is 30 MB.`)
+        return // keep the composer attachment so the user can remove/replace it
       }
-    } catch (err) {
-      toast.error("Failed to send message")
-    } finally {
-      setUploadProgress(null)
-      setReplyTo(null)
     }
-  }, [selectedConversationId, sendMessageMutation, pendingAttachment, replyTo])
 
-  const handleSendMediaDirectly = useCallback(async (url: string, type: "image" | "sticker") => {
-    try {
-      sendMessageMutation.mutate({
-        content: "",
-        type: "image",
-        media: {
-          url: url,
-          type: "image",
-          fileName: type === "sticker" ? "sticker.png" : "animated.gif",
-          fileSize: "0.1 MB",
-          mimeType: type === "sticker" ? "image/png" : "image/gif",
+    // Capture + clear the composer IMMEDIATELY. The send button must not wait on the
+    // upload/network: the optimistic bubble appears right away (status "uploading" for
+    // media) and the file uploads in the background (see useSendMessage). Any group
+    // NSFW hard-block already happened at pick-time (see uploadFile below).
+    const attachment = pendingAttachment
+    const reply = replyTo
+    setPendingAttachment(null)
+    setReplyTo(null)
+
+    if (attachment) {
+      sendMessageMutation.mutate(
+        {
+          content: content.trim(),
+          type: attachment.type as any,
+          replyToId: reply?.id || undefined,
+          localFile: attachment.file,
+          localPreviewUrl: attachment.previewUrl,
         },
-      })
-    } catch (err) {
-      toast.error("Failed to send message")
-    }
-  }, [sendMessageMutation])
-
-  const handleSendAudio = useCallback(async (file: File) => {
-    try {
-      setUploadProgress(0)
-      const res = await UploadService.uploadFile(
-        file, 
-        "audio", 
-        selectedConversationId || "", 
-        (pct) => setUploadProgress(pct)
+        { onSuccess: (sent) => handleModerationResult(sent) },
       )
-      sendMessageMutation.mutate({
-        content: "",
-        type: "audio",
-        media: {
-          url: res.url,
-          type: "audio",
-          fileName: file.name,
-          fileSize: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-          mimeType: file.type,
-        },
-      })
-    } catch (err) {
-      toast.error("Failed to send audio message")
-    } finally {
-      setUploadProgress(null)
+    } else {
+      sendMessageMutation.mutate(
+        { content: content.trim(), type: "text", replyToId: reply?.id || undefined },
+        { onSuccess: (sent) => handleModerationResult(sent) },
+      )
     }
-  }, [selectedConversationId, sendMessageMutation])
+  }, [pendingAttachment, replyTo, sendMessageMutation, handleModerationResult])
+
+  const handleSendMediaDirectly = useCallback((url: string, type: "image" | "sticker") => {
+    // GIF / sticker — already a remote URL, no upload. Preserve the reply reference
+    // (this was the bug: replying then sending a GIF dropped the parent) and clear it.
+    const reply = replyTo
+    setReplyTo(null)
+    sendMessageMutation.mutate({
+      content: "",
+      type: "image",
+      replyToId: reply?.id || undefined,
+      media: {
+        url: url,
+        type: "image",
+        fileName: type === "sticker" ? "sticker.png" : "animated.gif",
+        fileSize: "0.1 MB",
+        mimeType: type === "sticker" ? "image/png" : "image/gif",
+      },
+    })
+  }, [replyTo, sendMessageMutation])
+
+  const handleSendAudio = useCallback((file: File) => {
+    const reply = replyTo
+    setReplyTo(null)
+    sendMessageMutation.mutate({
+      content: "",
+      type: "audio",
+      replyToId: reply?.id || undefined,
+      localFile: file,
+      localPreviewUrl: typeof URL !== "undefined" ? URL.createObjectURL(file) : undefined,
+    })
+  }, [replyTo, sendMessageMutation])
 
   const handleTyping = useCallback((isTyping: boolean) => {
     if (selectedConversationId) {
@@ -468,18 +527,30 @@ export function ChatArea({
   }, [sendEvent, selectedConversationId])
 
   const uploadFile = useCallback(async (file: File, type: string) => {
-    // Generate local preview URL
-    let previewUrl = undefined
-    if (type === "image" || type === "video") {
-      previewUrl = URL.createObjectURL(file)
+    // Group chats hard-block explicit media — do it at PICK time (not send time) so the
+    // send path stays instant. 1:1 proceeds; the server gates it via the consent flow.
+    if (isGroup && (type === "image" || type === "video")) {
+      try {
+        const nsfw = type === "video" ? await checkVideoNsfw(file) : await checkImageNsfw(file)
+        if (nsfw.isNsfw) {
+          toast.error("Explicit media can't be sent in group chats.")
+          return
+        }
+      } catch {
+        /* model/transient failure — fall through; the server still hard-blocks groups */
+      }
     }
-    
+
+    // Local blob preview for the optimistic bubble (image/video show a thumbnail;
+    // documents use it as a temporary link until the real upload URL arrives).
+    const previewUrl = typeof URL !== "undefined" ? URL.createObjectURL(file) : undefined
+
     setPendingAttachment({
       file,
       type: type as any,
       previewUrl,
     })
-  }, [])
+  }, [isGroup])
 
   const handleAttachClick = useCallback((type: "image" | "video" | "audio" | "document" | "camera") => {
     if (type === "camera") {
@@ -539,22 +610,46 @@ export function ChatArea({
   // (Part B idempotency); onMutate overwrites the failed Dexie row back to
   // "sending" because its id == clientId.
   const handleRetry = useCallback((message: Message) => {
+    const media = message.media
+    // Media whose file never reached the server still has a local blob: preview URL.
+    // Re-sending that URL would deliver a dead link to the recipient (the original
+    // bug), so RE-UPLOAD the original file instead. It's cached in memory by clientId;
+    // if it's gone (e.g. after a reload) we can't re-upload — block the resend and ask
+    // the user to reattach rather than deliver an unreachable file.
+    const needsReupload = !!media && (!media.url || media.url.startsWith("blob:"))
+    if (needsReupload) {
+      const file = message.clientId ? getPendingFile(message.clientId) : undefined
+      if (!file) {
+        toast.error("Couldn't resend this file — please attach it again.")
+        return
+      }
+      sendMessageMutation.mutate({
+        content: message.content,
+        clientId: message.clientId,
+        type: message.type,
+        replyToId: message.replyTo?.id,
+        localFile: file,
+        localPreviewUrl: URL.createObjectURL(file),
+      })
+      return
+    }
+
     sendMessageMutation.mutate({
       content: message.content,
       clientId: message.clientId,
       type: message.type,
       replyToId: message.replyTo?.id,
-      media: message.media
+      media: media
         ? {
-            url: message.media.url,
+            url: media.url,
             // The send payload's media union excludes "sticker" (stickers use a
             // separate send path); narrow it for the retry.
-            type: message.media.type as "image" | "video" | "audio" | "document",
-            fileName: message.media.fileName,
-            fileSize: message.media.fileSize,
-            duration: message.media.duration,
-            width: message.media.width,
-            height: message.media.height,
+            type: media.type as "image" | "video" | "audio" | "document",
+            fileName: media.fileName,
+            fileSize: media.fileSize,
+            duration: media.duration,
+            width: media.width,
+            height: media.height,
           }
         : undefined,
     })
@@ -652,7 +747,15 @@ export function ChatArea({
   }, [])
 
   const handleMessageReply = useCallback((message: Message) => {
-    setReplyTo({ id: message.id, senderName: message.isSent ? "You" : contact.name, content: displayContent(message.content), type: message.type })
+    // Carry the parent's media thumbnail so the reply quote/preview renders WhatsApp-
+    // style for ANY parent type (image/video/GIF/sticker/audio/doc), not just text.
+    setReplyTo({
+      id: message.id,
+      senderName: message.isSent ? "You" : contact.name,
+      content: displayContent(message.content),
+      type: message.type,
+      mediaUrl: message.media?.url || undefined,
+    })
     setMessageMenuOpen(false)
   }, [contact.name])
 
@@ -744,15 +847,6 @@ export function ChatArea({
             className="hidden"
           />
 
-          {uploadProgress !== null && (
-            <div className="absolute top-14 left-0 right-0 z-30 bg-primary/20 h-1">
-              <div 
-                className="bg-primary h-full transition-all duration-300"
-                style={{ width: `${uploadProgress}%` }}
-              />
-            </div>
-          )}
-
           {isChatLoading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-2 h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -785,6 +879,10 @@ export function ChatArea({
                   onAddFriend={() => otherParticipant?.id && addContactMutation.mutate(otherParticipant.id)}
                   onRemoveFriend={() => otherParticipant?.id && removeContactMutation.mutate(otherParticipant.id)}
                   isMuted={isChatMuted}
+                  consentStatus={isGroup ? undefined : consent.status}
+                  consentIsRequester={consent.requestedByMe}
+                  onRevokeConsent={() => revokeConsentMutation.mutate()}
+                  onRespondConsent={() => setConsentDialogOpen(true)}
                 />
               )}
               <CameraModal
@@ -810,6 +908,9 @@ export function ChatArea({
                   hasMore={hasNextPage}
                   isLoadingMore={isFetchingNextPage}
                   onOpenMessageMenu={handleOpenMessageMenu}
+                  onRequestConsent={() => requestConsentMutation.mutate()}
+                  consentPending={consent.isPending}
+                  consentLimitReached={consent.limitReached}
                 />
               )}
               {!isSecondaryActive && (
@@ -820,6 +921,15 @@ export function ChatArea({
                     </Button>
                   </div>
                 ) : (
+                  <>
+                  {consent.awaitingMyAccept && (
+                    <button
+                      onClick={() => setConsentDialogOpen(true)}
+                      className="w-full px-4 py-2 text-xs font-semibold text-amber-500 bg-amber-500/10 border-t border-amber-500/30 hover:bg-amber-500/15 transition-colors"
+                    >
+                      {contactName} requested to exchange 18+ content — tap to respond
+                    </button>
+                  )}
                   <MessageInput
                     key={`input-${selectedConversationId || "empty"}`}
                     onSend={handleSend}
@@ -832,7 +942,10 @@ export function ChatArea({
                     onCancelAttachment={() => setPendingAttachment(null)}
                     onRecordComplete={handleSendAudio}
                     onSendMediaDirectly={handleSendMediaDirectly}
+                    restoreDraft={restoreDraft}
+                    onRestoreConsumed={() => setRestoreDraft(null)}
                   />
+                  </>
                 )
               )}
               {selectedMessage && (
@@ -850,13 +963,46 @@ export function ChatArea({
                     if (emoji) {
                       handleReactionClick(selectedMessage.id, emoji)
                     } else {
-                      toast.info("Emoji picker coming soon")
+                      // "+" → open the full emoji picker for this message.
+                      setReactionPickerFor(selectedMessage)
+                      setMessageMenuOpen(false)
                     }
                   }}
                   onPin={() => toast.info("Pin coming soon")}
                   onInfo={() => toast.info("Message info coming soon")}
                 />
               )}
+
+              {/* Full emoji reaction picker (opened from the context menu "+") */}
+              {reactionPickerFor && (
+                <div
+                  className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4"
+                  onClick={() => setReactionPickerFor(null)}
+                >
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <EmojiReactionPanel
+                      onSelect={(emoji) => {
+                        handleReactionClick(reactionPickerFor.id, emoji)
+                        setReactionPickerFor(null)
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <ConsentRequestDialog
+                open={consentDialogOpen && consent.awaitingMyAccept}
+                requesterName={contactName}
+                accepting={acceptConsentMutation.isPending}
+                rejecting={declineConsentMutation.isPending}
+                onAccept={() =>
+                  acceptConsentMutation.mutate(undefined, { onSuccess: () => setConsentDialogOpen(false) })
+                }
+                onReject={() =>
+                  declineConsentMutation.mutate(undefined, { onSuccess: () => setConsentDialogOpen(false) })
+                }
+                onDismiss={() => setConsentDialogOpen(false)}
+              />
 
               {showCallRestrictionModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

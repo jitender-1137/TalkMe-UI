@@ -16,6 +16,7 @@ interface MatchState {
   setStatus: (status: MatchStatus) => void
   setFilters: (filters: Partial<MatchFilters>) => void
   setStranger: (stranger: Stranger | null) => void
+  setStrangerTyping: (isTyping: boolean) => void
   setPartnerReconnecting: (reconnecting: boolean) => void
   addMessage: (message: StrangerMessage) => void
   revealMedia: (messageId: string) => void
@@ -46,6 +47,10 @@ export const useMatchStore = create<MatchState>((set) => ({
   })),
 
   setStranger: (stranger) => set({ stranger }),
+
+  setStrangerTyping: (isTyping) => set((state) =>
+    state.stranger ? { stranger: { ...state.stranger, isTyping } } : {}
+  ),
 
   setPartnerReconnecting: (partnerReconnecting) => set({ partnerReconnecting }),
   

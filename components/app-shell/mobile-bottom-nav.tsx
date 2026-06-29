@@ -14,7 +14,7 @@ import { motion } from "framer-motion";
 import { User } from "lucide-react";
 
 export function MobileBottomNav() {
-  const { showLoginModal, showSignupModal, user } = useAuth();
+  const { showLoginModal, showSignupModal, user, isAuthenticated } = useAuth();
   const { activeTab, setActiveTab } = useNavigation();
   const { showMobileSecondaryPanel, selectedConversationId } = useChatContext();
   const matchStatus = useMatchStore((state) => state.status);
@@ -38,8 +38,10 @@ export function MobileBottomNav() {
   // safety tips, create, etc.) hides the nav — it shows only on a bare tab.
   const hasOverlay = useHasBlockingOverlay();
 
-  // Hide nav bar when active in a conversation room, auth modals, or any overlay
+  // Hide nav bar for unauthenticated visitors (neither a full login nor a guest
+  // session), in a conversation room, behind auth modals, or under any overlay.
   if (
+    !isAuthenticated ||
     showLoginModal ||
     showSignupModal ||
     isOneToOneOpen ||
@@ -58,7 +60,7 @@ export function MobileBottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg md:hidden">
+    <nav className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-lg md:hidden">
       {/* Floating glassmorphic rounded pill */}
       <div className="rounded-full bg-white/90 dark:bg-[rgb(30,37,43)] backdrop-blur-[60px] border border-black/12 dark:border-white/10 shadow-lg shadow-black/50 dark:shadow-black/30 px-2">
         <div className="flex items-center justify-around h-13 py-1 relative">

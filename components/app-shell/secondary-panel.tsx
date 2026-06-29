@@ -51,6 +51,45 @@ import {
   HEADER_ICON,
 } from "@/components/ui/header-button";
 
+/**
+ * WhatsApp-style chat-list preview for the last message. Media messages usually carry
+ * an empty (or URL) `content` — the caption — so rendering it raw shows nothing; show
+ * an icon + label instead, with the caption appended when there's real text. Returns
+ * null for plain text / shared-post messages so the caller falls back to displayContent.
+ */
+function mediaLastMessagePreview(
+  lastMsg: { type?: string | null; content?: string | null } | null | undefined,
+): string | null {
+  if (!lastMsg) return null;
+  const type = (lastMsg.type || "").toUpperCase();
+  const raw = (lastMsg.content || "").trim();
+  const looksLikeUrl =
+    raw.startsWith("http://") ||
+    raw.startsWith("https://") ||
+    raw.startsWith("/api/") ||
+    raw.startsWith("/uploads/");
+  // A real caption (not a bare media URL) is shown after the icon, like WhatsApp.
+  const caption = raw && !looksLikeUrl ? displayContent(raw) : "";
+  switch (type) {
+    case "IMAGE":
+      return `📷 ${caption || "Photo"}`;
+    case "VIDEO":
+      return `🎥 ${caption || "Video"}`;
+    case "AUDIO":
+    case "VOICE":
+      return `🎤 ${caption || "Voice message"}`;
+    case "DOCUMENT":
+    case "FILE":
+      return `📄 ${caption || "Document"}`;
+    case "STICKER":
+      return "Sticker";
+    case "GIF":
+      return `🎞️ ${caption || "GIF"}`;
+    default:
+      return null; // plain text / shared post → caller uses displayContent
+  }
+}
+
 /** Messaging-themed backdrop for the Chats header: a flowing conversation of
  *  speech bubbles, a reaction heart and drifting sparkles. */
 function ChatsBackdrop() {
@@ -461,7 +500,8 @@ const ConversationItem = memo(function ConversationItem({
   const lastMessageText = conversation.lastMessage
     ? conversation.lastMessage.isDeleted
       ? "This message was deleted"
-      : displayContent(conversation.lastMessage.content)
+      : (mediaLastMessagePreview(conversation.lastMessage) ??
+        displayContent(conversation.lastMessage.content))
     : "No messages yet";
   const lastMessageTime = conversation.lastMessage
     ? formatRelativeTime(conversation.lastMessage.timestamp)
@@ -791,7 +831,7 @@ export function SecondaryPanel() {
           ) : (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setFriendsOpen(true)}
+                onClick={() => setActiveTab("friends")}
                 aria-label="Friends"
                 className={cn(HEADER_ICON_BTN, "relative")}
               >

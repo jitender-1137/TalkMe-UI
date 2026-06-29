@@ -59,7 +59,7 @@ export function LoginModal() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 overflow-y-auto flex justify-center items-start bg-black/60 backdrop-blur-xs p-4 md:py-10"
+          className="fixed inset-0 z-50 overflow-y-auto flex justify-center items-start bg-cards p-4 md:py-10"
           onClick={closeLoginModal}
         >
           <motion.div

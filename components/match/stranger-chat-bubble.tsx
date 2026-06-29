@@ -1,6 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { ShieldAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { SafeModeMedia } from "./safe-mode-media"
@@ -31,6 +32,8 @@ interface StrangerChatBubbleProps {
   onHideMedia: () => void
   onAcceptImageRequest?: () => void
   onRejectImageRequest?: () => void
+  onAcceptConsent?: () => void
+  onDeclineConsent?: () => void
 }
 
 export function StrangerChatBubble({
@@ -39,8 +42,82 @@ export function StrangerChatBubble({
   onHideMedia,
   onAcceptImageRequest,
   onRejectImageRequest,
+  onAcceptConsent,
+  onDeclineConsent,
 }: StrangerChatBubbleProps) {
   const isFromStranger = message.isFromStranger
+
+  // 18+ consent request from the peer — amber/danger banner with Accept/Decline.
+  if (message.content === "__CONSENT_REQUEST__") {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex justify-center w-full mb-4"
+      >
+        <div className="bg-amber-500/10 border border-amber-500/30 backdrop-blur-md rounded-2xl p-4 max-w-sm text-center shadow-xl space-y-3">
+          <div className="flex items-center justify-center gap-2 text-amber-500">
+            <ShieldAlert className="h-5 w-5" />
+            <span className="text-sm font-semibold">18+ Content Permission</span>
+          </div>
+          <p className="text-sm text-foreground/80">
+            {isFromStranger
+              ? "Stranger wants to send 18+ (mature) messages. Allow it for this chat?"
+              : "You requested permission to send 18+ messages. Waiting for a response..."}
+          </p>
+          {isFromStranger && onAcceptConsent && onDeclineConsent && (
+            <div className="flex justify-center gap-3">
+              <Button
+                size="sm"
+                className="bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl"
+                onClick={onAcceptConsent}
+              >
+                Allow
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-slate-600 text-slate-300 hover:bg-white/10 rounded-xl"
+                onClick={onDeclineConsent}
+              >
+                Decline
+              </Button>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (message.content === "__CONSENT_GRANTED__") {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex justify-center w-full mb-4"
+      >
+        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full px-4 py-1.5 text-xs font-semibold shadow-inner">
+          18+ content is now allowed in this chat.
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (message.content === "__CONSENT_DECLINED__" || message.content === "__CONSENT_LIMIT__") {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex justify-center w-full mb-4"
+      >
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive rounded-full px-4 py-1.5 text-xs font-semibold shadow-inner">
+          {message.content === "__CONSENT_LIMIT__"
+            ? "18+ requests are no longer allowed in this chat."
+            : "18+ content request was declined."}
+        </div>
+      </motion.div>
+    )
+  }
 
   // Intercept special image requests and acceptances
   if (message.content === "__IMAGE_REQUEST__") {
@@ -107,6 +184,36 @@ export function StrangerChatBubble({
           {isFromStranger
             ? "Stranger rejected the image exchange request."
             : "You rejected the image exchange request."}
+        </div>
+      </motion.div>
+    )
+  }
+
+  // Held-for-consent explicit message (sender's own). Never delivered — shown
+  // in-place with a danger flag instead of a toast, so the sender knows why.
+  if (message.blocked) {
+    const detail =
+      message.consentLimitReached
+        ? "Not delivered — 18+ requests are no longer allowed in this chat."
+        : message.consentStatus === "PENDING"
+          ? "Not delivered — waiting for 18+ consent."
+          : "Not delivered — needs 18+ consent.";
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.18 }}
+        className="flex w-full mb-3 justify-end"
+      >
+        <div className="max-w-[80%] md:max-w-[70%] flex flex-col items-end">
+          <div className="rounded-2xl rounded-br-sm border border-destructive/40 bg-destructive/10 px-3 py-2">
+            <p className="text-sm text-foreground/80 whitespace-pre-wrap break-words">{message.content}</p>
+            <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-destructive">
+              <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+              <span>{detail}</span>
+              <span className="ml-1 text-destructive/60">{message.time}</span>
+            </div>
+          </div>
         </div>
       </motion.div>
     )

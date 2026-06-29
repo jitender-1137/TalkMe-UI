@@ -64,7 +64,7 @@ export function GuestMatchForm() {
   ];
 
   return (
-    <div className="flex flex-col h-[100dvh] overflow-y-auto pb-32 md:pb-4">
+    <div className="flex flex-col h-[100dvh] overflow-y-auto">
       {/* Header */}
       {(isAuthenticated || isGuestMatch) && (
         <header className="sticky top-0 z-40 bg-background border-b border-border px-4 md:py-4 py-2">

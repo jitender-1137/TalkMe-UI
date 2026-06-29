@@ -3,6 +3,7 @@ import { ENDPOINTS } from "../endpoints"
 import { unwrapResponse, unwrapPaginatedResponse } from "../response-handler"
 import type { Post, Comment, CreatePostPayload } from "../types/social.types"
 import type { PaginatedResponse, PaginationParams } from "../types/api.types"
+import type { User as AuthUser } from "../types"
 
 /** Shape returned by the backend PostCommentResponse. */
 export interface PostCommentDTO {
@@ -83,6 +84,18 @@ export const PostService = {
   /** Unlike a post. */
   unlikePost: async (postId: string): Promise<void> => {
     await apiClient.delete(ENDPOINTS.POSTS.UNLIKE(postId))
+  },
+
+  /** Fetch the list of users who liked a post (paginated, newest first). */
+  getPostLikes: async (
+    postId: string,
+    page = 0,
+    size = 30,
+  ): Promise<PaginatedResponse<AuthUser>> => {
+    const response = await apiClient.get<any>(ENDPOINTS.POSTS.LIKES(postId), {
+      params: { page, size },
+    })
+    return unwrapPaginatedResponse<AuthUser>(response)
   },
 
   /** Bookmark a post. */

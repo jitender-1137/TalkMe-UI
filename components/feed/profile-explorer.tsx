@@ -59,7 +59,7 @@ export function ProfileExplorer({
   onViewProfile,
   activeStories = [],
 }: ProfileExplorerProps) {
-  const { setActiveTab } = useNavigation();
+  const { activeTab } = useNavigation();
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [editedBio, setEditedBio] = useState(profile.bio);
   const [bioExpanded, setBioExpanded] = useState(false);
@@ -85,13 +85,12 @@ export function ProfileExplorer({
     try {
       // Reuse an existing 1:1 chat if these two users already have one.
       const chat = await openOrCreateChat(targetId);
-      // Remember the origin so mobile Back returns to the News tab.
-      setChatReturnTab("news");
+      // Keep the profile modal OPEN and open the conversation nested under it
+      // (#news/explore/user/<id>/messages) so Back returns to the profile, then the feed.
+      // chatReturnTab records the origin root for the close handler.
+      setChatReturnTab(activeTab);
       setSelectedConversationId(chat.id);
       setShowMobileSecondaryPanel(false);
-      // setActiveTab updates the hash via replaceState (no history entry).
-      setActiveTab("chats");
-      setModalUserId(null);
     } catch {
       /* createChat surfaces its own error toast */
     }

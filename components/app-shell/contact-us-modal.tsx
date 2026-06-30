@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import { motion, AnimatePresence } from "framer-motion"
-import { X, Mail, MessageSquare, LifeBuoy, Shield } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Mail, MessageSquare, LifeBuoy, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ContactUsModalProps {
-  isOpen: boolean
-  onClose: () => void
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
@@ -25,7 +25,7 @@ export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-screen overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -49,8 +49,8 @@ export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
               <section className="space-y-2">
                 <p>
                   We&apos;d love to hear from you. Whether you have a question, found a bug, or want
-                  to share feedback, reach out through any of the channels below and our team will get
-                  back to you as soon as possible.
+                  to share feedback, reach out through any of the channels below and our team will
+                  get back to you as soon as possible.
                 </p>
               </section>
 
@@ -62,7 +62,9 @@ export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
                   <Mail className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">General Support</h3>
-                    <p className="text-xs">support@talkme.app — for account help, bugs, and general questions.</p>
+                    <p className="text-xs">
+                      support@talkme.app — for account help, bugs, and general questions.
+                    </p>
                   </div>
                 </a>
 
@@ -73,7 +75,9 @@ export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
                   <Shield className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">Privacy &amp; Safety</h3>
-                    <p className="text-xs">privacy@talkme.app — to report abuse or raise a privacy concern.</p>
+                    <p className="text-xs">
+                      privacy@talkme.app — to report abuse or raise a privacy concern.
+                    </p>
                   </div>
                 </a>
 
@@ -83,8 +87,12 @@ export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
                 >
                   <LifeBuoy className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">Business &amp; Partnerships</h3>
-                    <p className="text-xs">hello@talkme.app — for partnerships, press, and other inquiries.</p>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Business &amp; Partnerships
+                    </h3>
+                    <p className="text-xs">
+                      hello@talkme.app — for partnerships, press, and other inquiries.
+                    </p>
                   </div>
                 </a>
               </section>
@@ -92,8 +100,8 @@ export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
               <section className="space-y-2">
                 <h3 className="text-base font-semibold text-foreground">Response time</h3>
                 <p>
-                  We typically respond within 1–2 business days. For urgent safety issues, please use
-                  the Privacy &amp; Safety contact above and include as much detail as possible.
+                  We typically respond within 1–2 business days. For urgent safety issues, please
+                  use the Privacy &amp; Safety contact above and include as much detail as possible.
                 </p>
               </section>
             </div>
@@ -108,5 +116,5 @@ export function ContactUsModal({ isOpen, onClose }: ContactUsModalProps) {
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }

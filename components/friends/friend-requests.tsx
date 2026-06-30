@@ -254,12 +254,12 @@ function PeopleYouMayKnow({ onViewAll }: { onViewAll: () => void }) {
               </button>
               <button
                 type="button"
-                onClick={() => openPhoto(person.avatar, person.gender)}
+                onClick={() => openPhoto(person.avatar || person.images?.[0], person.gender)}
                 aria-label={`View ${person.name}'s photo`}
                 className="rounded-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
               >
                 <Avatar className="h-14 w-14 ring-2 ring-primary/10">
-                  <AvatarImage src={getAvatarUrl(person.avatar, person.gender)} />
+                  <AvatarImage src={getAvatarUrl(person.avatar || person.images?.[0], person.gender)} />
                   <AvatarFallback>{person.name.charAt(0)}</AvatarFallback>
                 </Avatar>
               </button>

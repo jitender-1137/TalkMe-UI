@@ -66,7 +66,7 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
   const { data: ownProfile } = useProfile()
 
   const openOrCreateChat = useOpenOrCreateChat()
-  const { setActiveTab } = useNavigation()
+  const { activeTab } = useNavigation()
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext()
 
   // Convention: photo → image modal; name → profile modal.
@@ -83,13 +83,12 @@ export function FeedPost({ post, onLike, onBookmark, onShare, onComment, onAutho
     try {
       // Reuse an existing 1:1 chat if these two users already have one.
       const chat = await openOrCreateChat(targetId)
-      // Remember the origin so mobile Back returns to the News tab.
-      setChatReturnTab("news")
+      // Keep the profile modal OPEN and open the conversation nested under it
+      // (#news/feed/user/<id>/messages) so Back returns to the profile, then the feed.
+      // chatReturnTab records the origin root for the close handler.
+      setChatReturnTab(activeTab)
       setSelectedConversationId(chat.id)
       setShowMobileSecondaryPanel(false)
-      // setActiveTab updates the hash via replaceState (no history entry).
-      setActiveTab("chats")
-      setProfileUserId(null)
     } catch {
       /* createChat surfaces its own error toast */
     }

@@ -14,6 +14,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { useVisualViewport } from "@/hooks/use-visual-viewport"
 import { cn } from "@/lib/utils"
 import { displayContent } from "@/lib/shared-post"
+import { warmUpSmartReply } from "@/lib/smart-reply/engine"
 import type { Message, ChatContact, ReplyTo, PendingAttachment } from "./types"
 import { toast } from "sonner"
 import { getPendingFile } from "@/lib/chat/pending-upload-files"
@@ -423,6 +424,23 @@ export function ChatArea({
       .map(m => m.media!)
       .reverse() // show latest first
   }, [allMessages])
+
+  // Last incoming text message — what the smart-reply chips react to. Skip our own
+  // messages, deleted/held ones, and media-only messages (no usable text).
+  const smartReplyLastIncoming = useMemo(() => {
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      const m = allMessages[i]
+      if (m.isSent || m.isDeleted || m.status === "blocked") continue
+      const text = displayContent(m.content || "").trim()
+      if (m.type === "text" && text) return text
+    }
+    return null
+  }, [allMessages])
+
+  // Preload the in-browser model when a chat opens so chips refine quickly.
+  useEffect(() => {
+    if (selectedConversationId) warmUpSmartReply()
+  }, [selectedConversationId])
 
 
 
@@ -944,6 +962,8 @@ export function ChatArea({
                     onSendMediaDirectly={handleSendMediaDirectly}
                     restoreDraft={restoreDraft}
                     onRestoreConsumed={() => setRestoreDraft(null)}
+                    smartReplyEnabled
+                    smartReplyLastIncoming={smartReplyLastIncoming}
                   />
                   </>
                 )

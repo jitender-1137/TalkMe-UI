@@ -26,6 +26,7 @@ import {
   User,
   Users,
   RefreshCw,
+  Lightbulb,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -60,6 +61,7 @@ import { PrivacyModal } from "./privacy-modal";
 import { CookieModal } from "./cookie-modal";
 import { AboutModal } from "./about-modal";
 import { ContactUsModal } from "./contact-us-modal";
+import { TipsModal } from "./tips-modal";
 import { CopyrightFooter } from "./copyright-footer";
 import { useUrlModal } from "@/lib/navigation/use-url-modal";
 import type { InfoPage } from "./info-pages";
@@ -309,6 +311,7 @@ export function SettingsPage() {
   useUrlModal(legalPage === "cookie-policy", closeLegal, "cookie-policy");
   useUrlModal(legalPage === "about", closeLegal, "about");
   useUrlModal(legalPage === "contact-us", closeLegal, "contact-us");
+  useUrlModal(legalPage === "tips", closeLegal, "tips");
 
   // Drill-down sub-views are hash-addressable too; Back returns to the menu.
   const goToMenu = () => setCurrentSubView("menu");
@@ -548,6 +551,12 @@ export function SettingsPage() {
                       label="Chats"
                       tile="from-sky-500 to-blue-600"
                       onClick={() => setCurrentSubView("chats")}
+                    />
+                    <SettingRow
+                      icon={Lightbulb}
+                      label="Tips & How-To"
+                      tile="from-amber-400 to-yellow-500"
+                      onClick={() => setLegalPage("tips")}
                     />
                     <SettingRow
                       icon={HelpCircle}
@@ -921,6 +930,7 @@ export function SettingsPage() {
       <CookieModal isOpen={legalPage === "cookie-policy"} onClose={closeLegal} />
       <AboutModal isOpen={legalPage === "about"} onClose={closeLegal} />
       <ContactUsModal isOpen={legalPage === "contact-us"} onClose={closeLegal} />
+      <TipsModal isOpen={legalPage === "tips"} onClose={closeLegal} />
     </div>
   );
 }

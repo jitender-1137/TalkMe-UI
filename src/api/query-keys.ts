@@ -20,6 +20,12 @@ export const QUERY_KEYS = {
     BY_ID: (userId: string) => ["profile", userId] as const,
   },
 
+  // ── Profile views ("who viewed my profile") ────────────────────────────────
+  PROFILE_VIEWS: {
+    LIST: ["profile-views"] as const,
+    COUNT: ["profile-views", "count"] as const,
+  },
+
   // ── Contacts ──────────────────────────────────────────────────────────────
   CONTACTS: {
     LIST: ["contacts"] as const,

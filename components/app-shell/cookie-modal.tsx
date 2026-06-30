@@ -1,12 +1,12 @@
-"use client"
+"use client";
 
-import { motion, AnimatePresence } from "framer-motion"
-import { X, Cookie } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Cookie } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface CookieModalProps {
-  isOpen: boolean
-  onClose: () => void
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 export function CookieModal({ isOpen, onClose }: CookieModalProps) {
@@ -25,7 +25,7 @@ export function CookieModal({ isOpen, onClose }: CookieModalProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+            className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-screen overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -46,44 +46,104 @@ export function CookieModal({ isOpen, onClose }: CookieModalProps) {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 text-sm text-muted-foreground leading-relaxed scrollbar-thin">
+              <p className="text-xs text-muted-foreground/80">Last updated: June 30, 2026</p>
               <p>
-                Our website/application (the “Website” or “TalkMe”) uses cookies. In this cookie policy, we explain in detail what cookies we use, for what purposes we use them and how you can decline our use of cookies. If you do not agree with our use of cookies, please disable your cookies as described in the section “How to disable cookies?” Please beware that the full functionality of the application may not be available without cookies.
+                Our website/application (the “Website” or “TalkMe”) uses cookies and similar
+                technologies — including browser local storage, IndexedDB, service workers, and push
+                subscriptions. In this cookie policy, we explain in detail what we use, for what
+                purposes we use them and how you can decline our use of cookies. If you do not agree
+                with our use of cookies, please disable your cookies as described in the section
+                “How to disable cookies?” Please beware that the full functionality of the
+                application may not be available without cookies.
               </p>
 
               <section className="space-y-2">
                 <h3 className="text-base font-semibold text-foreground">1. What is a cookie?</h3>
                 <p>
-                  A cookie is a small piece of data or a text file that is downloaded to your computer or mobile device when you access certain websites. Cookies may contain text that can be read by the web server that delivered the cookie to you. The text contained in the cookie generally consists of a sequence of letters and numbers that uniquely identifies your computer or mobile device; it may contain other information as well.
+                  A cookie is a small piece of data or a text file that is downloaded to your
+                  computer or mobile device when you access certain websites. Cookies may contain
+                  text that can be read by the web server that delivered the cookie to you. The text
+                  contained in the cookie generally consists of a sequence of letters and numbers
+                  that uniquely identifies your computer or mobile device; it may contain other
+                  information as well.
                 </p>
               </section>
 
               <section className="space-y-2">
-                <h3 className="text-base font-semibold text-foreground">2. What types of cookies exist?</h3>
+                <h3 className="text-base font-semibold text-foreground">
+                  2. What types of cookies exist?
+                </h3>
                 <ul className="list-disc pl-5 space-y-2">
-                  <li><strong>Strictly necessary cookies:</strong> These cookies are necessary for the proper functioning of the website, such as displaying content, logging in, validating your session, responding to your request for services, and other functions. If you disable these cookies, you may not be able to access features on our website correctly or at all.</li>
-                  <li><strong>Performance cookies:</strong> These cookies collect information about the use of the website, such as pages visited, traffic sources, users’ interests, content management, and other website measurements.</li>
-                  <li><strong>Functional Cookies:</strong> These cookies enable the website to remember a user’s choices – such as their language, user name, and other personal choices – while using the website.</li>
-                  <li><strong>Session Cookies:</strong> These cookies link the actions of a user during a browser session. They are temporary and expire after a browser session; thus, they are not stored long term.</li>
-                  <li><strong>Persistent cookies:</strong> These cookies are stored on a user’s device in between browser sessions, which allows the user’s preferences or actions across a site to be remembered.</li>
+                  <li>
+                    <strong>Strictly necessary cookies:</strong> These cookies are necessary for the
+                    proper functioning of the website, such as displaying content, logging in,
+                    validating your session, responding to your request for services, and other
+                    functions. If you disable these cookies, you may not be able to access features
+                    on our website correctly or at all.
+                  </li>
+                  <li>
+                    <strong>Performance cookies:</strong> These cookies collect information about
+                    the use of the website, such as pages visited, traffic sources, users’
+                    interests, content management, and other website measurements.
+                  </li>
+                  <li>
+                    <strong>Functional Cookies:</strong> These cookies enable the website to
+                    remember a user’s choices – such as their language, user name, and other
+                    personal choices – while using the website.
+                  </li>
+                  <li>
+                    <strong>Session Cookies:</strong> These cookies link the actions of a user
+                    during a browser session. They are temporary and expire after a browser session;
+                    thus, they are not stored long term.
+                  </li>
+                  <li>
+                    <strong>Persistent cookies:</strong> These cookies are stored on a user’s device
+                    in between browser sessions, which allows the user’s preferences or actions
+                    across a site to be remembered.
+                  </li>
                 </ul>
               </section>
 
               <section className="space-y-2">
                 <h3 className="text-base font-semibold text-foreground">3. Cookie Consent</h3>
                 <p>
-                  When you visit the website for the first time, we may ask you to provide us with your consent to our use of cookies via a cookie consent banner. If you do not provide your consent, we will serve you technical cookies only that are strictly necessary to ensure the proper functioning of the Website. The use of such cookies does not require your consent. Please note that we may not be able to provide you with the best possible user experience if not all cookies are enabled.
+                  When you visit the website for the first time, we may ask you to provide us with
+                  your consent to our use of cookies via a cookie consent banner. If you do not
+                  provide your consent, we will serve you technical cookies only that are strictly
+                  necessary to ensure the proper functioning of the Website. The use of such cookies
+                  does not require your consent. Please note that we may not be able to provide you
+                  with the best possible user experience if not all cookies are enabled.
                 </p>
               </section>
 
               <section className="space-y-2">
-                <h3 className="text-base font-semibold text-foreground">4. What cookies do we use and for what purposes?</h3>
-                <p>
-                  On TalkMe, we use cookies to:
-                </p>
+                <h3 className="text-base font-semibold text-foreground">
+                  4. What cookies do we use and for what purposes?
+                </h3>
+                <p>On TalkMe, we use cookies to:</p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Identify you when you log in and authenticate your sessions securely.</li>
-                  <li>Remember your preferences, settings, and login details (e.g. your theme colors, chat background settings, active status).</li>
-                  <li>Analyze traffic and usage patterns using analytics tools to improve application performance.</li>
+                  <li>
+                    Remember your preferences, settings, and login details (e.g. your theme colors,
+                    chat background settings, active status, and notification preferences).
+                  </li>
+                  <li>
+                    Cache your conversations and messages locally (in IndexedDB) so the app loads
+                    quickly and works smoothly; this cache is tied to your account and cleared on
+                    logout.
+                  </li>
+                  <li>
+                    Register a service worker and push subscription so we can deliver notifications
+                    you opt into.
+                  </li>
+                  <li>
+                    Cache assistive AI models (e.g. for smart-reply suggestions) so in-browser
+                    features load faster on repeat use.
+                  </li>
+                  <li>
+                    Analyze traffic and usage patterns using analytics tools to improve application
+                    performance.
+                  </li>
                   <li>Detect spam and prevent abuse to ensure site security.</li>
                 </ul>
                 <div className="overflow-x-auto pt-2">
@@ -121,6 +181,40 @@ export function CookieModal({ isOpen, onClose }: CookieModalProps) {
                         <td className="p-2">Persistent</td>
                         <td className="p-2">Saves light/dark system mode selection.</td>
                       </tr>
+                      <tr>
+                        <td className="p-2 font-mono text-foreground">talkme (IndexedDB)</td>
+                        <td className="p-2">First-party (IndexedDB)</td>
+                        <td className="p-2">Until logout / cleared</td>
+                        <td className="p-2">
+                          Caches your chats and messages locally for fast, offline-friendly loading;
+                          scoped per account.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-mono text-foreground">notification-settings</td>
+                        <td className="p-2">First-party (Local Storage)</td>
+                        <td className="p-2">Persistent</td>
+                        <td className="p-2">
+                          Saves your notification, sound, and desktop-alert preferences.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-mono text-foreground">push subscription</td>
+                        <td className="p-2">First-party (Service Worker / Push)</td>
+                        <td className="p-2">Until revoked</td>
+                        <td className="p-2">
+                          Enables Web Push notifications when the app is closed.
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 font-mono text-foreground">AI model cache</td>
+                        <td className="p-2">First-party (Cache Storage)</td>
+                        <td className="p-2">Persistent</td>
+                        <td className="p-2">
+                          Stores downloaded in-browser AI models (e.g. smart replies) to avoid
+                          re-downloading.
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -129,16 +223,52 @@ export function CookieModal({ isOpen, onClose }: CookieModalProps) {
               <section className="space-y-2">
                 <h3 className="text-base font-semibold text-foreground">5. Disabling Cookies</h3>
                 <p>
-                  You can manage the acceptance or rejection of cookies on your browser by altering its settings. Please keep in mind that refusing necessary cookies will likely influence your experience or prevent usage of our services.
+                  You can manage the acceptance or rejection of cookies on your browser by altering
+                  its settings. Please keep in mind that refusing necessary cookies will likely
+                  influence your experience or prevent usage of our services.
                 </p>
-                <p>
-                  For guides on popular browsers, consult the following links:
-                </p>
+                <p>For guides on popular browsers, consult the following links:</p>
                 <ul className="list-disc pl-5 space-y-1 text-xs">
-                  <li><a href="https://support.google.com/chrome/answer/95647" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Google Chrome</a></li>
-                  <li><a href="https://support.apple.com/guide/safari/sfri11471/mac" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Apple Safari</a></li>
-                  <li><a href="https://support.mozilla.org/kb/cookies-information-websites-store-on-your-computer" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Mozilla Firefox</a></li>
-                  <li><a href="https://support.microsoft.com/microsoft-edge/delete-cookies-in-microsoft-edge-63fd9abd-d662-e24e-240a-2839b5066a11" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Microsoft Edge</a></li>
+                  <li>
+                    <a
+                      href="https://support.google.com/chrome/answer/95647"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Google Chrome
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://support.apple.com/guide/safari/sfri11471/mac"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Apple Safari
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://support.mozilla.org/kb/cookies-information-websites-store-on-your-computer"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Mozilla Firefox
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://support.microsoft.com/microsoft-edge/delete-cookies-in-microsoft-edge-63fd9abd-d662-e24e-240a-2839b5066a11"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Microsoft Edge
+                    </a>
+                  </li>
                 </ul>
               </section>
             </div>
@@ -153,5 +283,5 @@ export function CookieModal({ isOpen, onClose }: CookieModalProps) {
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }

@@ -11,6 +11,7 @@ import { AvatarStatusBadge } from '@/components/presence'
 import { useLivePresence } from '@/lib/presence/live-status-store'
 import { useWebSocket } from '@/components/providers/websocket-provider'
 import { useUserById, useBlockUser, useUnblockUser, useReportUser } from '@/src/api/hooks/useProfile'
+import { useRecordProfileView } from '@/src/api/hooks/useProfileViews'
 import { useMutualFriends } from '@/src/api/hooks/useDiscover'
 import { useImageViewer } from '@/components/providers'
 import { BASE_URL, getMediaUrl } from '@/src/api/client'
@@ -55,6 +56,19 @@ export function UserProfileModal({ contact, userId, isOpen, onClose, onMessage, 
   const blockMutation = useBlockUser()
   const unblockMutation = useUnblockUser()
   const reportMutation = useReportUser()
+
+  // Record a profile view (once per open, never for your own profile). Best-effort:
+  // the viewed user gets a live count + this viewer in their "who viewed me" list.
+  const recordView = useRecordProfileView()
+  const recordedViewRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isOpen) { recordedViewRef.current = null; return }
+    if (isOwnProfile || !user?.id) return
+    if (recordedViewRef.current === user.id) return
+    recordedViewRef.current = user.id
+    recordView.mutate({ userId: user.id, type: 'PROFILE' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isOwnProfile, user?.id])
 
   const [showReportForm, setShowReportForm] = useState(false)
   const [reportReason, setReportReason] = useState('spam')

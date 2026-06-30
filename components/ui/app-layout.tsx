@@ -421,7 +421,7 @@ export function AppLayout({
             {/* Action buttons next to the title (fades out as scroller moves up) */}
             <motion.div
               style={disableCollapse ? undefined : { opacity: largeTitleOpacity, y: largeTitleY }}
-              className="relative z-10 flex items-center gap-2"
+              className="z-10 flex items-center gap-2 absolute right-2 top-3"
             >
               {headerRight}
             </motion.div>

@@ -1170,6 +1170,23 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       })
 
+      // Someone viewed my profile → refresh the live count badge and the views list.
+      client.subscribe("/user/queue/profile-views", (message) => {
+        try {
+          const payload = JSON.parse(message.body)
+          if (typeof payload?.total === "number" && typeof payload?.unseen === "number") {
+            queryClient.setQueryData(QUERY_KEYS.PROFILE_VIEWS.COUNT, {
+              total: payload.total,
+              unseen: payload.unseen,
+            })
+            queryClient.invalidateQueries({ queryKey: QUERY_KEYS.PROFILE_VIEWS.LIST })
+            handlersRef.current["profile_viewed"]?.forEach((h) => h(payload))
+          }
+        } catch (err) {
+          console.error("[STOMP] Profile-view event parse error:", err)
+        }
+      })
+
       // Subscribe to user chat events (e.g. chat_created, chat_deleted)
       if (chatsSubscriptionRef.current) {
         chatsSubscriptionRef.current.unsubscribe()

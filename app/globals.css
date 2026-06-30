@@ -587,3 +587,17 @@ html.standalone {
      dedup keep ONLY the prefixed form, leaving Chrome's unprefixed blur intact. */
   backdrop-filter: none !important;
 }
+
+/* ============================================================
+   Default avatar muting (dark mode only).
+   The default profile images are light-grey silhouettes on a WHITE
+   background (public/avtar/{male,female}-default.png, placeholder-user.jpg).
+   On dark surfaces a full-white circle glares, so dim it to a soft muted
+   grey. Matched by src path, so REAL user photos (served from the media
+   host, different paths) are never touched. Applies to both plain <img>
+   and Radix <AvatarImage> (both render an <img src=…>).
+   ============================================================ */
+.dark img[src*="/avtar/"],
+.dark img[src*="placeholder-user"] {
+  filter: brightness(0.62) contrast(0.95);
+}

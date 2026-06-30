@@ -7,6 +7,7 @@ import {
   FileText,
   ShieldCheck,
   Info,
+  Lightbulb,
 } from "lucide-react";
 import type { InfoPage } from "@/components/app-shell/info-pages";
 
@@ -59,6 +60,13 @@ export function HelpPage({ onOpenLegal }: HelpPageProps) {
 
       {/* Actions */}
       <div className="bg-card rounded-[18px] overflow-hidden border border-border divide-y divide-border/50">
+        <div onClick={() => onOpenLegal("tips")} className={rowClass}>
+          <div className="flex items-center gap-3.5 text-foreground">
+            <Lightbulb className="h-5 w-5 text-muted-foreground" />
+            <span className="text-sm font-medium">Tips & How-To</span>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </div>
         <div onClick={() => onOpenLegal("contact-us")} className={rowClass}>
           <div className="flex items-center gap-3.5 text-foreground">
             <MessageSquareText className="h-5 w-5 text-muted-foreground" />

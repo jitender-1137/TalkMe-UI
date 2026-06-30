@@ -44,7 +44,7 @@ export function DiscoverPeople() {
 
   const openOrCreateChat = useOpenOrCreateChat();
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } = useChatContext();
-  const { setActiveTab } = useNavigation();
+  const { activeTab } = useNavigation();
 
   // Extract items from paginated response
   const suggestions = suggestionsData?.items ?? [];
@@ -137,10 +137,11 @@ export function DiscoverPeople() {
             try {
               // Reuse an existing 1:1 chat instead of creating a duplicate.
               const chat = await openOrCreateChat(selectedUserId);
-              setChatReturnTab("friends");
+              // Stay on the current root tab — the conversation opens nested under it
+              // so Back returns here. chatReturnTab records the origin.
+              setChatReturnTab(activeTab);
               setSelectedConversationId(chat.id);
               setShowMobileSecondaryPanel(false);
-              setActiveTab("chats");
               setSelectedUserId(null);
             } catch {
               /* createChat surfaces its own error toast */

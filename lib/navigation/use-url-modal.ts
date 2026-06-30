@@ -114,15 +114,34 @@ export function clearOverlays() {
   notify()
 }
 
-/** Remove an overlay closed via the UI; consume its history entry with back(). */
+/**
+ * Remove an overlay closed programmatically (UI button, or its `open` flipping
+ * false). Also unwinds any NESTED children stacked above it — closing a parent
+ * implicitly closes its children — so the stack and the browser history stay in
+ * lockstep.
+ *
+ * Why unwind: previously this spliced only the target and ALWAYS did
+ * `history.back()`. When the closed overlay wasn't the top (e.g. the Lobby list
+ * closing while its `chat` child is still open), `history.back()` popped the
+ * browser's TOP entry (the child's URL), not the target's — desyncing stack↔URL.
+ * A later Back/swipe then over-popped past intermediate screens (Lobby → chat →
+ * Back landing on the Connect landing / root). Removing the target plus its
+ * children with a single `history.go(-n)` keeps everything in sync.
+ */
 function removeOverlay(id: number) {
   const idx = stack.findIndex((o) => o.id === id)
   if (idx === -1) return
-  const [removed] = stack.splice(idx, 1)
+  // Drop the target AND everything stacked above it (its nested children).
+  const removed = stack.splice(idx)
   notify()
-  navDebug("removeOverlay (UI close) →", removed?.segment, "| remaining:", segs())
+  // Reset the children's own state (index 0 is the target — its owner already
+  // flipped it closed). Each onClose nulls that hook's idRef first, so the
+  // children's own useUrlModal effects won't try to remove again.
+  for (let i = removed.length - 1; i >= 1; i--) removed[i].onClose()
+  navDebug("removeOverlay (UI close) →", removed.map((o) => o.segment), "| remaining:", segs())
   skipNextPop = true
-  if (typeof window !== "undefined") window.history.back()
+  // A single history.go(-n) fires ONE popstate (swallowed by skipNextPop).
+  if (typeof window !== "undefined") window.history.go(-removed.length)
 }
 
 /**

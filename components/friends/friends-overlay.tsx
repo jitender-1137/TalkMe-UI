@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { FriendsDashboard } from "./friends-dashboard";
 import { useUrlModal } from "@/lib/navigation/use-url-modal";
 import { useNavigation } from "@/components/app-shell/navigation-context";
@@ -42,10 +43,16 @@ export function FriendsOverlay({ open, onClose }: { open: boolean; onClose: () =
   }, [open, activeTab, selectedConversationId, onClose]);
 
   if (!open) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  // Portal to <body> so the overlay escapes the panel's stacking context (on mobile
+  // SecondaryPanel lives inside a `fixed z-40` container, which would otherwise trap
+  // this overlay below root-level chrome regardless of its z-index). At z-index 250 it
+  // sits above all app chrome but below the user-profile modal (z-260) it can spawn.
+  return createPortal(
     <div className="fixed inset-0 bg-background" style={{ zIndex }}>
       <FriendsDashboard onBack={onClose} />
-    </div>
+    </div>,
+    document.body,
   );
 }

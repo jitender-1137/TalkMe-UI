@@ -66,6 +66,10 @@ const getApiPath = () => {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: process.env.STATIC_EXPORT === 'true' ? 'export' : undefined,
+  // Transformers.js (client-side smart replies) ships an optional Node backend
+  // (onnxruntime-node); keep it out of the server bundle. In the browser it uses
+  // onnxruntime-web. It's only ever dynamic-imported from a client component.
+  serverExternalPackages: ["@huggingface/transformers"],
   typescript: {
     ignoreBuildErrors: true,
   },

@@ -417,7 +417,7 @@ export function DiscoverDashboard() {
   const removeFriendMutation = useRemoveContact();
   const { setSelectedConversationId, setShowMobileSecondaryPanel, setChatReturnTab } =
     useChatContext();
-  const { setActiveTab } = useNavigation();
+  const { activeTab } = useNavigation();
 
   const handleAddFriend = (person: DiscoverProfile) => {
     addFriendMutation.mutate(person.id, {
@@ -511,13 +511,11 @@ export function DiscoverDashboard() {
     try {
       // Reuse an existing 1:1 chat with this person instead of creating a duplicate.
       const chat = await openOrCreateChat(person.id);
-      // Remember where we came from so mobile Back returns to Discover.
-      setChatReturnTab("discover");
+      // Stay on the current root tab — the conversation opens as a nested overlay
+      // (#discover/messages) so Back returns here. chatReturnTab records the origin.
+      setChatReturnTab(activeTab);
       setSelectedConversationId(chat.id);
       setShowMobileSecondaryPanel(false);
-      // The tab switch updates the URL via replaceState in NavigationProvider.
-      // No manual location.hash assignment (it would push a history entry).
-      setActiveTab("chats");
       setSelectedPerson(null);
     } catch {
       /* createChat surfaces its own error toast */

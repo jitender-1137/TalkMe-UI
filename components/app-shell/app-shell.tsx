@@ -24,6 +24,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { QUERY_KEYS } from "@/src/api/query-keys"
 import { useLobbyStore } from "@/components/lobby/lobby-store"
 import { UserProfileModal } from "@/components/chat/user-profile-modal"
+import { useOpenOrCreateChat } from "@/src/api/hooks/useChats"
 import { getTabFromHash } from "@/lib/navigation/url-hash"
 import { ScrollRestoreProvider } from "@/lib/navigation/scroll-restore"
 import { useUrlModal } from "@/lib/navigation/use-url-modal"
@@ -36,6 +37,7 @@ function AppShellContent() {
   const { isAuthenticated, isGuestMatch, isLoading, openLoginModal } = useAuth()
   const queryClient = useQueryClient()
   const { registerHandler } = useWebSocket()
+  const openOrCreateChat = useOpenOrCreateChat()
   const hasInitializedTab = useRef(false)
   const prevIsAuthenticated = useRef(false)
   const [mounted, setMounted] = useState(false)
@@ -115,8 +117,14 @@ function AppShellContent() {
   // to #chats — closeChatScreen restores the originating tab when there is one.
   // (The lobby chat is intentionally NOT handled here — ConnectDashboard owns its
   // #match/lobby/chat overlay; see the note by the useUrlModal call below.)
+  // A conversation can be opened from ANY root tab (Chats list, or a "Message"
+  // button in Discover/News/Match/Friends). It is NOT tied to the chats tab: the
+  // overlay segment ("messages") nests under whatever root is active, so the hash
+  // becomes #discover/messages, #match/messages, #chats/messages, … and Back
+  // returns to that root. On the chats tab the existing two-pane / mobile panel
+  // renders it; on other tabs the cross-tab overlay below renders it.
   const isConversationOpen =
-    activeTab === "chats" && selectedConversationId !== null && !showMobileSecondaryPanel
+    selectedConversationId !== null && !showMobileSecondaryPanel
 
   const closeChatScreen = () => {
     if (lobbySelectedUserRef.current !== null) {
@@ -126,13 +134,17 @@ function AppShellContent() {
       setSelectedConversationId(null)
       setShowMobileSecondaryPanel(true)
     }
-    const returnTab = chatReturnTabRef.current
-    if (returnTab) setActiveTab(returnTab) // restore the originating tab
+    // We no longer switch tabs when opening a conversation (it nests under the current
+    // root), so there is nothing to "restore" on close — and calling setActiveTab here
+    // would clearOverlays(), tearing down any profile modal the chat was nested under.
     setChatReturnTab(null)
   }
 
-  // #chats → #chats/messages on open; Back closes the conversation (→ #chats).
-  useUrlModal(isConversationOpen, closeChatScreen, "messages")
+  // Nests "messages" under the CURRENT root (e.g. #chats/messages, #discover/messages,
+  // or #news/feed/user/<id>/messages when opened from a profile modal). Back closes the
+  // conversation and returns to that parent. The returned z stacks the cross-tab overlay
+  // above whatever it was opened from (tab content, or a profile modal).
+  const conversationZ = useUrlModal(isConversationOpen, closeChatScreen, "messages")
   // The lobby chat's Back is owned SOLELY by ConnectDashboard's nested
   // "#match/lobby/chat" overlay. We must NOT also drive it from here — a second
   // history entry + popstate handler made one swipe-back consume two entries,
@@ -142,6 +154,29 @@ function AppShellContent() {
   // Closing it never touches the browser history, so it can never add a back
   // stack entry. (Previously this used a hash + history.back() hack.)
   const handleProfileClose = () => setProfileModal(null)
+
+  // "Message" inside the GLOBAL profile modal (opened anywhere via useProfileViewer's
+  // openProfile, e.g. "People You May Know"). The modal is a fixed-z overlay, so we
+  // close it first — otherwise the conversation overlay would render behind it — then
+  // open the chat nested under the current root tab.
+  const handleProfileMessage = async () => {
+    const uid = profileModalRef.current?.userId
+    if (!uid) return
+    try {
+      const chat = await openOrCreateChat(uid)
+      setProfileModal(null)
+      // The global profile modal is opened from INSIDE other overlays (Friends list /
+      // Requests, comments, …) that sit over the chats two-pane. Switch to chats —
+      // setActiveTab()'s clearOverlays() tears those down CLEANLY (no history race), so
+      // the conversation isn't left hidden behind them. Opens as #chats/messages.
+      setChatReturnTab(null)
+      setSelectedConversationId(chat.id)
+      setShowMobileSecondaryPanel(false)
+      setActiveTab("chats")
+    } catch {
+      /* openOrCreateChat surfaces its own error toast */
+    }
+  }
 
   // Cross-view cleanup when the active tab changes.
   //
@@ -336,6 +371,20 @@ function AppShellContent() {
         )}
       </main>
 
+      {/* Cross-tab conversation overlay: a chat opened from Discover/News/Match/
+          Friends renders here (nested as #<tab>/messages) so the root tab stays put
+          and Back returns to it. The Chats tab keeps its own two-pane / mobile panel
+          above, so this never renders there. z-[200] sits above tab content but below
+          the global profile modal (z-250/260) launched from inside the chat. */}
+      {isConversationOpen && activeTab !== "chats" && isFullUser && (
+        <div
+          className="fixed inset-0 bg-background md:ml-[72px] overflow-hidden"
+          style={{ zIndex: conversationZ }}
+        >
+          <MainContent />
+        </div>
+      )}
+
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav />
 
@@ -346,6 +395,7 @@ function AppShellContent() {
           userId={profileModal.userId}
           isOpen={profileModal !== null}
           onClose={handleProfileClose}
+          onMessage={handleProfileMessage}
           isOwnProfile={false}
           sharedMedia={profileModal.sharedMedia || []}
         />

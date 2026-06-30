@@ -25,6 +25,7 @@ import { buildGiphyUrl } from "@/lib/giphy";
 import { isBlockedGifQuery, isCleanGifRating } from "@/lib/moderation/gif-filter";
 import { useChatPrefs } from "@/lib/chat/chat-prefs-store";
 import { replyHasThumbnail, replyPreviewLabel } from "@/lib/chat/reply-preview";
+import { SmartReplies } from "./smart-replies";
 import type { ReplyTo, PendingAttachment } from "./types";
 
 interface MessageInputProps {
@@ -39,6 +40,10 @@ interface MessageInputProps {
   onCancelAttachment?: () => void;
   onRecordComplete?: (file: File) => void;
   onSendMediaDirectly?: (url: string, type: "image" | "sticker") => void;
+  /** Show client-side smart-reply chips above the composer. */
+  smartReplyEnabled?: boolean;
+  /** Last incoming message text the suggestions react to (null → greeting seeds). */
+  smartReplyLastIncoming?: string | null;
   /** Text to repopulate the composer with (e.g. a moderation-rejected message to edit). */
   restoreDraft?: string | null;
   /** Called once `restoreDraft` has been consumed so the parent can clear it. */
@@ -394,6 +399,8 @@ export function MessageInput({
   onSendMediaDirectly,
   restoreDraft,
   onRestoreConsumed,
+  smartReplyEnabled = false,
+  smartReplyLastIncoming = null,
 }: MessageInputProps) {
   const enterToSend = useChatPrefs((s) => s.enterToSend);
   const [message, setMessage] = useState("");
@@ -993,6 +1000,18 @@ export function MessageInput({
   return (
     <div className="bg-card shrink-0 flex flex-col">
       <div className="px-1 pb-6 md:pb-3 pt-3 max-w-3xl mx-auto space-y-2 w-full">
+        {/* Smart reply suggestions — only when it's the user's turn (composer empty,
+            nothing staged). Tapping a chip fills the composer so it stays editable. */}
+        {smartReplyEnabled && !disabled && !pendingAttachment && !replyTo && !message.trim() && (
+          <SmartReplies
+            lastIncoming={smartReplyLastIncoming}
+            onPick={(text) => {
+              setMessage(text);
+              inputRef.current?.focus();
+            }}
+          />
+        )}
+
         {/* Reply preview */}
         <AnimatePresence>
           {replyTo && (

@@ -11,6 +11,7 @@ import {
   Archive,
   MessageCircle,
   Users,
+  Eye,
 } from "lucide-react";
 import { AvatarStatusBadge } from "@/components/presence";
 import { useLivePresence } from "@/lib/presence/live-status-store";
@@ -42,6 +43,8 @@ import {
 import { useBlockUser } from "@/src/api/hooks/useProfile";
 import { useContactRequests } from "@/src/api/hooks/useContacts";
 import { FriendsOverlay } from "@/components/friends";
+import { ProfileViewsModal } from "@/components/settings/profile-views-modal";
+import { useProfileViewCount } from "@/src/api/hooks/useProfileViews";
 import type { Chat } from "@/src/api/types";
 import { useWebSocket } from "@/components/providers";
 import { useNavigation } from "./navigation-context";
@@ -670,6 +673,9 @@ export function SecondaryPanel() {
   const { data: conversations = [], isLoading } = useChats();
   const { data: contactRequests = [] } = useContactRequests();
   const pendingRequestsCount = contactRequests.length;
+  const { data: profileViewCount } = useProfileViewCount();
+  const unseenViews = profileViewCount?.unseen ?? 0;
+  const [profileViewsOpen, setProfileViewsOpen] = useState(false);
   const muteMutation = useMuteChat();
   const unmuteMutation = useUnmuteChat();
   const archiveMutation = useArchiveChat();
@@ -831,7 +837,7 @@ export function SecondaryPanel() {
           ) : (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setActiveTab("friends")}
+                onClick={() => setFriendsOpen(true)}
                 aria-label="Friends"
                 className={cn(HEADER_ICON_BTN, "relative")}
               >
@@ -839,6 +845,18 @@ export function SecondaryPanel() {
                 {pendingRequestsCount > 0 && (
                   <span className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-1 ring-2 ring-card">
                     {pendingRequestsCount > 99 ? "99+" : pendingRequestsCount}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setProfileViewsOpen(true)}
+                aria-label="Profile views"
+                className={cn(HEADER_ICON_BTN, "relative")}
+              >
+                <Eye className={HEADER_ICON} />
+                {unseenViews > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-1 ring-2 ring-card">
+                    {unseenViews > 99 ? "99+" : unseenViews}
                   </span>
                 )}
               </button>
@@ -979,6 +997,8 @@ export function SecondaryPanel() {
 
       {/* Friends — nested overlay (#chats/friends), Back returns to Chats */}
       <FriendsOverlay open={friendsOpen} onClose={() => setFriendsOpen(false)} />
+
+      <ProfileViewsModal isOpen={profileViewsOpen} onClose={() => setProfileViewsOpen(false)} />
     </div>
   );
 }

@@ -102,7 +102,11 @@ export function AllFriends({ searchQuery, onSearchChange, onlineCount, view }: A
   const openMessage = async (id: string) => {
     try {
       const chat = await openOrCreateChat(id);
-      setChatReturnTab("friends");
+      // The friends list lives in a full-screen overlay over the chats tab. Switch to
+      // chats — setActiveTab() calls clearOverlays(), which tears that overlay down
+      // CLEANLY (no history.go race), then the chat opens in the chats view as
+      // #chats/messages; Back returns to the chats list.
+      setChatReturnTab(null);
       setSelectedConversationId(chat.id);
       setShowMobileSecondaryPanel(false);
       setActiveTab("chats");
@@ -239,7 +243,7 @@ function FriendItem({
           <MoreHorizontal className="h-5 w-5" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-48 z-[320]">
         <DropdownMenuItem className="gap-2 cursor-pointer" onClick={onMessage}>
           <MessageCircle className="h-4 w-4" />
           Send message

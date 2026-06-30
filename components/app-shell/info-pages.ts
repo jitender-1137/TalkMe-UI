@@ -4,4 +4,5 @@ export type InfoPage =
   | "privacy-policy"
   | "cookie-policy"
   | "about"
-  | "contact-us";
+  | "contact-us"
+  | "tips";

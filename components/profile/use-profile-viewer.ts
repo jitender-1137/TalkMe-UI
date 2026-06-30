@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useImageViewer } from "@/components/providers";
 import { useChatContext } from "@/components/chat/chat-context";
 import { getAvatarUrl } from "@/lib/utils";
+import { useRecordProfileView } from "@/src/api/hooks/useProfileViews";
 import type { ChatContact } from "@/components/chat/types";
 
 /**
@@ -18,14 +19,20 @@ import type { ChatContact } from "@/components/chat/types";
 export function useProfileViewer() {
   const { showImage } = useImageViewer();
   const { setProfileModal } = useChatContext();
+  const recordView = useRecordProfileView();
 
-  /** Avatar tap → enlarge the photo (always — even the gender/placeholder image). */
+  /**
+   * Avatar tap → enlarge the photo (always — even the gender/placeholder image).
+   * Pass `opts.userId` when the photo belongs to a known, identified user to also
+   * record a PROFILE_IMAGE view (skip it for anonymous/stranger contexts).
+   */
   const openPhoto = useCallback(
-    (avatar?: string | null, gender?: string | null) => {
+    (avatar?: string | null, gender?: string | null, opts?: { userId?: string | null }) => {
       const url = getAvatarUrl(avatar, gender);
       if (url) showImage(url);
+      if (opts?.userId) recordView.mutate({ userId: opts.userId, type: "PROFILE_IMAGE" });
     },
-    [showImage],
+    [showImage, recordView],
   );
 
   /** Display-name tap → open the user-profile modal (by id, with optional contact). */

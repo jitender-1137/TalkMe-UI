@@ -25,6 +25,7 @@ import { useProfile, useUserById } from "@/src/api/hooks/useProfile";
 import { useUserPosts } from "@/src/api/hooks/useFeed";
 import { useStories } from "@/src/api/hooks/useStories";
 import { useFollowing, useFollowUser, useUnfollowUser } from "@/src/api/hooks/useFollow";
+import { useRecordProfileView } from "@/src/api/hooks/useProfileViews";
 import { PostDetailModal } from "./post-detail-modal";
 import { FollowListModal, type FollowListTab } from "./follow-list-modal";
 import { useUrlModal } from "@/lib/navigation/use-url-modal";
@@ -83,6 +84,18 @@ export function ProfileModal({ userId, isOpen, onClose, onMessage }: ProfileModa
   const unfollowMutation = useUnfollowUser();
 
   const isOwnProfile = !!viewUserId && viewUserId === ownProfile?.id;
+
+  // Record a profile view (once per viewed user, never for your own). Best-effort.
+  const recordView = useRecordProfileView();
+  const recordedViewRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen) { recordedViewRef.current = null; return; }
+    if (isOwnProfile || !user?.id) return;
+    if (recordedViewRef.current === user.id) return;
+    recordedViewRef.current = user.id;
+    recordView.mutate({ userId: user.id, type: "PROFILE" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isOwnProfile, user?.id]);
   const followingIds = useMemo(
     () => new Set((ownFollowing?.items || []).map((u: any) => u.id)),
     [ownFollowing],
